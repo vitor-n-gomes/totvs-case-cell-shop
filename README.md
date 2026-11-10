@@ -1,0 +1,1 @@
+# totvs-case-cell-shop
