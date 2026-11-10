@@ -23,7 +23,8 @@ export class PostgresReceiptRepository extends ReceiptRepository {
         occurredAt: new Date(event.occurredAt),
         receivedAt: new Date(),
       })
-      .onConflict('("event_id") DO NOTHING')
+      // event_id is the table's only unique constraint; keep the first receipt.
+      .orIgnore()
       .execute();
   }
 

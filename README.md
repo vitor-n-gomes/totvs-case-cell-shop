@@ -126,9 +126,13 @@ Metrics, distributed tracing, dashboards, SLOs, and full operational runbooks re
 ## Verification
 
 Dependency updates remove all reported production, critical, high, and moderate
-vulnerabilities. Nine low-severity development-tool findings remain from one
+vulnerabilities. Eight low-severity development-tool findings remain from one
 unpatched `deepmerge` advisory. The [dependency review](docs/dependencies.md)
 records the updates, scoped overrides, and install-script policy.
+
+The [deprecation review](docs/deprecations.md) lists the deprecated APIs and
+packages replaced across the project. ESLint now rejects deprecated TypeScript
+API usage, and the lockfile contains no packages marked deprecated.
 
 See the [verification record](docs/verification.md) for completed checks and the
 exact coverage of the live integration and container checks.

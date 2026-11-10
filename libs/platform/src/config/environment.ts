@@ -11,14 +11,12 @@ const environmentSchema = z
     API_PORT: port.default(3000),
     WORKER_PORT: port.default(3001),
     DATABASE_URL: z
-      .string()
       .url()
       .refine(
         (value) => /^postgres(?:ql)?:/.test(value),
         'Expected a PostgreSQL URL',
       ),
     REDIS_URL: z
-      .string()
       .url()
       .refine((value) => /^rediss?:/.test(value), 'Expected a Redis URL'),
     KAFKA_BROKERS: z
@@ -39,7 +37,7 @@ const environmentSchema = z
   .superRefine((value, context) => {
     if (value.API_PORT === value.WORKER_PORT) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['WORKER_PORT'],
         message: 'App ports must differ',
       });

@@ -22,7 +22,7 @@ Recorded on November 10, 2026, using Node.js 24.22.2, npm 12.2.2, and Docker Eng
 | Publish/receipt flow across separate containers        | Passed: HTTP 202 followed by HTTP 200 with the original correlation ID    |
 | Swagger UI and runtime OpenAPI                         | Passed                                                                    |
 | Production dependency audit                            | Passed; zero findings                                                     |
-| Full dependency audit                                  | Nine low development-tool findings from one unpatched deepmerge advisory  |
+| Full dependency audit                                  | Eight low development-tool findings from one unpatched deepmerge advisory |
 | npm 12 install-script review                           | Passed; no unreviewed scripts and optional hooks explicitly denied        |
 | TypeScript 5.9.3 and 6.0.3 compatibility               | Passed for both application and test projects; no deprecation suppression |
 | GitHub Actions workflow                                | Configured; no remote run performed                                       |
@@ -31,6 +31,11 @@ The security update was verified with a clean npm 12 install, all 54 tests, and
 fresh container builds. NestJS stays on version 11 and the public OpenAPI contract
 is unchanged. See the [dependency review](dependencies.md) for the remaining
 upstream advisory and the exact install-script policy.
+
+The subsequent [deprecation review](deprecations.md) upgraded Jest to 30 and
+ESLint to 10, replaced deprecated source APIs, and added lint enforcement. It
+records the checks repeated for those changes; the container results below
+describe the earlier foundation and security verification.
 
 The live integration suite verified HTTP publication, consumer persistence,
 repeated delivery producing one immutable receipt, Redis cache hits and TTL,

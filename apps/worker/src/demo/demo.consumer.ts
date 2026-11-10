@@ -68,6 +68,7 @@ export class DemoConsumer implements OnApplicationBootstrap, OnModuleDestroy {
             errorType: error instanceof Error ? error.name : 'UnknownError',
           });
           // KafkaJS must see failures: returning here would allow committing a failed event.
+          // eslint-disable-next-line preserve-caught-error -- KafkaJS logs errors; causes may expose payloads or credentials.
           throw new Error('Message processing failed');
         }
       },

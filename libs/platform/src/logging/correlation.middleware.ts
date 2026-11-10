@@ -9,10 +9,7 @@ export class CorrelationMiddleware implements NestMiddleware {
   constructor(private readonly logger: AppLogger) {}
 
   use(request: Request, response: Response, next: NextFunction): void {
-    const supplied = z
-      .string()
-      .uuid()
-      .safeParse(request.header('x-correlation-id'));
+    const supplied = z.uuid().safeParse(request.header('x-correlation-id'));
     const correlationId = supplied.success ? supplied.data : randomUUID();
     response.locals.correlationId = correlationId;
     response.setHeader('x-correlation-id', correlationId);
