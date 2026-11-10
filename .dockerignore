@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.git
+.env*
+.aws
+.codex
+.agents
+.skills
+test
+docs

@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+package-lock.json
+.agents
+.codex
+.aws
+.skills
+skills-lock.json
+casecellshop_senior_backend_challenge.md

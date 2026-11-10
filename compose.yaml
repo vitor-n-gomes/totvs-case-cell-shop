@@ -1,0 +1,147 @@
+name: casecellshop
+
+x-app-environment: &app-environment
+  NODE_ENV: development
+  DATABASE_URL: postgresql://casecellshop:casecellshop_local@postgres:5432/casecellshop
+  REDIS_URL: redis://redis:6379
+  KAFKA_BROKERS: kafka:19092
+  KAFKA_TOPIC: casecellshop.demo.message-created.v1
+  KAFKA_GROUP_ID: casecellshop-demo-worker
+  API_PORT: 3000
+  WORKER_PORT: 3001
+
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_USER: casecellshop
+      POSTGRES_PASSWORD: casecellshop_local
+      POSTGRES_DB: casecellshop
+    ports: ['127.0.0.1:5432:5432']
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-test-database.sql:/docker-entrypoint-initdb.d/01-test-database.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U casecellshop -d casecellshop']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.6-bookworm
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['127.0.0.1:6379:6379']
+    volumes: ['redis-data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    image: apache/kafka:3.9.1
+    ports: ['127.0.0.1:9092:9092']
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:19093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:19093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes: ['kafka-data:/var/lib/kafka/data']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          '/opt/kafka/bin/kafka-topics.sh',
+          '--bootstrap-server',
+          'localhost:19092',
+          '--list',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka: { condition: service_healthy }
+    entrypoint: ['/opt/kafka/bin/kafka-topics.sh']
+    command:
+      [
+        '--bootstrap-server',
+        'kafka:19092',
+        '--create',
+        '--if-not-exists',
+        '--topic',
+        'casecellshop.demo.message-created.v1',
+        '--partitions',
+        '1',
+        '--replication-factor',
+        '1',
+      ]
+
+  migrate:
+    build: { context: ., target: build }
+    environment: *app-environment
+    command: ['npm', 'run', 'migration:run']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build: { context: ., target: runtime }
+    environment: *app-environment
+    command: ['node', 'dist/apps/api/main.js']
+    ports: ['127.0.0.1:3000:3000']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      kafka-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    stop_grace_period: 30s
+
+  worker:
+    build: { context: ., target: runtime }
+    environment: *app-environment
+    command: ['node', 'dist/apps/worker/main.js']
+    ports: ['127.0.0.1:3001:3001']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      kafka-init: { condition: service_completed_successfully }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    stop_grace_period: 30s
+
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:

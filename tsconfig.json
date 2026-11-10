@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "target": "ES2023",
+    "moduleResolution": "NodeNext",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "paths": {
+      "@app/contracts": ["./libs/contracts/src/index.ts"],
+      "@app/demo/*": ["./libs/demo/src/*"],
+      "@app/platform/*": ["./libs/platform/src/*"]
+    },
+    "isolatedModules": true,
+    "types": ["node"],
+    "rootDir": "."
+  },
+  "include": ["apps/**/*.ts", "libs/**/*.ts", "scripts/**/*.ts"]
+}
