@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install --global npm@12.2.2
+      - run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+      - name: Audit development dependencies
+        run: npm audit --audit-level=moderate
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - name: Check generated API contract
+        run: |
+          npm run openapi:export
+          npx prettier --write openapi.json
+          git diff --exit-code -- openapi.json
+      - name: Start local dependencies
+        run: npm run infra:up
+      - name: Run real-service integration tests
+        run: |
+          cp .env.test.example .env.test.local
+          npm run test:integration
+      - name: Compose application smoke check
+        run: |
+          docker compose up -d --build --wait api worker
+          curl --fail http://localhost:3000/health/ready
+          curl --fail http://localhost:3001/health/ready
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop local dependencies
+        if: always()
+        run: docker compose down -v
