@@ -1,3 +1,7 @@
+import { ShopController } from '../apps/api/src/shop/shop.controller';
+import { GetProducts } from '@app/shop/catalog/get-products';
+import { Checkout } from '@app/shop/orders/checkout';
+import { OrderRepository } from '@app/shop/orders/order.repository';
 import 'reflect-metadata';
 import { writeFile } from 'node:fs/promises';
 import { Test } from '@nestjs/testing';
@@ -9,9 +13,12 @@ import { AppLogger } from '@app/platform/logging/app-logger';
 
 async function exportDocument(): Promise<void> {
   const module = await Test.createTestingModule({
-    controllers: [DemoController],
+    controllers: [DemoController, ShopController],
     providers: [
       AppLogger,
+      { provide: GetProducts, useValue: {} },
+      { provide: Checkout, useValue: {} },
+      { provide: OrderRepository, useValue: {} },
       { provide: PublishMessage, useValue: {} },
       { provide: GetReceipt, useValue: {} },
     ],

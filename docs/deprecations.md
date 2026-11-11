@@ -79,3 +79,11 @@ containers were not rebuilt or redeployed for this review.
 
 Integration still emits the previously recorded KafkaJS `TimeoutNegativeWarning`.
 This is not a deprecation warning and was not suppressed.
+
+## Challenge metrics exception
+
+The later complete-challenge implementation explicitly requires `prom-client`.
+Version 15.1.3 now carries a registry deprecation notice pointing to
+`@prometheus-io/client`. The implementation retains the requested package and
+records the exception in [dependencies.md](dependencies.md). Earlier statements
+about a deprecation-free lockfile describe the foundation before this addition.

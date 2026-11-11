@@ -7,6 +7,7 @@ x-app-environment: &app-environment
   KAFKA_BROKERS: kafka:19092
   KAFKA_TOPIC: casecellshop.demo.message-created.v1
   KAFKA_GROUP_ID: casecellshop-demo-worker
+  CHECKOUT_TOPIC: order.checkout.initiated
   API_PORT: 3000
   WORKER_PORT: 3001
 
@@ -67,29 +68,17 @@ services:
           'localhost:19092',
           '--list',
         ]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 15s
+      interval: 10s
+      timeout: 20s
+      retries: 20
+      start_period: 30s
 
   kafka-init:
     image: apache/kafka:3.9.1
     depends_on:
       kafka: { condition: service_healthy }
-    entrypoint: ['/opt/kafka/bin/kafka-topics.sh']
-    command:
-      [
-        '--bootstrap-server',
-        'kafka:19092',
-        '--create',
-        '--if-not-exists',
-        '--topic',
-        'casecellshop.demo.message-created.v1',
-        '--partitions',
-        '1',
-        '--replication-factor',
-        '1',
-      ]
+    entrypoint: ['/bin/sh', '/init-topics.sh']
+    volumes: ['./docker/kafka/init-topics.sh:/init-topics.sh:ro']
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
@@ -112,11 +101,9 @@ services:
     build: { context: ., target: runtime }
     environment: *app-environment
     command: ['node', 'dist/apps/api/main.js']
-    ports: ['127.0.0.1:3000:3000']
+    ports: ['127.0.0.1:${API_HOST_PORT:-3000}:3000']
     depends_on:
       migrate: { condition: service_completed_successfully }
-      kafka-init: { condition: service_completed_successfully }
-      redis: { condition: service_healthy }
     healthcheck:
       test:
         [
@@ -134,7 +121,7 @@ services:
     build: { context: ., target: runtime }
     environment: *app-environment
     command: ['node', 'dist/apps/worker/main.js']
-    ports: ['127.0.0.1:3001:3001']
+    ports: ['127.0.0.1:${WORKER_HOST_PORT:-3001}:3001']
     depends_on:
       migrate: { condition: service_completed_successfully }
       kafka-init: { condition: service_completed_successfully }

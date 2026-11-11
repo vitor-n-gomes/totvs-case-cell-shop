@@ -1,3 +1,4 @@
+import { executionContext, newTraceContext } from '../observability/context';
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { NextFunction, Request, Response } from 'express';
@@ -23,6 +24,6 @@ export class CorrelationMiddleware implements NestMiddleware {
         durationMs: Math.round(performance.now() - started),
       }),
     );
-    next();
+    executionContext.run(newTraceContext(correlationId), next);
   }
 }

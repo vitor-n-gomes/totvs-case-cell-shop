@@ -1,3 +1,6 @@
+import { ShopWorkerModule } from '@app/shop/shop-worker.module';
+import { ObservabilityModule } from '@app/platform/observability/observability.module';
+import { CheckoutConsumer } from './checkout.consumer';
 import { Module } from '@nestjs/common';
 import { ConfigurationModule } from '@app/platform/config/configuration.module';
 import { DatabaseModule } from '@app/platform/database/database.module';
@@ -10,12 +13,14 @@ import { DemoConsumer } from './demo/demo.consumer';
 @Module({
   imports: [
     ConfigurationModule,
+    ShopWorkerModule,
+    ObservabilityModule,
     LoggingModule,
     DatabaseModule,
     MessagingModule,
     DemoWorkerModule,
     HealthModule,
   ],
-  providers: [DemoConsumer],
+  providers: [DemoConsumer, CheckoutConsumer],
 })
 export class WorkerModule {}

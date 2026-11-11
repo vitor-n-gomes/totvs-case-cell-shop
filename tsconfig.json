@@ -14,6 +14,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "paths": {
+      "@app/shop/*": ["./libs/shop/src/*"],
       "@app/contracts": ["./libs/contracts/src/index.ts"],
       "@app/demo/*": ["./libs/demo/src/*"],
       "@app/platform/*": ["./libs/platform/src/*"]

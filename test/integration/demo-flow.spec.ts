@@ -39,6 +39,7 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
   let topic: string;
   let groupId: string;
   const eventIds: string[] = [];
+  const correlationIds: string[] = [];
 
   beforeAll(async () => {
     config({ path: process.env.TEST_ENV_FILE ?? '.env.test.local' });
@@ -65,6 +66,7 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
     topic = `casecellshop.test.${randomUUID()}`;
     groupId = `${topic}.worker`;
     process.env.KAFKA_TOPIC = topic;
+    process.env.CHECKOUT_TOPIC = `${topic}.checkout`;
     process.env.KAFKA_GROUP_ID = groupId;
     kafka = new Kafka({
       clientId: 'casecellshop-integration',
@@ -75,7 +77,9 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
     await admin.connect();
     await admin.createTopics({
       waitForLeaders: true,
-      topics: [{ topic, numPartitions: 1, replicationFactor: 1 }],
+      topics: [topic, `${topic}.checkout`, `${topic}.checkout.dlq`].map(
+        (name) => ({ topic: name, numPartitions: 1, replicationFactor: 1 }),
+      ),
     });
     database = new DataSource(databaseOptions(environment.DATABASE_URL));
     await database.initialize();
@@ -121,6 +125,11 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
         (async () => {
           if (!database?.isInitialized) return;
           try {
+            if (correlationIds.length)
+              await database.query(
+                'DELETE FROM request_log WHERE correlation_id = ANY($1::uuid[])',
+                [correlationIds],
+              );
             if (eventIds.length)
               await database.query(
                 'DELETE FROM demo_message_receipts WHERE event_id = ANY($1::uuid[])',
@@ -145,10 +154,17 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
           try {
             const { groups } = await admin.listGroups();
             if (groups.some((group) => group.groupId === groupId))
-              await admin.deleteGroups([groupId]);
+              await admin.deleteGroups(
+                groups
+                  .filter((group) => group.groupId.startsWith(groupId))
+                  .map((group) => group.groupId),
+              );
           } finally {
             try {
-              if (topic) await admin.deleteTopics({ topics: [topic] });
+              if (topic)
+                await admin.deleteTopics({
+                  topics: [topic, `${topic}.checkout`, `${topic}.checkout.dlq`],
+                });
             } finally {
               await admin.disconnect();
             }
@@ -168,6 +184,7 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
 
   async function publishAndWait(): Promise<MessageReceipt> {
     const correlationId = randomUUID();
+    correlationIds.push(correlationId);
     const published = await request(api!.getHttpServer())
       .post('/demo/messages')
       .set('x-correlation-id', correlationId)
@@ -185,6 +202,7 @@ describe('HTTP → Kafka → worker → PostgreSQL → Redis', () => {
 
   it('persists a published event and preserves correlation across application boundaries', async () => {
     const correlationId = randomUUID();
+    correlationIds.push(correlationId);
     const published = await request(api!.getHttpServer())
       .post('/demo/messages')
       .set('x-correlation-id', correlationId)

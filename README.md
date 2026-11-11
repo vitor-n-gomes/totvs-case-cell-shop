@@ -1,10 +1,12 @@
-# CaseCellShop backend foundation
+# CaseCellShop
 
-Two independently runnable NestJS applications: an HTTP API and a Kafka consumer. This repository currently demonstrates the infrastructure and module boundaries for the senior backend challenge. Product catalog, checkout, inventory, ERP integration, and the five conceptual answers are **not implemented yet**.
+A NestJS storefront API and Kafka worker implementing cached catalog reads, idempotent checkout, atomic stock reservations, a transactional outbox, bounded activation retries and a DLQ. PostgreSQL belongs to the storefront; the ERP is simulated and its database is never modified.
 
-## Run it
+The five conceptual answers are in [docs/conceptual-answers.md](docs/conceptual-answers.md). [docs/tasks.md](docs/tasks.md) contains the implementation requirements; [PROMPTS.md](PROMPTS.md) records AI assistance and review decisions.
 
-Requires Node.js 24, npm 12.2.2, and Docker with Compose v2. The application database belongs to the storefront; no ERP database is accessed.
+## Run locally
+
+Requires Node.js **24.9 or later in the 24.x line**, npm 12.2.2 and Docker Compose v2. Use `nvm use` in each terminal; an existing shell may otherwise continue using Node 20. Jest uses Node's VM modules support for the ESM scheduling package.
 
 ```bash
 nvm use
@@ -14,162 +16,175 @@ cp .env.example .env
 npm run infra:up
 npm run infra:init
 npm run migration:run
+npm run seed
 ```
 
-In separate terminals:
+Start the applications in separate terminals:
 
 ```bash
 npm run start:api:dev
 npm run start:worker:dev
 ```
 
-Alternatively, run everything in containers, including the explicit migration job:
+Alternatively, start the containers and then seed their database:
 
 ```bash
 docker compose up -d --build --wait api worker
+docker compose run --rm migrate npm run seed
 ```
 
-Compose uses fixed local demonstration credentials and pinned image versions. PostgreSQL, Redis, Kafka, and HTTP ports bind to the host loopback interface. Data survives `docker compose down`. Use `docker compose down -v` only when you intend to discard local data.
+Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Only the worker waits for Kafka topic initialization; the API can start with PostgreSQL while Redis or Kafka is unavailable. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed creates three products with 100 units each and **never resets existing stock**. Re-running it updates catalog descriptions/prices and invalidates the cache.
 
-Local apps and the migration CLI load `.env.local` first, then `.env`. Environment variables take precedence over both files. Set `ENV_FILE` to select a single explicit file. Tests ignore these application files. Configuration is validated before startup; credentials are never included in validation errors.
+If ports 3000/3001 are already used by local development, set `API_HOST_PORT=3300 WORKER_HOST_PORT=3301` when running Compose. Run the smoke test with `API_URL=http://localhost:3300 WORKER_URL=http://localhost:3301` in that case.
 
-When switching from containerized apps to local development, run `docker compose stop api worker` to free ports 3000 and 3001. Keep the support services running with `npm run infra:up`.
+Configuration loads `.env.local` before `.env`; environment variables take precedence. `ENV_FILE` selects one explicit file. Tests use only `.env.test.local` or `TEST_ENV_FILE`. Migrations never run automatically at application startup and TypeORM schema synchronization is disabled.
 
-VS Code workspace settings point to the repository's TypeScript compiler. If the
-editor keeps stale diagnostics, select **TypeScript: Select TypeScript Version →
-Use Workspace Version**, then run **TypeScript: Restart TS Server**.
+Each app and library has a standard `tsconfig.json` for editor discovery, extending its Nest build configuration. These configurations inherit aliases and decorator settings from the root, including when opening an individual app/library folder. Scripts and tests also have their own editor configurations. If an already-open editor still reports unresolved `@app/*` imports after pulling configuration changes, run **TypeScript: Restart TS Server** from its command palette.
 
-Application code explicitly loads Node types. Tests use `test/tsconfig.json`,
-which adds Jest globals, and Jest's transformer reads that same configuration.
-`npm run typecheck` checks both projects. Modern Node resolution and explicit
-relative alias paths replace the deprecated `baseUrl` and `node10` options;
-application output remains CommonJS.
-
-## Try the asynchronous flow
+## Try the purchase flow
 
 ```bash
-curl -i -X POST http://localhost:3000/demo/messages \
+curl -s http://localhost:3000/products
+curl -i http://localhost:3000/checkout \
   -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: example-purchase-001' \
   -H 'x-correlation-id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
-  -d '{"message":"hello"}'
+  -d '{"paymentType":"PREPAID","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","environment":"LOCAL","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
+curl -s http://localhost:3000/orders/REPLACE_WITH_ORDER_ID/status
 ```
 
-The API returns `202` with `{ "eventId": "<uuid>", "status": "published" }` only after Kafka acknowledges publication. Use the returned ID:
+Checkout returns `202` and `{ "orderId": "<uuid>", "status": "PENDING" }` after the database commit, without waiting for Kafka or ERP. Retry ambiguous HTTP outcomes with the **same key and content**. An identical replay returns the original acceptance response, even if activation has since completed. Changed content under that key returns `409`. Idempotency keys are global to this unauthenticated demonstration and are retained with the order.
 
-```bash
-curl -i http://localhost:3000/demo/messages/<eventId>
-```
+All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are decimal strings, not floating-point numbers. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
 
-A `200` receipt contains `schemaVersion`, `eventId`, `correlationId`, `message`, `occurredAt`, and `receivedAt`. A `404` means the receipt is currently absent; retry briefly while the worker processes it. It does not distinguish an unknown ID from an event still in flight.
+| Endpoint                      | Behavior                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| `GET /products`               | Catalog and prices, without an authoritative stock promise                     |
+| `POST /checkout`              | Validated purchase with required `Idempotency-Key`                             |
+| `GET /orders/:orderId/status` | Order state, processing state, items and non-sensitive basic data              |
+| `GET /metrics`                | Prometheus metrics on both applications                                        |
+| `GET /health/live`            | Process liveness                                                               |
+| `GET /health/ready`           | API requires PostgreSQL; worker additionally requires Kafka and both consumers |
+| `GET /health/cache`           | Optional Redis dependency status                                               |
 
-The message must contain a non-whitespace character and have at most 500 characters. Unexpected request properties and invalid UUID path parameters return `400`. Publication failures return `503`; unexpected server errors return `500`. HTTP errors contain `statusCode`, `error`, `message`, and `correlationId`. A valid UUID `x-correlation-id` is propagated into the event and receipt; absent or invalid values are replaced. Every API response echoes the effective ID in its header.
+Errors use `{ statusCode, error, message, correlationId }`: invalid input `400`, missing resources `404`, stock/idempotency conflicts `409`, temporary checkout/catalog failures `503`. Unknown server faults return a sanitized `500`. Missing/invalid correlation UUIDs are replaced and the effective value is echoed in the response header. Contacts are not exposed by order status.
 
-Swagger UI: [localhost:3000/api-docs](http://localhost:3000/api-docs). Its JSON is at `/api-docs-json`. The committed [OpenAPI contract](openapi.json) can be regenerated without starting any support services:
+Swagger is at `/api-docs`; JSON at `/api-docs-json`. The committed [OpenAPI document](openapi.json) can be regenerated without infrastructure:
 
 ```bash
 npm run openapi:export
 npx prettier --write openapi.json
 ```
 
-## Architecture
+The original `/demo/messages` POST/GET endpoints remain available. Unlike checkout, the demo publisher waits for a Kafka acknowledgment and does not implement HTTP idempotency.
+
+## Architecture and consistency
 
 ```mermaid
 flowchart LR
-    Client --> API[HTTP API :3000]
-    API -->|broker acknowledgement| Kafka[(Kafka)]
-    Kafka --> Worker[Kafka consumer]
-    Worker -->|idempotent insert| PostgreSQL[(PostgreSQL)]
-    API -->|receipt lookup| Redis[(Redis, TTL 30s)]
-    API -->|cache miss or failure| PostgreSQL
-    Worker --> Health[Operational HTTP :3001]
+    Client --> API[HTTP API]
+    API --> Redis[(Redis catalog)]
+    API -->|one transaction| DB[(Storefront PostgreSQL)]
+    DB --> Relay[Worker outbox relay]
+    Relay --> Kafka[(Kafka keyed by order_id)]
+    Kafka --> Activation[Worker activation]
+    Activation --> DB
+    Activation --> ERP[Simulated ERP]
+    Activation --> Email[Simulated email]
+    Activation -->|retry or DLQ outbox| DB
+    Cleanup[Worker expiration job] --> DB
 ```
 
-- `apps/api`: HTTP validation, status codes, Swagger, and composition.
-- `apps/worker`: Kafka consumer lifecycle and operational health routes. It exposes no demo business endpoints.
-- `libs/contracts`: versioned event schema and receipt types; no HTTP or ORM dependencies.
-- `libs/demo`: focused publish, receive, and read use cases; contracts for publisher, repository, and cache; concrete adapters and explicit module wiring.
-- `libs/platform`: validated configuration, shared database schema registration, Kafka/Redis connections, logging, and health checks.
+Feature modules live in `libs/shop`; controllers and consumer lifecycle belong to the applications. Shared contracts are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
 
-This is a Nest CLI monorepo with one dependency graph and a deliberately shared storefront database. The apps have separate entry points and can scale independently, but they are not independently owned microservices. Shared libraries prevent duplicated business rules. Framework and transport code stays outside event contracts; use cases depend on small injected ports. There are no generic base repositories or empty future feature modules.
+### Checkout and inventory
 
-### Delivery and consistency decisions
+A single transaction creates the order, immutable item prices, stock reservations and initial outbox event. PostgreSQL's unique idempotency key serializes concurrent replays. Canonical hashing ignores item/object property order but includes all purchase fields.
 
-The API writes directly to Kafka and does not write an order or receipt first. This demo therefore has no database/message dual write. A future checkout must add an atomic order/reservation/outbox transaction rather than copying this publisher as a checkout implementation.
+Stock is reserved with `UPDATE ... WHERE physical_quantity - reserved_quantity >= quantity`. Products are processed in stable ID order. Failure of any item rolls back the entire purchase. Database checks prohibit negative quantities and reservations above physical stock; uniqueness prevents duplicate product rows per order. UUIDs identify all domain records.
 
-The worker uses KafkaJS directly inside a Nest lifecycle provider. This keeps subscription configuration, processing completion, and shutdown explicit without adding a second messaging abstraction. Kafka offsets are resolved after the awaited handler succeeds. PostgreSQL's primary key and `ON CONFLICT (event_id) DO NOTHING` make repeated deliveries harmless, including a crash after insert but before offset commit. This is at-least-once processing with an idempotent database effect, not exactly-once delivery.
+Reservations last 900 seconds by default. The example has no payment gateway: checkout authorizes immediate processing. `PREPAID`, `POSTPAID`, payment method and due date are metadata; they do not prove an actual payment.
 
-HTTP publishing has no idempotency key. An acknowledgement timeout can return `503` even if Kafka stored the event; a client retry generates another event ID. Invalid events and database errors fail the handler and can block a partition or require a worker restart. Bounded retries, DLQ, reconciliation, and HTTP idempotency are intentionally deferred to checkout work.
+### Activation and recovery
 
-Receipts are immutable, so Redis uses a fixed 30-second TTL with no invalidation requirement. Missing receipts are never cached. Redis connection errors, malformed values, and one-second command timeouts fall back to PostgreSQL. There is no catalog caching or stampede prevention claim in this phase.
+The exact step order is:
 
-### Database lifecycle
+1. `ConsumeStockReservationStep`.
+2. `ActivateOrderStep`.
+3. `UpdateErpStep`.
+4. `EmailNotificationStep`.
 
-Both apps use the same TypeORM connection configuration and receipt schema. Schema synchronization and automatic startup migrations are disabled in every environment.
+Consumption, activation and both success records commit together. Order/reservation rows are locked and expiration uses PostgreSQL time. Physical and reserved quantities decrease together. A dedicated PostgreSQL advisory lock serializes activations of the same order; external calls happen outside transactions.
 
-```bash
-npm run migration:run
-npm run migration:revert
-```
+`ACTIVE` means stock was consumed. It does **not** promise successful invoicing. `processingStatus` reports `PENDING`, `PROCESSING`, `RETRYING`, `COMPLETED` or `FAILED`. Success records are unique per order/action/step, so subsequent attempts resume at unfinished steps. Failure of ERP/email keeps the order active and does not replenish stock.
 
-The Compose migration service uses the build image with development tools; the runtime image contains only production dependencies. Future migrations should be reviewed and run as an explicit deployment step before starting compatible app versions.
+A failed attempt atomically records the failure, processing state and next outbox entry. There are at most five attempts, separated by 1, 2, 4 and 8 seconds plus relay/broker latency. Permanent errors and exhausted attempts create a DLQ outbox entry. A terminal failure before consumption releases the reservation and cancels the pending order. Infrastructure failures while recording outcomes keep the Kafka offset unresolved; the consumer waits with heartbeats and retries after recovery.
 
-## Health and logs
+The relay runs every second. It claims up to 20 rows with `SKIP LOCKED` and a 30-second lease, publishes with `acks=-1` and `order_id` as key, then marks them processed only when its lease token still matches. Expired leases can be reclaimed. Crashing after Kafka acknowledgment but before the database update can duplicate publication; consumers must remain idempotent. A log statement alone does not implement retries or DLQ delivery.
 
-Both apps expose `/health/live` and `/health/ready`; the worker uses port 3001. Liveness only confirms the HTTP process responds. Readiness checks PostgreSQL and Kafka topic metadata, and the worker also requires its consumer to join the group. It returns `503` when required dependencies fail or the app is shutting down. `/health/cache` reports Redis availability independently; a Redis failure does not make the API unready.
+Malformed events are sent to the DLQ before completing their handler. Their DLQ record contains source topic/partition/offset and a reason, not an arbitrary raw payload. Original Kafka records remain the source for investigation, subject to broker retention.
 
-Logs are JSON with timestamp, app, level, and event name. HTTP completion logs include correlation ID, method, path, status, and duration. Publication and consumption logs include event and correlation IDs. Payloads and connection credentials are not logged. Both applications enable Nest shutdown hooks and close consumers, producers, admin clients, Redis clients, HTTP servers, and database pools.
+Every five minutes, cleanup selects up to 1,000 expired active reservations, then handles all reservations for each selected order. It locks the order first, uses stable product order and releases each active reservation once. It never cancels an active order. Concurrent cleanup/activation cannot both consume and release the same stock.
 
-To investigate a missing receipt, search API/worker logs by `eventId` or `correlationId`, check both readiness endpoints, inspect consumer failures, and confirm the applications use the same topic and database. Do not replay production purchases using this demonstration endpoint.
+ERP/email calls are bounded local simulations with stable `orderId:integration` keys. Logs may repeat if a process crashes before recording success. A real remote system must honor idempotency keys or support lookup/reconciliation; this implementation makes no exactly-once remote-effect claim.
 
-Metrics, distributed tracing, dashboards, SLOs, and full operational runbooks remain part of the challenge implementation; correlation propagation here is not a tracing implementation.
+### Cache policy
+
+`storefront:products` has a 300-second TTL. Cache-aside combines a per-process promise with a Redis `SET NX PX` lock. Other instances wait for the populated cache. Publication and release verify the owner's token, preventing an expired owner from overwriting a later result. The lock expires after five seconds; callers stop waiting after six seconds and receive `503`.
+
+Malformed cache contents are treated as misses. Redis command failures fall back to PostgreSQL with local single-flight. During a Redis outage, separate API replicas can each load the database; there is no cross-process protection without Redis. The seed invalidates both cache and lock after committing. If invalidation fails after commit, retry it; the TTL bounds old data meanwhile. No administrative catalog mutation API is exposed.
+
+Availability is checked exclusively in the checkout transaction. Storefront-owned stock prevents overselling only within its allocated inventory. Selling the same stock through an independent ERP channel requires an allocation/reservation agreement and reconciliation; a cache cannot provide that guarantee.
+
+## Observability and operations
+
+Pino writes JSON to stdout with app, level, event message, correlation, order and trace context when applicable. Existing demo logs retain their original camelCase identifiers. Purchase/contact payloads and credentials are not included in operational logs. The audit interceptor redacts sensitive fields and asynchronously persists mutation requests through a bounded 1,000-entry queue. Audit persistence errors/overflow are counted and do not fail checkout. The queue drains on graceful shutdown, but abrupt termination can lose unflushed audit records; it is not a compliance ledger.
+
+Structured `trace.span` logs connect catalog loading, checkout transactions, relay publication and activation steps. They carry trace/span/parent identifiers and duration. **This is a local tracing simulation**, not an OpenTelemetry or Datadog exporter. Replace it with instrumented spans and W3C propagation before relying on distributed trace tooling.
+
+Metrics avoid correlation/order/product IDs in labels:
+
+- `shop_cache_requests_total{result}`: hit, miss, invalid, unavailable.
+- `shop_checkout_total{result}`: accepted, replayed, rejected.
+- `shop_reservations_total{result}`: reservation transitions.
+- `shop_processing_total{result}`: completed, retry, DLQ, invalid DLQ, published.
+- `shop_step_duration_seconds{step,result}`, `shop_http_duration_seconds{method,route,status}`.
+- `shop_outbox_pending`, `shop_outbox_oldest_seconds`.
+- `shop_request_log_total{result}`: saved, failed, dropped.
+
+Scrape both applications separately. Outbox gauges describe the shared database; use `max`, not `sum`, across workers. Kafka consumer lag and actual inventory discrepancies need broker/database monitoring outside this compact service.
+
+Suggested initial objectives, to validate under representative load: 99.9% valid HTTP requests succeed over 30 days; cached catalog p95 <200 ms; accepted checkout p95 <300 ms; 99% of accepted orders reach completed processing within 60 seconds when dependencies are healthy; overselling remains zero. Business rejections are excluded from availability failures but measured separately. These are proposed targets, not benchmark results.
+
+A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache hit ratio and fallback count, accepted purchases versus worker completions, outbox age/backlog, retry/DLQ rate and ERP duration. Example alerts: oldest pending event >60 seconds for five minutes; any DLQ event; HTTP 5xx >1% for five minutes; audit drops >0; stock invariant mismatch >0. Pair long-window SLO burn with a short-window alert before paging on latency alone.
+
+### Runbooks
+
+**Slow catalog:** compare cache hit/miss/unavailable rates and database latency; check `/health/cache`, Redis connectivity and the lock TTL. Do not delete a live owner's lock arbitrarily. Scale database fallback capacity or shed load during Redis outages. Never serve cached availability as a checkout guarantee.
+
+**Pending order/backlog:** search by order/correlation ID; check worker readiness, Kafka topics, database connectivity and pending outbox age. Restore dependencies and let pending rows/expired leases resume. Do not manually mark pending events processed to silence the alert.
+
+**Retry or DLQ:** inspect the failed step and sanitized `idempotency_log.reference`. Fix the cause first. Re-delivering the same valid event safely retries unrecorded work, but already-recorded attempts and terminal orders are intentionally ignored. A malformed event requires a corrected schema and a valid matching order/attempt. Never blindly send a DLQ envelope to the checkout topic.
+
+**Terminal active order:** verify invoice/email state using the stable provider key before any manual action. Complete missing remote work with that key, then record its verified success through a reviewed database transaction and mark processing complete only after all four success records exist. Preserve successful steps and stock history. There is deliberately no automatic terminal-reset endpoint: creating a new retry cycle requires an explicit administrative design, not resetting `last_attempt` in isolation.
+
+**Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For FAILED active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
 
 ## Verification
 
-Dependency updates remove all reported production, critical, high, and moderate
-vulnerabilities. Eight low-severity development-tool findings remain from one
-unpatched `deepmerge` advisory. The [dependency review](docs/dependencies.md)
-records the updates, scoped overrides, and install-script policy.
-
-The [deprecation review](docs/deprecations.md) lists the deprecated APIs and
-packages replaced across the project. ESLint now rejects deprecated TypeScript
-API usage, and the lockfile contains no packages marked deprecated.
-
-See the [verification record](docs/verification.md) for completed checks and the
-exact coverage of the live integration and container checks.
-
 ```bash
-npm run lint
 npm run format:check
+npm run lint
 npm run typecheck
 npm test
-npm run test:cov
 npm run build
-npm run start:api:prod
-# Separate terminal:
-npm run start:worker:prod
-```
-
-Unit tests require no support services. They cover contract and configuration validation, HTTP success/error responses, broker acknowledgement, persistence failures, cache lookup behavior, and Redis fallback.
-
-For real-service integration tests:
-
-```bash
 npm run infra:up
 cp .env.test.example .env.test.local
 npm run test:integration
 ```
 
-The PostgreSQL initialization script creates `casecellshop_test` on a fresh volume. If reusing a volume created before this script existed, create that database once with `docker compose exec postgres createdb -U casecellshop casecellshop_test`.
+Integration tests refuse nonlocal services, databases without a `_test` suffix and Redis databases other than `/1`. They create isolated Kafka topics/groups and fixtures, run real migrations, then remove their own data. The dedicated Redis catalog keys are cleared; do not share Redis `/1` with development applications. If an old Docker volume lacks the test database, create it once with `docker compose exec postgres createdb -U casecellshop casecellshop_test`.
 
-Tests load only `.env.test.local` (or `TEST_ENV_FILE`), require a local database ending in `_test` and Redis database `/1`, and create a unique Kafka topic/group per run. They migrate the dedicated test database and delete only their own receipts, cache keys, topic, and consumer group. They bootstrap two Nest application contexts inside Jest and exercise the real HTTP/Kafka/database/cache flow, duplicate delivery, cache hits/TTL, and reads after the API loses its Redis connection. The Compose smoke check starts the apps in separate containers. All resources close without Jest's forced-exit option.
+Coverage includes the preserved demo flow, real HTTP/Kafka checkout, overselling races, concurrent idempotency, cart rollback, expiration versus activation, persisted retries, DLQ failures, lease recovery, cache coordination and audit redaction. The [verification record](docs/verification.md) distinguishes completed checks from limitations.
 
-CI checks formatting, lint, types, both builds, unit tests, generated OpenAPI, real-service integration tests, and container readiness. Running Docker-dependent checks requires a working Docker daemon; no skipped integration suite should be reported as a pass.
-
-## Next challenge increments
-
-1. Catalog cache policy, TTL/invalidation, fallback, and stampede prevention.
-2. Atomic stock reservation and HTTP idempotency with order persistence.
-3. Transactional outbox, ERP simulation, bounded retries, DLQ, and reconciliation.
-4. Business metrics, trace propagation, SLOs, alerts, runbooks, and conceptual answers.
-
-See [PROMPTS.md](PROMPTS.md) for AI usage and review decisions, and [the challenge](casecellshop_senior_backend_challenge.md) for the complete acceptance criteria.
+CI checks formatting, lint, types, builds, unit tests, dependency audits, OpenAPI drift, real-service integration and container readiness. The complete solution remains local until explicitly published; no GitHub submission or push is part of this delivery.

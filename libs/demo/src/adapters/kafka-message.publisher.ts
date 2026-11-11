@@ -14,6 +14,7 @@ export class KafkaMessagePublisher extends MessagePublisher {
   }
 
   async publish(event: MessageCreated): Promise<void> {
+    await this.kafka.ensureConnected();
     await this.kafka.producer.send({
       topic: this.config.getOrThrow<string>('KAFKA_TOPIC'),
       acks: -1,
