@@ -5,6 +5,28 @@ const port = z.coerce.number().int().min(1).max(65535);
 
 const environmentSchema = z
   .object({
+    CHECKOUT_TOPIC: z
+      .string()
+      .regex(/^[a-zA-Z0-9._-]+$/)
+      .default('order.checkout.initiated'),
+    RESERVATION_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(86400)
+      .default(900),
+    SIMULATOR_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(20),
+    SIMULATOR_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10000)
+      .default(1000),
+    ERP_FAILURES: z.coerce.number().int().min(0).max(5).default(0),
+    EMAIL_FAILURES: z.coerce.number().int().min(0).max(5).default(0),
+    SIMULATOR_PERMANENT_FAILURE: z
+      .enum(['none', 'erp', 'email'])
+      .default('none'),
     NODE_ENV: z
       .enum(['development', 'test', 'production'])
       .default('development'),

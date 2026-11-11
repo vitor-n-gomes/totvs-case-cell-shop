@@ -29,7 +29,7 @@ describe('Application module composition without support services', () => {
     const { WorkerModule } = jest.requireActual<
       typeof import('../../apps/worker/src/app.module')
     >('../../apps/worker/src/app.module');
-    let joinGroup = () => undefined;
+    const joinGroups: (() => undefined)[] = [];
     const consumer = {
       events: {
         GROUP_JOIN: 'join',
@@ -38,12 +38,12 @@ describe('Application module composition without support services', () => {
         STOP: 'stop',
       },
       on: (name: string, callback: () => undefined) => {
-        if (name === 'join') joinGroup = callback;
+        if (name === 'join') joinGroups.push(callback);
       },
       connect: jest.fn(),
       subscribe: jest.fn(),
       run: async () => {
-        joinGroup();
+        for (const join of joinGroups) join();
       },
       stop: jest.fn(),
       disconnect: jest.fn(),
@@ -63,6 +63,7 @@ describe('Application module composition without support services', () => {
         .useValue({
           kafka: { consumer: () => consumer },
           producer: { send },
+          ensureConnected: async () => undefined,
           checkTopic: async () => undefined,
         })
         .overrideProvider(RedisConnection)

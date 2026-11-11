@@ -67,3 +67,16 @@ npm install-scripts ls
 npm audit --omit=dev
 npm audit
 ```
+
+## Complete storefront increment
+
+The challenge implementation adds `pino` 10.4.0, `prom-client` 15.1.3 and
+`@nestjs/schedule` 12.0.3. The production dependency audit reported zero
+vulnerabilities after installation. The scheduler supports NestJS 11 and ships
+ESM; tests use Node 24.9+ with VM modules enabled.
+
+The registry marks `prom-client` deprecated in favor of `@prometheus-io/client`.
+It is retained because tasks 7/13 and the approved implementation plan explicitly
+require prom-client. This is a known dependency exception, not a security audit
+finding. A future migration should preserve metric names/labels and validate the
+replacement's runtime and test compatibility before changing the requested stack.

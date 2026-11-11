@@ -10,6 +10,7 @@ FROM dependencies AS build
 COPY nest-cli.json tsconfig.json webpack.config.cjs ./
 COPY apps ./apps
 COPY libs ./libs
+COPY scripts ./scripts
 RUN npm run build
 
 FROM base AS runtime

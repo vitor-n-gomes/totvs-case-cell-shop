@@ -18,11 +18,11 @@ export function createOpenApiDocument(app: INestApplication) {
   return SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
-      .setTitle('CaseCellShop foundation')
+      .setTitle('CaseCellShop')
       .setDescription(
-        'Infrastructure demonstration. Checkout and inventory are not implemented.',
+        'Cached catalog, idempotent checkout and asynchronous order activation.',
       )
-      .setVersion('0.1.0')
+      .setVersion('1.0.0')
       .build(),
   );
 }

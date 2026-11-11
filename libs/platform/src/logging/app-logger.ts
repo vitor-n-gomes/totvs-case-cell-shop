@@ -1,8 +1,15 @@
+import pino from 'pino';
+import { executionContext } from '../observability/context';
 import { Injectable, LoggerService } from '@nestjs/common';
 
 @Injectable()
 export class AppLogger implements LoggerService {
   private app = 'bootstrap';
+  private readonly output = pino({
+    base: undefined,
+    timestamp: pino.stdTimeFunctions.isoTime,
+    level: 'info',
+  });
 
   setApp(app: 'api' | 'worker'): void {
     this.app = app;
@@ -48,15 +55,17 @@ export class AppLogger implements LoggerService {
     message: unknown,
     fields: Record<string, unknown>,
   ): void {
-    // Do not serialize arbitrary transport errors: they can contain connection URLs.
-    process.stdout.write(
-      `${JSON.stringify({
-        timestamp: new Date().toISOString(),
+    this.output[level as 'info' | 'warn' | 'error' | 'debug' | 'fatal'](
+      {
         app: this.app,
-        level,
-        message: message instanceof Error ? message.name : message,
+        ...executionContext.getStore(),
         ...fields,
-      })}\n`,
+      },
+      message instanceof Error
+        ? message.name
+        : typeof message === 'string'
+          ? message
+          : 'application.log',
     );
   }
 }

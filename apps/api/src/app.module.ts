@@ -1,3 +1,12 @@
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ShopApiModule } from '@app/shop/shop-api.module';
+import { ShopController } from './shop/shop.controller';
+import { ObservabilityModule } from '@app/platform/observability/observability.module';
+import {
+  RequestAuditInterceptor,
+  RequestAuditRepository,
+} from '@app/platform/observability/request-audit';
+import { HealthService } from '@app/platform/health/health.service';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigurationModule } from '@app/platform/config/configuration.module';
 import { DatabaseModule } from '@app/platform/database/database.module';
@@ -10,14 +19,23 @@ import { DemoController } from './demo/demo.controller';
 @Module({
   imports: [
     ConfigurationModule,
+    ShopApiModule,
+    ObservabilityModule,
     LoggingModule,
     DatabaseModule,
     DemoApiModule,
     HealthModule,
   ],
-  controllers: [DemoController],
+  controllers: [DemoController, ShopController],
+  providers: [
+    RequestAuditRepository,
+    { provide: APP_INTERCEPTOR, useClass: RequestAuditInterceptor },
+  ],
 })
 export class ApiModule implements NestModule {
+  constructor(health: HealthService) {
+    health.requireKafka = false;
+  }
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(CorrelationMiddleware).forRoutes('*');
   }

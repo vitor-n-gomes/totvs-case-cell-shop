@@ -5,6 +5,8 @@ import { RedisConnection } from '../cache/redis-connection';
 
 @Injectable()
 export class HealthService implements BeforeApplicationShutdown {
+  requireKafka = true;
+  checkoutConsumerReady: boolean | undefined;
   consumerReady: boolean | undefined;
   private shuttingDown = false;
 
@@ -20,7 +22,7 @@ export class HealthService implements BeforeApplicationShutdown {
   }> {
     const [database, kafka] = await Promise.allSettled([
       this.database.query('SELECT 1'),
-      this.kafka.checkTopic(),
+      this.requireKafka ? this.kafka.checkTopic() : Promise.resolve(),
     ]);
     const checks: Record<string, string> = {
       postgres: database.status === 'fulfilled' ? 'up' : 'down',
@@ -28,6 +30,9 @@ export class HealthService implements BeforeApplicationShutdown {
     };
     if (this.consumerReady !== undefined)
       checks.consumer = this.consumerReady ? 'up' : 'down';
+    if (!this.requireKafka) delete checks.kafka;
+    if (this.checkoutConsumerReady !== undefined)
+      checks.checkoutConsumer = this.checkoutConsumerReady ? 'up' : 'down';
     return {
       ready:
         !this.shuttingDown &&

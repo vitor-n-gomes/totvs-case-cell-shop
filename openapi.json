@@ -136,12 +136,209 @@
         },
         "tags": ["Demo"]
       }
+    },
+    "/products": {
+      "get": {
+        "operationId": "ShopController_getProducts",
+        "parameters": [
+          {
+            "name": "x-correlation-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductDto"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": ["storefront"]
+      }
+    },
+    "/checkout": {
+      "post": {
+        "operationId": "ShopController_create",
+        "parameters": [
+          {
+            "name": "x-correlation-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutAcceptedDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": ["storefront"]
+      }
+    },
+    "/orders/{orderId}/status": {
+      "get": {
+        "operationId": "ShopController_status",
+        "parameters": [
+          {
+            "name": "x-correlation-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "orderId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": ["storefront"]
+      }
     }
   },
   "info": {
-    "title": "CaseCellShop foundation",
-    "description": "Infrastructure demonstration. Checkout and inventory are not implemented.",
-    "version": "0.1.0",
+    "title": "CaseCellShop",
+    "description": "Cached catalog, idempotent checkout and asynchronous order activation.",
+    "version": "1.0.0",
     "contact": {}
   },
   "tags": [],
@@ -239,6 +436,183 @@
           "message",
           "occurredAt",
           "receivedAt"
+        ]
+      },
+      "ProductDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "productKey": {
+            "type": "string"
+          },
+          "netPrice": {
+            "type": "string",
+            "example": "29.90",
+            "pattern": "^\\d+\\.\\d{2}$"
+          },
+          "listPrice": {
+            "type": "string",
+            "example": "39.90",
+            "pattern": "^\\d+\\.\\d{2}$"
+          }
+        },
+        "required": ["id", "name", "productKey", "netPrice", "listPrice"]
+      },
+      "CheckoutItemDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        },
+        "required": ["productId", "quantity"]
+      },
+      "CheckoutDto": {
+        "type": "object",
+        "properties": {
+          "paymentType": {
+            "type": "string",
+            "enum": ["PREPAID", "POSTPAID"]
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-11-10"
+          },
+          "mainContact": {
+            "type": "string",
+            "maxLength": 254
+          },
+          "altContact": {
+            "type": "string",
+            "maxLength": 254
+          },
+          "paymentMethod": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "environment": {
+            "type": "string",
+            "enum": ["LOCAL", "PRE_PROD", "PROD"]
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckoutItemDto"
+            }
+          }
+        },
+        "required": [
+          "paymentType",
+          "dueDate",
+          "mainContact",
+          "paymentMethod",
+          "environment",
+          "items"
+        ]
+      },
+      "CheckoutAcceptedDto": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING"]
+          }
+        },
+        "required": ["orderId", "status"]
+      },
+      "OrderItemDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "netPrice": {
+            "type": "string",
+            "example": "29.90"
+          },
+          "listPrice": {
+            "type": "string",
+            "example": "39.90"
+          }
+        },
+        "required": ["productId", "quantity", "netPrice", "listPrice"]
+      },
+      "OrderStatusDto": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "ACTIVE", "CANCELLED"]
+          },
+          "processingStatus": {
+            "type": "string",
+            "enum": ["PENDING", "PROCESSING", "RETRYING", "COMPLETED", "FAILED"]
+          },
+          "paymentType": {
+            "type": "string",
+            "enum": ["PREPAID", "POSTPAID"]
+          },
+          "paymentMethod": {
+            "type": "string"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "environment": {
+            "type": "string",
+            "enum": ["LOCAL", "PRE_PROD", "PROD"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemDto"
+            }
+          }
+        },
+        "required": [
+          "orderId",
+          "status",
+          "processingStatus",
+          "paymentType",
+          "paymentMethod",
+          "dueDate",
+          "environment",
+          "createdAt",
+          "items"
         ]
       }
     }
