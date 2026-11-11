@@ -52,7 +52,7 @@ export class Checkout {
   ): Promise<{ orderId: string; status: 'PENDING' }> {
     if (!key || !/^[\x21-\x7e]{1,128}$/.test(key))
       throw new BadRequestException(
-        'Idempotency-Key must contain 1–128 visible ASCII characters',
+        'Idempotency-Key must contain 1-128 visible ASCII characters',
       );
     if (
       new Set(input.items.map((item) => item.productId)).size !==
