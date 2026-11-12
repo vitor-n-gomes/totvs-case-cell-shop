@@ -16,7 +16,7 @@ This document contains prompts organized to be executed sequentially in AI codin
 
 "Create the domain entities, repositories, and migrations for the following tables:
 
-1. `order`: `id` (PK, UUID), `payment_type` (Enum: PREPAID, POSTPAID), `due_date` (Date), `main_contact` (Varchar), `alt_contact` (Varchar nullable), `payment_method` (Varchar), `environment` (Enum: LOCAL, PRE_PROD, PROD), `status` (Enum: PENDING, ACTIVE, CANCELLED).
+1. `order`: `id` (PK, UUID), `payment_type` (Enum: PrePaid, PostPaid), `due_date` (Date), `main_contact` (Varchar), `alt_contact` (Varchar nullable), `payment_method` (Varchar), `environment` (Enum: Local, PreProd, Prod), `status` (Enum: Pending, Active, Cancelled).
 
 2. `product`: Static catalog containing `id` (PK), `name` (Varchar), `product_key` (Varchar/Slug), `net_price` (Decimal), `list_price` (Decimal). It must NOT contain quantity.
    Remember to use `snake_case` in the database and create the migrations."
@@ -64,7 +64,7 @@ The `ActivationContext` must contain the complete `Order`, the `correlationId`, 
 
 1. `ConsumeStockReservationStep`: Fetches the `stock_reservation` for the Order (status ACTIVE). If expired, throws a `ReservationExpiredError`. If valid, changes to CONSUMED and updates the `stock` table (subtracting from both physical and reserved quantities) inside a database transaction.
 
-2. `ActivateOrderStep`: Updates the Order status to `ACTIVE`.
+2. `ActivateOrderStep`: Updates the Order status to `Active`.
 
 3. `UpdateErpStep`: Simulates the billing request to the ERP (can just be a log/delay).
 
@@ -147,7 +147,7 @@ It must process unpaid reservations (abandoned carts):
 1. Fetch `stock_reservation` records where `status = 'ACTIVE'` and `expires_at <= NOW()` in batches (LIMIT 1000).
 2. Update the reservation status to `EXPIRED`.
 3. Return the `reserved_quantity` back to the `stock` table.
-4. Update the corresponding `Order` status to `CANCELLED`."
+4. Update the corresponding `Order` status to `Cancelled`."
 
 ---
 

@@ -1,8 +1,8 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('idempotency_log')
 export class IdempotencyLogEntity {
-  @PrimaryColumn('uuid') id!: string;
+  @PrimaryGeneratedColumn('uuid') id!: string;
   @Column('uuid', { name: 'order_id' }) orderId!: string;
   @Column('varchar') action!: string;
   @Column('jsonb') reference!: Record<string, unknown>;

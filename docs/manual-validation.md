@@ -41,12 +41,12 @@ curl -i http://localhost:3000/checkout \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: manual-orders-001' \
   -H 'x-correlation-id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
-  -d '{"paymentType":"PREPAID","dueDate":"2026-11-11","mainContact":"manual@example.test","paymentMethod":"PIX","environment":"LOCAL","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
+  -d '{"paymentType":"PrePaid","dueDate":"2026-11-11","mainContact":"manual@example.test","paymentMethod":"PIX","environment":"Local","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
 
 curl -s http://localhost:3000/orders/ORDER_ID/status
 ```
 
-O POST deve retornar `202` com `{ "orderId": "…", "status": "PENDING" }`. A consulta deve mostrar os itens com preços em strings decimais e evoluir para `ACTIVE` / `COMPLETED`. Ela não expõe os contatos.
+O POST deve retornar `202` com `{ "orderId": "…", "status": "Pending" }`. A consulta deve mostrar os itens com preços em strings decimais e evoluir para `Active` / `Completed`. Ela não expõe os contatos.
 
 Repita exatamente a requisição: deve retornar o mesmo ID e a mesma resposta de aceite, mesmo após a ativação. Repita a chave alterando a quantidade: deve retornar `409`. Envie a mesma chave e conteúdo simultaneamente em dois terminais: ambos devem obter o mesmo pedido, com uma única reserva por produto.
 
@@ -81,7 +81,7 @@ SELECT id FROM "order" WHERE idempotency_key = 'CHAVE_DO_CENARIO';
 
 Reinicie somente o consumer com `ERP_FAILURES=2` no ambiente do processo (no Compose, ajuste a variável do serviço antes de recriá-lo). Crie um novo pedido. Ele deve completar na terceira tentativa, mantendo quatro registros de sucesso e duas falhas no histórico. Consumo do estoque e ativação não devem se repetir. Volte `ERP_FAILURES` para zero depois.
 
-Com `SIMULATOR_PERMANENT_FAILURE=erp`, um novo pedido deve ficar `ACTIVE` / `FAILED`, com evento na DLQ. O estoque já consumido não é reposto automaticamente. Com `ERP_FAILURES=5`, confira o esgotamento em cinco tentativas. Com falha transitória de email, o ERP já concluído não deve repetir a etapa.
+Com `SIMULATOR_PERMANENT_FAILURE=erp`, um novo pedido deve ficar `Active` / `Failed`, com evento na DLQ. O estoque já consumido não é reposto automaticamente. Com `ERP_FAILURES=5`, confira o esgotamento em cinco tentativas. Com falha transitória de email, o ERP já concluído não deve repetir a etapa.
 
 Na UI Kafka local (`http://localhost:8080`, serviço opcional `docker compose up -d kafka-ui`), copie um evento válido e republique no mesmo tópico. Mantenha a chave `order_id` e o payload original: a repetição não pode consumir estoque ou repetir etapas concluídas. Envie também um JSON inválido para o contrato: ele deve ir à DLQ com tópico/partição/offset e motivo, sem registrar o payload arbitrário.
 

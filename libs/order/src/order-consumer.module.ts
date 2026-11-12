@@ -7,7 +7,6 @@ import { OrderPersistenceModule } from './order-persistence.module';
 import { OrderConsumer } from './adapters/consumer/order.consumer';
 import { OrderMessaging } from './adapters/order.messaging';
 import { ProcessOrderEventUseCase } from './adapters/usecases/process-order-event.use-case';
-import { ExpireReservations } from './adapters/usecases/expire-reservations';
 import { ActiveOrderUseCase } from './activation/active-order.use-case';
 import {
   ConsumeStockReservationStep,
@@ -21,6 +20,7 @@ import {
 import { ActivationStepRegistry } from './activation/registries/activation-step.registry';
 import { OnlineActivationStrategy } from './activation/strategies/online-activation.strategy';
 import { OutboxRelay } from './messaging/outbox-relay';
+import { ExpireReservationsUseCase } from './adapters/usecases/expire-reservations.use-case';
 @Module({
   imports: [
     OrderPersistenceModule,
@@ -33,7 +33,7 @@ import { OutboxRelay } from './messaging/outbox-relay';
   providers: [
     OrderMessaging,
     ProcessOrderEventUseCase,
-    ExpireReservations,
+    ExpireReservationsUseCase,
     ActiveOrderUseCase,
     ConsumeStockReservationStep,
     ActivateOrderStep,

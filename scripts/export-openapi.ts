@@ -2,7 +2,7 @@ import { CatalogController } from '@app/shop/adapters/http/catalog.controller';
 import { OrderController } from '@app/order/adapters/http/order.controller';
 import { GetProducts } from '@app/shop/catalog/get-products';
 import { Checkout } from '@app/order/adapters/usecases/checkout';
-import { GetOrderStatus } from '@app/order/adapters/usecases/get-order-status';
+import { GetOrderStatusUseCase } from '@app/order/adapters/usecases/get-order-status.use-case';
 import 'reflect-metadata';
 import { writeFile } from 'node:fs/promises';
 import { Test } from '@nestjs/testing';
@@ -16,7 +16,7 @@ async function exportDocument(): Promise<void> {
     providers: [
       { provide: GetProducts, useValue: {} },
       { provide: Checkout, useValue: {} },
-      { provide: GetOrderStatus, useValue: {} },
+      { provide: GetOrderStatusUseCase, useValue: {} },
     ],
   }).compile();
   const app = module.createNestApplication();

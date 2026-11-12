@@ -2,29 +2,34 @@ import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CheckoutInput, checkoutEventSchema } from '@app/contracts';
-import { checkoutHash } from '@app/shop/orders/checkout';
-import { CheckoutDto } from '../../apps/api/src/shop/shop.dto';
+import {
+  CheckoutInput,
+  checkoutEventSchema,
+  PaymentType,
+  Environment,
+} from '@app/contracts';
+import { checkoutHash } from '@app/order/adapters/usecases/checkout';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import {
   sanitizePayload,
   RequestAuditRepository,
 } from '@app/platform/observability/request-audit';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
-import { IntegrationSimulator } from '@app/shop/activation/steps/integration-steps';
-import { ActivationContext } from '@app/shop/activation/steps/activation-step';
+import { IntegrationSimulator } from '@app/order/activation/steps/integration-steps';
+import { ActivationContext } from '@app/order/activation/steps/activation-step';
 import {
   PermanentActivationError,
   IntegrationTimeoutError,
-} from '@app/shop/activation/guards/activation-errors';
+} from '@app/order/activation/guards/activation-errors';
 import { DataSource } from 'typeorm';
 
 const input = (): CheckoutInput => ({
-  paymentType: 'PREPAID',
+  paymentType: PaymentType.PrePaid,
   dueDate: '2026-11-10',
   mainContact: 'customer@example.test',
   paymentMethod: 'PIX',
-  environment: 'LOCAL',
+  environment: Environment.Local,
   items: [{ productId: randomUUID(), quantity: 1 }],
 });
 describe('Checkout contracts', () => {
@@ -48,6 +53,12 @@ describe('Checkout contracts', () => {
     { dueDate: '2026-11-10T10:00:00Z' },
     { mainContact: ' ' },
     { paymentType: 'OTHER' },
+    { paymentType: 'PREPAID' },
+    { paymentType: 'POSTPAID' },
+    { environment: 'LOCAL' },
+    { environment: 'PRE_PROD' },
+    { environment: 'PROD' },
+    { environment: 'Other' },
     { items: [] },
     { items: [{ productId: 'invalid', quantity: 0 }] },
     { extra: true },
@@ -60,6 +71,18 @@ describe('Checkout contracts', () => {
         )
       ).length,
     ).toBeGreaterThan(0);
+  });
+  it.each(
+    Object.values(PaymentType).flatMap((paymentType) =>
+      Object.values(Environment).map((environment) => ({
+        paymentType,
+        environment,
+      })),
+    ),
+  )('accepts enum checkout values %j', async (values) => {
+    expect(
+      await validate(plainToInstance(CheckoutDto, { ...input(), ...values })),
+    ).toEqual([]);
   });
   it('validates complete checkout and rejects invalid event attempts', async () => {
     expect(await validate(plainToInstance(CheckoutDto, input()))).toEqual([]);

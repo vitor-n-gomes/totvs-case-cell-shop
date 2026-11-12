@@ -5,7 +5,7 @@ import { ObservabilityModule } from '@app/platform/observability/observability.m
 import { OrderPersistenceModule } from './order-persistence.module';
 import { OrderController } from './adapters/http/order.controller';
 import { Checkout } from './adapters/usecases/checkout';
-import { GetOrderStatus } from './adapters/usecases/get-order-status';
+import { GetOrderStatusUseCase } from './adapters/usecases/get-order-status.use-case';
 @Module({
   imports: [
     OrderPersistenceModule,
@@ -14,7 +14,7 @@ import { GetOrderStatus } from './adapters/usecases/get-order-status';
     ObservabilityModule,
   ],
   controllers: [OrderController],
-  providers: [Checkout, GetOrderStatus],
-  exports: [Checkout, GetOrderStatus],
+  providers: [Checkout, GetOrderStatusUseCase],
+  exports: [Checkout, GetOrderStatusUseCase],
 })
 export class OrderModule {}

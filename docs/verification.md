@@ -45,7 +45,7 @@ was already occupied, so the verification used configurable host ports 3300 and
 
 The final seed succeeded without resetting existing stock. The smoke script
 verified API/worker readiness, catalog reads, a 202 checkout, replay of the same
-idempotency key, ACTIVE/COMPLETED order state and both metrics endpoints. The
+idempotency key, Active/Completed order state and both metrics endpoints. The
 verified order ID is `c3d9d1f3-bd89-4211-a4a3-f5ccac1c5fdd`.
 
 The reported `KafkaConnection.ensureConnected` missing-member diagnostic could

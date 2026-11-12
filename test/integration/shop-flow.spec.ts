@@ -10,7 +10,13 @@ import { DataSource } from 'typeorm';
 import { Kafka, logLevel } from 'kafkajs';
 import { createClient } from 'redis';
 import request from 'supertest';
-import { CheckoutEvent } from '@app/contracts';
+import {
+  CheckoutEvent,
+  PaymentType,
+  Environment,
+  OrderStatus,
+  ProcessingStatus,
+} from '@app/contracts';
 import { databaseOptions } from '@app/platform/database/options';
 import { validateEnvironment } from '@app/platform/config/environment';
 import { RedisConnection } from '@app/platform/cache/redis-connection';
@@ -18,21 +24,29 @@ import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { RequestAuditRepository } from '@app/platform/observability/request-audit';
-import { KafkaConnection } from '@app/platform/messaging/kafka-connection';
-import { ActiveOrderUseCase } from '@app/shop/activation/active-order.use-case';
-import { OutboxRepository } from '@app/shop/messaging/outbox.repository';
-import { OutboxRelay } from '@app/shop/messaging/outbox-relay';
-import { ExpireReservations } from '@app/shop/inventory/expire-reservations';
-import { ActivateOrderStep } from '@app/shop/activation/steps/database-steps';
-import { IntegrationSimulator } from '@app/shop/activation/steps/integration-steps';
+import { KafkaService } from '@app/platform/kafka/kafka.service';
+import { OrderMessaging } from '@app/order/adapters/order.messaging';
+import { HealthService } from '@app/platform/health/health.service';
+import { kafkaConsumerOptions } from '@app/platform/kafka/kafka.options';
+import { TopicKafkaServer } from '@app/platform/kafka/topic-kafka.server';
+import {
+  ORDER_EVENT_PATTERN,
+  ORDER_KAFKA_TRANSPORT,
+} from '@app/platform/kafka/kafka.topics';
+import { ActiveOrderUseCase } from '@app/order/activation/active-order.use-case';
+import { OutboxRepository } from '@app/order/repositories/outbox.repository';
+import { OutboxRelay } from '@app/order/messaging/outbox-relay';
+import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations';
+import { ActivateOrderStep } from '@app/order/activation/steps/database-steps';
+import { IntegrationSimulator } from '@app/order/activation/steps/integration-steps';
 import { ProductRepository } from '@app/shop/catalog/product.repository';
 import {
   GetProducts,
   CATALOG_KEY,
   CATALOG_LOCK,
 } from '@app/shop/catalog/get-products';
-import { CheckoutConsumer } from '../../apps/worker/src/checkout.consumer';
-import { configureApi } from '../../apps/api/src/configure-api';
+import { ProcessOrderEventUseCase } from '@app/order/adapters/usecases/process-order-event.use-case';
+import { configureApi } from '../../apps/http/src/configure-api';
 
 async function eventually(read: () => Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 20000;
@@ -98,22 +112,36 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     redis.on('error', () => undefined);
     await redis.connect();
     await redis.del([CATALOG_KEY, CATALOG_LOCK]);
-    const { ApiModule } = jest.requireActual<
-      typeof import('../../apps/api/src/app.module')
-    >('../../apps/api/src/app.module');
-    const { WorkerModule } = jest.requireActual<
-      typeof import('../../apps/worker/src/app.module')
-    >('../../apps/worker/src/app.module');
-    api = await NestFactory.create(ApiModule, {
+    const { HttpModule } = jest.requireActual<
+      typeof import('../../apps/http/src/http.module')
+    >('../../apps/http/src/http.module');
+    const { ConsumerModule } = jest.requireActual<
+      typeof import('../../apps/consumer/consumer.module')
+    >('../../apps/consumer/consumer.module');
+    api = await NestFactory.create(HttpModule, {
       logger: false,
       abortOnError: false,
     });
     configureApi(api);
     await api.init();
-    worker = await NestFactory.create(WorkerModule, {
+    worker = await NestFactory.create(ConsumerModule, {
       logger: false,
       abortOnError: false,
     });
+    const health = worker.get(HealthService);
+    health.checkoutConsumerReady = false;
+    worker.connectMicroservice({
+      strategy: new TopicKafkaServer(
+        kafkaConsumerOptions(worker.get(ConfigService), `${groupId}-checkout`),
+        ORDER_KAFKA_TRANSPORT,
+        ORDER_EVENT_PATTERN,
+        topic,
+        (ready) => {
+          health.checkoutConsumerReady = ready;
+        },
+      ),
+    });
+    await worker.startAllMicroservices();
     await worker.init();
     const scheduler = worker.get(SchedulerRegistry);
     for (const name of scheduler.getIntervals()) scheduler.deleteInterval(name);
@@ -203,11 +231,11 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
   }
   function body(productId: string, quantity = 1) {
     return {
-      paymentType: 'PREPAID',
+      paymentType: PaymentType.PrePaid,
       dueDate: '2026-11-10',
       mainContact: 'private@example.test',
       paymentMethod: 'PIX',
-      environment: 'LOCAL',
+      environment: Environment.Local,
       items: [{ productId, quantity }],
     };
   }
@@ -254,19 +282,21 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     const id = await product();
     const response = await checkout(body(id));
     expect(response.status).toBe(202);
+    expect(response.body.status).toBe(OrderStatus.Pending);
     const orderId = String(response.body.orderId);
     const initiated = await event(orderId);
     expect(initiated.correlation_id).toBe(response.headers['x-correlation-id']);
     expect(initiated.trace_id).toMatch(/^[a-f0-9]{32}$/);
     await worker.get(OutboxRelay).execute();
     await eventually(
-      async () => (await status(orderId)).processingStatus === 'COMPLETED',
+      async () =>
+        (await status(orderId)).processingStatus === ProcessingStatus.Completed,
     );
     expect(await stock(id)).toEqual({
       physical_quantity: 9,
       reserved_quantity: 0,
     });
-    expect((await status(orderId)).status).toBe('ACTIVE');
+    expect((await status(orderId)).status).toBe(OrderStatus.Active);
     const rows: { step: string }[] = await database.query(
       'SELECT step FROM idempotency_log WHERE order_id=$1 AND success',
       [orderId],
@@ -325,7 +355,7 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     await worker.get(ActiveOrderUseCase).execute(await event(orderId));
     expect((await checkout(body(id), key)).body).toEqual({
       orderId,
-      status: 'PENDING',
+      status: OrderStatus.Pending,
     });
   });
   it('rolls back the full cart when any product is unavailable', async () => {
@@ -354,15 +384,15 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
       [orderId],
     );
     await Promise.all([
-      worker.get(ExpireReservations).execute(),
+      worker.get(ExpireReservationsUseCase).execute(),
       worker.get(ActiveOrderUseCase).execute(await event(orderId)),
     ]);
-    await worker.get(ExpireReservations).execute();
+    await worker.get(ExpireReservationsUseCase).execute();
     expect(await stock(id)).toEqual({
       physical_quantity: 10,
       reserved_quantity: 0,
     });
-    expect((await status(orderId)).status).toBe('CANCELLED');
+    expect((await status(orderId)).status).toBe(OrderStatus.Cancelled);
   });
   it('lets valid activation win without releasing already-consumed stock', async () => {
     const id = await product();
@@ -373,12 +403,12 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
       "UPDATE stock_reservation SET expires_at=clock_timestamp()-interval '1 second' WHERE order_id=$1",
       [orderId],
     );
-    await worker.get(ExpireReservations).execute();
+    await worker.get(ExpireReservationsUseCase).execute();
     expect(await stock(id)).toEqual({
       physical_quantity: 9,
       reserved_quantity: 0,
     });
-    expect((await status(orderId)).status).toBe('ACTIVE');
+    expect((await status(orderId)).status).toBe(OrderStatus.Active);
   });
   it('rolls back stock consumption and its success record if activation fails', async () => {
     const id = await product();
@@ -397,8 +427,8 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
       reserved_quantity: 1,
     });
     expect(await status(orderId)).toMatchObject({
-      status: 'PENDING',
-      processingStatus: 'RETRYING',
+      status: OrderStatus.Pending,
+      processingStatus: ProcessingStatus.Retrying,
     });
     expect(
       await database.query(
@@ -419,8 +449,8 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     worker.get(ConfigService).set('ERP_FAILURES', 1);
     await worker.get(ActiveOrderUseCase).execute(await event(orderId));
     expect(await status(orderId)).toMatchObject({
-      status: 'ACTIVE',
-      processingStatus: 'RETRYING',
+      status: OrderStatus.Active,
+      processingStatus: ProcessingStatus.Retrying,
     });
     const [retry]: { delay: number }[] = await database.query(
       'SELECT extract(epoch FROM available_at-created_at)::float8 AS delay FROM outbox_events WHERE deduplication_key=$1',
@@ -429,7 +459,9 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     expect(retry!.delay).toBeGreaterThanOrEqual(1);
     // A fresh invocation reads persisted progress, as after a worker restart.
     await worker.get(ActiveOrderUseCase).execute(await event(orderId, 2));
-    expect((await status(orderId)).processingStatus).toBe('COMPLETED');
+    expect((await status(orderId)).processingStatus).toBe(
+      ProcessingStatus.Completed,
+    );
     expect(await stock(id)).toEqual({
       physical_quantity: 9,
       reserved_quantity: 0,
@@ -451,8 +483,8 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
         .get(ActiveOrderUseCase)
         .execute(await event(orderId, attempt));
     expect(await status(orderId)).toMatchObject({
-      status: 'ACTIVE',
-      processingStatus: 'FAILED',
+      status: OrderStatus.Active,
+      processingStatus: ProcessingStatus.Failed,
     });
     expect(
       await database.query(
@@ -471,7 +503,9 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     const orderId = String(response.body.orderId);
     worker.get(ConfigService).set('SIMULATOR_PERMANENT_FAILURE', 'email');
     await worker.get(ActiveOrderUseCase).execute(await event(orderId));
-    expect((await status(orderId)).processingStatus).toBe('FAILED');
+    expect((await status(orderId)).processingStatus).toBe(
+      ProcessingStatus.Failed,
+    );
     expect(
       await database.query(
         'SELECT id FROM outbox_events WHERE deduplication_key=$1',
@@ -489,10 +523,10 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     );
     const outbox = worker.get(OutboxRepository);
     const claimed = await outbox.claim();
-    const own = claimed.find((entry) => entry.order_id === orderId)!;
+    const own = claimed.find((entry) => entry.orderId === orderId)!;
     expect(own).toBeDefined();
     // A stale publisher cannot acknowledge a later owner's claim.
-    await outbox.acknowledge({ ...own, lease_token: randomUUID() });
+    await outbox.acknowledge({ ...own, leaseToken: randomUUID() });
     expect(
       (
         await database.query('SELECT status FROM outbox_events WHERE id=$1', [
@@ -502,7 +536,7 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     ).toMatchObject({ status: 'PENDING' });
     for (const entry of claimed) await outbox.release(entry);
     const send = jest
-      .spyOn(worker.get(KafkaConnection).producer, 'send')
+      .spyOn(worker.get(OrderMessaging), 'publish')
       .mockRejectedValue(new Error('Broker offline'));
     try {
       await database.query(
@@ -523,24 +557,24 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     }
   });
   it('does not acknowledge invalid messages until the DLQ publish succeeds', async () => {
-    const consumer = worker.get(CheckoutConsumer);
+    const consumer = worker.get(ProcessOrderEventUseCase);
     const send = jest
-      .spyOn(worker.get(KafkaConnection).producer, 'send')
+      .spyOn(worker.get(OrderMessaging), 'publish')
       .mockRejectedValue(new Error('DLQ offline'));
-    await expect(consumer.handle('{invalid', topic, 0, '999')).rejects.toThrow(
-      'DLQ offline',
-    );
+    await expect(
+      consumer.handle('{invalid', { topic, partition: 0, offset: '999' }),
+    ).rejects.toThrow('DLQ offline');
     send.mockRestore();
     await expect(
-      consumer.handle('{invalid', topic, 0, '999'),
+      consumer.handle('{invalid', { topic, partition: 0, offset: '999' }),
     ).resolves.toBeUndefined();
   });
   it('accepts checkout and remains API-ready with an unavailable Kafka connection', async () => {
     const check = jest
-      .spyOn(api.get(KafkaConnection), 'checkTopic')
+      .spyOn(api.get(KafkaService), 'checkTopic')
       .mockRejectedValue(new Error('offline'));
     const send = jest
-      .spyOn(api.get(KafkaConnection).producer, 'send')
+      .spyOn(api.get(KafkaService), 'produce')
       .mockRejectedValue(new Error('offline'));
     try {
       expect((await checkout(body(await product()))).status).toBe(202);
@@ -552,11 +586,11 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
     }
   });
   it('cold-starts the API and accepts checkout when Kafka and Redis endpoints refuse connections', async () => {
-    const { ApiModule } = jest.requireActual<
-      typeof import('../../apps/api/src/app.module')
-    >('../../apps/api/src/app.module');
+    const { HttpModule } = jest.requireActual<
+      typeof import('../../apps/http/src/http.module')
+    >('../../apps/http/src/http.module');
     const environment = validateEnvironment(process.env);
-    const module = await Test.createTestingModule({ imports: [ApiModule] })
+    const module = await Test.createTestingModule({ imports: [HttpModule] })
       .overrideProvider(ConfigService)
       .useValue(
         new ConfigService({
@@ -586,8 +620,8 @@ describe('Storefront consistency with PostgreSQL, Redis and Kafka', () => {
       orderIds.push(orderId);
       expect((await event(orderId)).order_id).toBe(orderId);
       expect(await status(orderId)).toMatchObject({
-        status: 'PENDING',
-        processingStatus: 'PENDING',
+        status: OrderStatus.Pending,
+        processingStatus: ProcessingStatus.Pending,
       });
     } finally {
       await isolatedApi.close();

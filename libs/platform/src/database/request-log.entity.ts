@@ -1,8 +1,8 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('request_log')
 export class RequestLogEntity {
-  @PrimaryColumn('uuid') id!: string;
+  @PrimaryGeneratedColumn('uuid') id!: string;
   @Column('varchar') url!: string;
   @Column('varchar') method!: string;
   @Column('jsonb') payload!: unknown;

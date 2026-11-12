@@ -19,10 +19,10 @@ export const messageReceiptSchema = messageCreatedSchema.extend({
 export type MessageReceipt = z.infer<typeof messageReceiptSchema>;
 
 export {
-  PAYMENT_TYPES,
-  ENVIRONMENTS,
-  ORDER_STATUSES,
-  PROCESSING_STATUSES,
+  PaymentType,
+  Environment,
+  OrderStatus,
+  ProcessingStatus,
   CHECKOUT_TOPIC,
   checkoutEventSchema,
 } from './shop';

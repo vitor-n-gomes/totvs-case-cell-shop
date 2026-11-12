@@ -1,21 +1,20 @@
+import { OrderStatus } from '@app/contracts';
+import { OrderRepository } from '@app/order/repositories/order.repository';
 import { QueryRunner } from 'typeorm';
-import { OnlineActivationStrategy } from '@app/shop/activation/strategies/online-activation.strategy';
-import { ActivationStepRegistry } from '@app/shop/activation/registries/activation-step.registry';
-import { IdempotencyLogRepository } from '@app/shop/activation/idempotency-log.repository';
-import { ActivationContext } from '@app/shop/activation/steps/activation-step';
-import {
-  STEP_NAMES,
-  StepName,
-} from '@app/shop/activation/constants/step-names';
+import { OnlineActivationStrategy } from '@app/order/activation/strategies/online-activation.strategy';
+import { ActivationStepRegistry } from '@app/order/activation/registries/activation-step.registry';
+import { IdempotencyLogRepository } from '@app/order/repositories/idempotency-log.repository';
+import { ActivationContext } from '@app/order/activation/steps/activation-step';
+import { StepName } from '@app/order/activation/constants/step-names';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { AppLogger } from '@app/platform/logging/app-logger';
 
 function setup() {
-  const order = { id: 'order', status: 'PENDING' };
+  const order = { id: 'order', status: OrderStatus.Pending };
   const calls: StepName[] = [];
   const steps = Object.fromEntries(
-    STEP_NAMES.map((name) => [
+    Object.values(StepName).map((name) => [
       name,
       {
         exec: jest.fn(async () => {
@@ -43,6 +42,10 @@ function setup() {
     {
       get: (name: StepName) => steps[name],
     } as unknown as ActivationStepRegistry,
+    {
+      lockOrFail: jest.fn().mockResolvedValue(order),
+      update: jest.fn(),
+    } as unknown as OrderRepository,
     journal as unknown as IdempotencyLogRepository,
     new Metrics(),
     new Spans({ info: jest.fn() } as unknown as AppLogger),
@@ -51,7 +54,7 @@ function setup() {
     order,
     manager,
     event: { attempt: 1 },
-    currentStep: STEP_NAMES[0],
+    currentStep: StepName.ConsumeStockReservationStep,
     correlationId: 'correlation',
   } as unknown as ActivationContext;
   return { calls, steps, journal, runner, strategy, context };
@@ -61,20 +64,25 @@ describe('Activation orchestration', () => {
     const { calls, steps, runner, strategy, context } = setup();
     steps.UpdateErpStep.exec.mockImplementation(async () => {
       expect(runner.commitTransaction).toHaveBeenCalledTimes(1);
-      calls.push('UpdateErpStep');
+      calls.push(StepName.UpdateErpStep);
     });
     await strategy.execute(context, runner as unknown as QueryRunner);
-    expect(calls).toEqual(STEP_NAMES);
+    expect(calls).toEqual([
+      StepName.ConsumeStockReservationStep,
+      StepName.ActivateOrderStep,
+      StepName.UpdateErpStep,
+      StepName.EmailNotificationStep,
+    ]);
   });
   it('skips successful steps and respects shouldExecute', async () => {
     const { calls, steps, journal, runner, strategy, context } = setup();
     journal.succeeded.mockImplementation(
       async (_manager: unknown, _id: string, name: StepName) =>
-        name === 'ConsumeStockReservationStep',
+        name === StepName.ConsumeStockReservationStep,
     );
     steps.EmailNotificationStep.shouldExecute.mockReturnValue(false);
     await strategy.execute(context, runner as unknown as QueryRunner);
-    expect(calls).toEqual(['ActivateOrderStep', 'UpdateErpStep']);
+    expect(calls).toEqual([StepName.ActivateOrderStep, StepName.UpdateErpStep]);
   });
   it('stops at a database-step failure and rolls back before propagating it', async () => {
     const { steps, runner, strategy, context } = setup();
@@ -94,6 +102,6 @@ describe('Activation orchestration', () => {
     ).rejects.toThrow('ERP offline');
     expect(runner.commitTransaction).toHaveBeenCalledTimes(1);
     expect(steps.EmailNotificationStep.exec).not.toHaveBeenCalled();
-    expect(context.currentStep).toBe('UpdateErpStep');
+    expect(context.currentStep).toBe(StepName.UpdateErpStep);
   });
 });

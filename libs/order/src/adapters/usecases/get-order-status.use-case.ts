@@ -1,13 +1,19 @@
+import { OrderRepository } from '@app/order/repositories/order.repository';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderRepository } from '../../repositories/order.repository';
 
 @Injectable()
-export class GetOrderStatus {
+export class GetOrderStatusUseCase {
+  
   constructor(private readonly orders: OrderRepository) {}
+
   async execute(orderId: string) {
+
     const order = await this.orders.findById(orderId);
+
     if (!order) throw new NotFoundException('Order not found');
+
     const items = await this.orders.findItems(orderId);
+
     return {
       orderId: order.id,
       status: order.status,

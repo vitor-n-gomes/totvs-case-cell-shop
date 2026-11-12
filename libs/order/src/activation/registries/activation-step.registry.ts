@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { STEP_NAMES, StepName } from '../constants/step-names';
+import { StepName } from '../constants/step-names';
 import { ACTIVATION_STEP } from '../decorators/activation-step';
 import { ActivationStep } from '../steps/activation-step';
 import {
@@ -28,7 +28,7 @@ export class ActivationStepRegistry {
         throw new Error('Invalid activation step registration');
       this.steps.set(name, step);
     }
-    if (this.steps.size !== STEP_NAMES.length)
+    if (this.steps.size !== Object.values(StepName).length)
       throw new Error('Missing activation step');
   }
   get(name: StepName): ActivationStep {

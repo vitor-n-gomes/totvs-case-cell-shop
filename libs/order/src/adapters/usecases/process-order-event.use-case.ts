@@ -13,6 +13,14 @@ export interface EventSource {
   partition: number;
   offset: string;
 }
+
+/**
+  * 
+ * process-order-event.use-case  should receive and handle events from the scheduled and http app
+ * the events should have the following structure: { kind: string, data: any, meta: any}
+ * 
+ */ 
+
 @Injectable()
 export class ProcessOrderEventUseCase {
   constructor(

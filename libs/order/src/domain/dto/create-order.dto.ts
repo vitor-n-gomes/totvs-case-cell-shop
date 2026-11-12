@@ -3,7 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsIn,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -17,10 +17,10 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  ENVIRONMENTS,
-  ORDER_STATUSES,
-  PAYMENT_TYPES,
-  PROCESSING_STATUSES,
+  Environment,
+  OrderStatus,
+  PaymentType,
+  ProcessingStatus,
 } from '@app/contracts';
 
 export class CheckoutItemDto {
@@ -32,9 +32,9 @@ export class CheckoutItemDto {
   quantity!: number;
 }
 export class CheckoutDto {
-  @ApiProperty({ enum: PAYMENT_TYPES })
-  @IsIn(PAYMENT_TYPES)
-  paymentType!: (typeof PAYMENT_TYPES)[number];
+  @ApiProperty({ enum: PaymentType })
+  @IsEnum(PaymentType)
+  paymentType!: PaymentType;
   @ApiProperty({ format: 'date', example: '2026-11-10' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsDateString({ strict: true })
@@ -55,9 +55,9 @@ export class CheckoutDto {
   @Matches(/\S/)
   @MaxLength(100)
   paymentMethod!: string;
-  @ApiProperty({ enum: ENVIRONMENTS })
-  @IsIn(ENVIRONMENTS)
-  environment!: (typeof ENVIRONMENTS)[number];
+  @ApiProperty({ enum: Environment })
+  @IsEnum(Environment)
+  environment!: Environment;
   @ApiProperty({ type: [CheckoutItemDto], minItems: 1, maxItems: 100 })
   @IsArray()
   @ArrayMinSize(1)
@@ -68,24 +68,32 @@ export class CheckoutDto {
 }
 export class CheckoutAcceptedDto {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
-  @ApiProperty({ enum: ['PENDING'] }) status!: 'PENDING';
+  @ApiProperty({ enum: [OrderStatus.Pending] }) status!: OrderStatus.Pending;
 }
+
 export class OrderItemDto extends CheckoutItemDto {
-  @ApiProperty({ example: '29.90' }) netPrice!: string;
-  @ApiProperty({ example: '39.90' }) listPrice!: string;
+  @ApiProperty({ example: 2990 })
+  netPrice: number;
+
+  @ApiProperty({ example: 3990 })
+  listPrice: number;
 }
+
 export class OrderStatusDto {
-  @ApiProperty({ format: 'uuid' }) orderId!: string;
-  @ApiProperty({ enum: ORDER_STATUSES })
-  status!: (typeof ORDER_STATUSES)[number];
-  @ApiProperty({ enum: PROCESSING_STATUSES })
-  processingStatus!: (typeof PROCESSING_STATUSES)[number];
-  @ApiProperty({ enum: PAYMENT_TYPES })
-  paymentType!: (typeof PAYMENT_TYPES)[number];
+  @ApiProperty({ format: 'uuid' })
+  orderId: string;
+
+  @ApiProperty({ enum: OrderStatus })
+  status: OrderStatus;
+
+  @ApiProperty({ enum: ProcessingStatus })
+  processingStatus!: ProcessingStatus;
+  @ApiProperty({ enum: PaymentType })
+  paymentType!: PaymentType;
   @ApiProperty() paymentMethod!: string;
   @ApiProperty({ format: 'date' }) dueDate!: string;
-  @ApiProperty({ enum: ENVIRONMENTS })
-  environment!: (typeof ENVIRONMENTS)[number];
+  @ApiProperty({ enum: Environment })
+  environment!: Environment;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: [OrderItemDto] }) items!: OrderItemDto[];
 }

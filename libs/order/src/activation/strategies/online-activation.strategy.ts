@@ -1,9 +1,10 @@
+import { OrderStatus, ProcessingStatus } from '@app/contracts';
 import { Injectable } from '@nestjs/common';
 import { QueryRunner } from 'typeorm';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
-import { OrderRepository } from '../../repositories/order.repository';
-import { STEP_NAMES, StepName } from '../constants/step-names';
+import { OrderRepository } from '@app/order/repositories/order.repository';
+import { StepName } from '../constants/step-names';
 import { OrderCancelledError } from '../guards/activation-errors';
 import { IdempotencyLogRepository } from '../../repositories/idempotency-log.repository';
 import { ActivationStepRegistry } from '../registries/activation-step.registry';
@@ -11,7 +12,7 @@ import { ActivationContext } from '../steps/activation-step';
 
 @Injectable()
 export class OnlineActivationStrategy {
-  readonly stepNames = STEP_NAMES;
+  readonly stepNames = Object.values(StepName);
   constructor(
     private readonly registry: ActivationStepRegistry,
     private readonly orders: OrderRepository,
@@ -29,15 +30,15 @@ export class OnlineActivationStrategy {
         runner.manager,
         context.order.id,
       );
-      if (context.order.status === 'CANCELLED')
+      if (context.order.status === OrderStatus.Cancelled)
         throw new OrderCancelledError('Order cancelled');
       await this.orders.update(runner.manager, context.order.id, {
-        processingStatus: 'PROCESSING',
+        processingStatus: ProcessingStatus.Processing,
       });
       const consumedBefore = await this.journal.succeeded(
         context.manager,
         context.order.id,
-        'ConsumeStockReservationStep',
+        StepName.ConsumeStockReservationStep,
       );
       for (const name of this.stepNames.slice(0, 2))
         await this.runStep(name, context);

@@ -1,15 +1,30 @@
 import { z } from 'zod';
 
-export const PAYMENT_TYPES = ['PREPAID', 'POSTPAID'] as const;
-export const ENVIRONMENTS = ['LOCAL', 'PRE_PROD', 'PROD'] as const;
-export const ORDER_STATUSES = ['PENDING', 'ACTIVE', 'CANCELLED'] as const;
-export const PROCESSING_STATUSES = [
-  'PENDING',
-  'PROCESSING',
-  'RETRYING',
-  'COMPLETED',
-  'FAILED',
-] as const;
+export enum PaymentType {
+  PrePaid = 'PrePaid',
+  PostPaid = 'PostPaid',
+}
+
+export enum Environment {
+  Local = 'Local',
+  PreProd = 'PreProd',
+  Prod = 'Prod',
+}
+
+export enum OrderStatus {
+  Pending = 'Pending',
+  Active = 'Active',
+  Cancelled = 'Cancelled',
+}
+
+export enum ProcessingStatus {
+  Pending = 'Pending',
+  Processing = 'Processing',
+  Retrying = 'Retrying',
+  Completed = 'Completed',
+  Failed = 'Failed',
+}
+
 export const CHECKOUT_TOPIC = 'order.checkout.initiated';
 export const checkoutEventSchema = z.strictObject({
   schema_version: z.literal(1),
@@ -23,12 +38,12 @@ export const checkoutEventSchema = z.strictObject({
 });
 export type CheckoutEvent = z.infer<typeof checkoutEventSchema>;
 export interface CheckoutInput {
-  paymentType: (typeof PAYMENT_TYPES)[number];
+  paymentType: PaymentType;
   dueDate: string;
   mainContact: string;
   altContact?: string;
   paymentMethod: string;
-  environment: (typeof ENVIRONMENTS)[number];
+  environment: Environment;
   items: { productId: string; quantity: number }[];
 }
 export interface ProductView {

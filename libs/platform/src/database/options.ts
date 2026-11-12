@@ -2,18 +2,15 @@ import { orderEntities } from '@app/order/domain/entities';
 import { RequestLogEntity } from './request-log.entity';
 import { shopEntities } from '@app/shop/entities';
 import { CreateShop1730000001000 } from './migrations/1730000001000-create-shop';
+import { UseOrderEnums1794441600000 } from './migrations/1794441600000-use-order-enums';
 import { DataSourceOptions } from 'typeorm';
 
 export function databaseOptions(url: string): DataSourceOptions {
   return {
     type: 'postgres',
     url,
-    entities: [
-      RequestLogEntity,
-      ...shopEntities,
-      ...orderEntities,
-    ],
-    migrations: [CreateShop1730000001000],
+    entities: [RequestLogEntity, ...shopEntities, ...orderEntities],
+    migrations: [CreateShop1730000001000, UseOrderEnums1794441600000],
     synchronize: false,
     migrationsRun: false,
     connectTimeoutMS: 3000,

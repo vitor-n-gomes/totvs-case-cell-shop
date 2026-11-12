@@ -5,6 +5,7 @@ import { ObservabilityModule } from '@app/platform/observability/observability.m
 import { ShopPersistenceModule } from './shop-persistence.module';
 import { GetProducts } from './catalog/get-products';
 import { CatalogController } from './adapters/http/catalog.controller';
+
 @Module({
   imports: [
     ShopPersistenceModule,

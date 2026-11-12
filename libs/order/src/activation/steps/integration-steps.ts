@@ -1,3 +1,4 @@
+import { StepName } from '../constants/step-names';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppLogger } from '@app/platform/logging/app-logger';
@@ -41,7 +42,7 @@ export class IntegrationSimulator {
   }
 }
 @Injectable()
-@RegisteredStep('UpdateErpStep')
+@RegisteredStep(StepName.UpdateErpStep)
 export class UpdateErpStep implements ActivationStep {
   constructor(private readonly simulator: IntegrationSimulator) {}
   exec(context: ActivationContext): Promise<void> {
@@ -49,7 +50,7 @@ export class UpdateErpStep implements ActivationStep {
   }
 }
 @Injectable()
-@RegisteredStep('EmailNotificationStep')
+@RegisteredStep(StepName.EmailNotificationStep)
 export class EmailNotificationStep implements ActivationStep {
   constructor(private readonly simulator: IntegrationSimulator) {}
   exec(context: ActivationContext): Promise<void> {

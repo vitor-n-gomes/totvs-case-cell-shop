@@ -11,9 +11,10 @@ import { ProductEntity, ReservationEntity, StockEntity } from '../entities';
 export interface ReservedItem {
   productId: string;
   quantity: number;
-  netPrice: string;
-  listPrice: string;
+  netPrice: number;
+  listPrice: number;
 }
+
 @Injectable()
 export class StockRepository {
   async reserve(

@@ -1,7 +1,8 @@
+import { StepName } from './constants/step-names';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { CheckoutEvent } from '@app/contracts';
+import { CheckoutEvent, OrderStatus, ProcessingStatus } from '@app/contracts';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { Spans } from '@app/platform/observability/spans';
@@ -31,7 +32,9 @@ export class ActiveOrderUseCase {
       const order = await this.orders.findById(event.order_id, runner.manager);
       if (!order) throw new PermanentActivationError('Unknown order');
       if (
-        ['COMPLETED', 'FAILED'].includes(order.processingStatus) ||
+        [ProcessingStatus.Completed, ProcessingStatus.Failed].includes(
+          order.processingStatus,
+        ) ||
         event.attempt <= order.lastAttempt
       )
         return;
@@ -42,14 +45,14 @@ export class ActiveOrderUseCase {
         event,
         correlationId: event.correlation_id,
         manager: runner.manager,
-        currentStep: 'ConsumeStockReservationStep',
+        currentStep: StepName.ConsumeStockReservationStep,
       };
       try {
         await this.spans.run('order.activation', () =>
           this.strategy.execute(context, runner),
         );
         await this.orders.update(runner.manager, order.id, {
-          processingStatus: 'COMPLETED',
+          processingStatus: ProcessingStatus.Completed,
           lastAttempt: event.attempt,
         });
         this.metrics.processing.inc({ result: 'completed' });
@@ -77,14 +80,16 @@ export class ActiveOrderUseCase {
               ? 'Failed; dead letter scheduled'
               : 'Failed; retry scheduled',
           );
-          if (terminal && current.status === 'PENDING') {
+          if (terminal && current.status === OrderStatus.Pending) {
             await this.reservations.release(runner.manager, order.id);
             await this.orders.update(runner.manager, order.id, {
-              status: 'CANCELLED',
+              status: OrderStatus.Cancelled,
             });
           }
           await this.orders.update(runner.manager, order.id, {
-            processingStatus: terminal ? 'FAILED' : 'RETRYING',
+            processingStatus: terminal
+              ? ProcessingStatus.Failed
+              : ProcessingStatus.Retrying,
             lastAttempt: event.attempt,
           });
           const topic = this.config.getOrThrow<string>('CHECKOUT_TOPIC');

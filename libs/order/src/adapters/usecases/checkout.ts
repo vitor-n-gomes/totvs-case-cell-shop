@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { createHash, randomUUID } from 'node:crypto';
-import { CheckoutEvent, CheckoutInput } from '@app/contracts';
+import { CheckoutEvent, CheckoutInput, OrderStatus } from '@app/contracts';
 import {
   executionContext,
   newTraceContext,
@@ -16,7 +16,7 @@ import {
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { StockRepository } from '@app/shop/inventory/stock.repository';
-import { OrderRepository } from '../../repositories/order.repository';
+import { OrderRepository } from '@app/order/repositories/order.repository';
 import { OutboxRepository } from '../../repositories/outbox.repository';
 
 export function checkoutHash(input: CheckoutInput): string {
@@ -51,7 +51,7 @@ export class Checkout {
     input: CheckoutInput,
     key: string | undefined,
     correlationId: string,
-  ): Promise<{ orderId: string; status: 'PENDING' }> {
+  ): Promise<{ orderId: string; status: OrderStatus.Pending }> {
     if (!key || !/^[\x21-\x7e]{1,128}$/.test(key))
       throw new BadRequestException(
         'Idempotency-Key must contain 1-128 visible ASCII characters',
@@ -119,7 +119,7 @@ export class Checkout {
             { result: 'reserved' },
             input.items.length,
           );
-        return { orderId: result.orderId, status: 'PENDING' };
+        return { orderId: result.orderId, status: OrderStatus.Pending };
       } catch (error) {
         this.metrics.checkout.inc({ result: 'rejected' });
         if (error instanceof HttpException) throw error;

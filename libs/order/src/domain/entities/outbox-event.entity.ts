@@ -1,8 +1,8 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('outbox_events')
 export class OutboxEventEntity {
-  @PrimaryColumn('uuid') id!: string;
+  @PrimaryGeneratedColumn('uuid') id!: string;
   @Column('uuid', { name: 'order_id' }) orderId!: string;
   @Column('varchar') topic!: string;
   @Column('jsonb') payload!: Record<string, unknown>;

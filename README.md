@@ -49,11 +49,13 @@ curl -i http://localhost:3000/checkout \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: example-purchase-001' \
   -H 'x-correlation-id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
-  -d '{"paymentType":"PREPAID","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","environment":"LOCAL","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
+  -d '{"paymentType":"PrePaid","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","environment":"Local","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
 curl -s http://localhost:3000/orders/REPLACE_WITH_ORDER_ID/status
 ```
 
-Checkout returns `202` and `{ "orderId": "<uuid>", "status": "PENDING" }` after the database commit, without waiting for Kafka or ERP. Retry ambiguous HTTP outcomes with the **same key and content**. An identical replay returns the original acceptance response, even if activation has since completed. Changed content under that key returns `409`. Idempotency keys are global to this unauthenticated demonstration and are retained with the order.
+Checkout returns `202` and `{ "orderId": "<uuid>", "status": "Pending" }` after the database commit, without waiting for Kafka or ERP. Retry ambiguous HTTP outcomes with the **same key and content**. An identical replay returns the original acceptance response, even if activation has since completed. Changed content under that key returns `409`. Idempotency keys are global to this unauthenticated demonstration and are retained with the order.
+
+Checkout enum values are case-sensitive: `PrePaid`/`PostPaid`, `Local`/`PreProd`/`Prod`, and PascalCase order/processing statuses. Uppercase legacy values are rejected by API validation. The database stores these fields as ordinary `varchar(16)` columns; enum validation stays in the application. For an existing installation, stop the API and consumer, run `npm run migration:run`, deploy both updated processes, and then resume traffic. Roll back the value-conversion migration with both processes stopped before restoring the previous application version. Existing idempotency hashes retain the original request representation; retrying a pre-upgrade key with PascalCase content returns `409`.
 
 All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are decimal strings, not floating-point numbers. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
 
@@ -103,7 +105,7 @@ A single transaction creates the order, immutable item prices, stock reservation
 
 Stock is reserved with `UPDATE ... WHERE physical_quantity - reserved_quantity >= quantity`. Products are processed in stable ID order. Failure of any item rolls back the entire purchase. Database checks prohibit negative quantities and reservations above physical stock; uniqueness prevents duplicate product rows per order. UUIDs identify all domain records.
 
-Reservations last 900 seconds by default. The example has no payment gateway: checkout authorizes immediate processing. `PREPAID`, `POSTPAID`, payment method and due date are metadata; they do not prove an actual payment.
+Reservations last 900 seconds by default. The example has no payment gateway: checkout authorizes immediate processing. `PrePaid`, `PostPaid`, payment method and due date are metadata; they do not prove an actual payment.
 
 ### Activation and recovery
 
@@ -116,7 +118,7 @@ The exact step order is:
 
 Consumption, activation and both success records commit together. Order/reservation rows are locked and expiration uses PostgreSQL time. Physical and reserved quantities decrease together. A dedicated PostgreSQL advisory lock serializes activations of the same order; external calls happen outside transactions.
 
-`ACTIVE` means stock was consumed. It does **not** promise successful invoicing. `processingStatus` reports `PENDING`, `PROCESSING`, `RETRYING`, `COMPLETED` or `FAILED`. Success records are unique per order/action/step, so subsequent attempts resume at unfinished steps. Failure of ERP/email keeps the order active and does not replenish stock.
+`Active` means stock was consumed. It does **not** promise successful invoicing. `processingStatus` reports `Pending`, `Processing`, `Retrying`, `Completed` or `Failed`. Success records are unique per order/action/step, so subsequent attempts resume at unfinished steps. Failure of ERP/email keeps the order active and does not replenish stock.
 
 A failed attempt atomically records the failure, processing state and next outbox entry. There are at most five attempts, separated by 1, 2, 4 and 8 seconds plus relay/broker latency. Permanent errors and exhausted attempts create a DLQ outbox entry. A terminal failure before consumption releases the reservation and cancels the pending order. Infrastructure failures while recording outcomes propagate to the Nest Kafka transport and prevent offset advancement. The order handler sends heartbeats while processing; Kafka redelivers failed messages after recovery.
 
@@ -168,7 +170,7 @@ A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache
 
 **Terminal active order:** verify invoice/email state using the stable provider key before any manual action. Complete missing remote work with that key, then record its verified success through a reviewed database transaction and mark processing complete only after all four success records exist. Preserve successful steps and stock history. There is deliberately no automatic terminal-reset endpoint: creating a new retry cycle requires an explicit administrative design, not resetting `last_attempt` in isolation.
 
-**Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For FAILED active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
+**Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For Failed active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
 
 ## Manual validation after the Orders refactor
 
