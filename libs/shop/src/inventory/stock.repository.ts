@@ -6,8 +6,14 @@ import {
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
 import { CheckoutInput } from '@app/contracts';
-import { OrderItemEntity, ProductEntity } from '../entities';
+import { ProductEntity, ReservationEntity, StockEntity } from '../entities';
 
+export interface ReservedItem {
+  productId: string;
+  quantity: number;
+  netPrice: string;
+  listPrice: string;
+}
 @Injectable()
 export class StockRepository {
   async reserve(
@@ -15,31 +21,46 @@ export class StockRepository {
     orderId: string,
     items: CheckoutInput['items'],
     ttl: number,
-  ): Promise<void> {
+  ): Promise<ReservedItem[]> {
+    const reserved: ReservedItem[] = [];
     for (const item of [...items].sort((a, b) =>
       a.productId.localeCompare(b.productId),
     )) {
-      const product = await manager.findOneBy(ProductEntity, {
-        id: item.productId,
-      });
+      const product = await manager
+        .getRepository(ProductEntity)
+        .findOneBy({ id: item.productId });
       if (!product) throw new NotFoundException('Product not found');
-      const [stock]: [{ id: string }[], number] = await manager.query(
-        'UPDATE stock SET reserved_quantity = reserved_quantity + $2 WHERE product_id = $1 AND physical_quantity - reserved_quantity >= $2 RETURNING id',
-        [item.productId, item.quantity],
-      );
-      if (!stock.length) throw new ConflictException('Insufficient stock');
-      await manager.insert(OrderItemEntity, {
-        id: randomUUID(),
-        orderId,
-        productId: item.productId,
-        quantity: item.quantity,
+      const result = await manager
+        .getRepository(StockEntity)
+        .createQueryBuilder()
+        .update()
+        .set({ reservedQuantity: () => 'reserved_quantity + :quantity' })
+        .where('product_id = :productId', { productId: item.productId })
+        .andWhere('physical_quantity - reserved_quantity >= :quantity', {
+          quantity: item.quantity,
+        })
+        .execute();
+      if (!result.affected) throw new ConflictException('Insufficient stock');
+      await manager
+        .getRepository(ReservationEntity)
+        .createQueryBuilder()
+        .insert()
+        .values({
+          id: randomUUID(),
+          orderId,
+          productId: item.productId,
+          quantity: item.quantity,
+          status: 'ACTIVE',
+          expiresAt: () => "clock_timestamp() + :ttl * interval '1 second'",
+        })
+        .setParameter('ttl', ttl)
+        .execute();
+      reserved.push({
+        ...item,
         netPrice: product.netPrice,
         listPrice: product.listPrice,
       });
-      await manager.query(
-        "INSERT INTO stock_reservation (id, order_id, product_id, quantity, status, expires_at) VALUES ($1,$2,$3,$4,'ACTIVE',clock_timestamp() + $5 * interval '1 second')",
-        [randomUUID(), orderId, item.productId, item.quantity, ttl],
-      );
     }
+    return reserved;
   }
 }

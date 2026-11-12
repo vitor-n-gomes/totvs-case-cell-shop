@@ -8,13 +8,7 @@
     "npm": ">=12.2.2 <13"
   },
   "scripts": {
-    "build": "npm run build:api && npm run build:worker",
-    "build:api": "nest build api",
-    "build:worker": "nest build worker",
-    "start:api:dev": "nest start api --watch",
-    "start:worker:dev": "nest start worker --watch",
-    "start:api:prod": "node dist/apps/api/main.js",
-    "start:worker:prod": "node dist/apps/worker/main.js",
+    "build": "npm run build:http && npm run build:consumer",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -29,7 +23,14 @@
     "infra:down": "docker compose down",
     "openapi:export": "ts-node -r tsconfig-paths/register scripts/export-openapi.ts",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
-    "test:smoke": "node scripts/smoke.mjs"
+    "test:smoke": "node scripts/smoke.mjs",
+    "build:http": "nest build http",
+    "build:consumer": "nest build consumer",
+    "start:http:dev": "nest start http --watch",
+    "start:consumer:dev": "nest start consumer --watch",
+    "start:http:prod": "node dist/apps/http/main.js",
+    "start:consumer:prod": "node dist/apps/consumer/main.js",
+    "typecheck:app": "tsc --noEmit"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.9",
@@ -44,8 +45,10 @@
     "class-validator": "^0.14.4",
     "dotenv": "^16.6.1",
     "kafkajs": "^2.2.4",
+    "nestjs-pino": "^4.6.1",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
     "prom-client": "^15.1.3",
     "redis": "^5.9.0",
     "reflect-metadata": "^0.2.2",

@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from 'typeorm';
-import { ReservationEntity } from '../entities';
-import {
-  PermanentActivationError,
-  ReservationExpiredError,
-} from '../activation/guards/activation-errors';
+import { InjectRepository } from '@nestjs/typeorm';
+import { EntityManager, Repository } from 'typeorm';
+import { ReservationEntity, StockEntity } from '../entities';
+import { InventoryError, ReservationExpiredError } from './inventory-errors';
 
 @Injectable()
 export class ReservationRepository {
+  constructor(
+    @InjectRepository(ReservationEntity)
+    private readonly reservations: Repository<ReservationEntity>,
+  ) {}
   private lock(
     manager: EntityManager,
     orderId: string,
@@ -15,10 +17,29 @@ export class ReservationRepository {
     return manager
       .getRepository(ReservationEntity)
       .createQueryBuilder('reservation')
-      .where('reservation.order_id = :orderId', { orderId })
-      .orderBy('reservation.product_id', 'ASC')
+      .where('reservation.orderId = :orderId', { orderId })
+      .orderBy('reservation.productId', 'ASC')
       .setLock('pessimistic_write')
       .getMany();
+  }
+  async expiredOrderIds(): Promise<string[]> {
+    const rows = await this.reservations
+      .createQueryBuilder('reservation')
+      .where('reservation.status = :status', { status: 'ACTIVE' })
+      .andWhere('reservation.expiresAt <= clock_timestamp()')
+      .orderBy('reservation.expiresAt')
+      .take(1000)
+      .getMany();
+    return [...new Set(rows.map((row) => row.orderId))].sort();
+  }
+  hasExpired(manager: EntityManager, orderId: string): Promise<boolean> {
+    return manager
+      .getRepository(ReservationEntity)
+      .createQueryBuilder('reservation')
+      .where('reservation.orderId = :orderId', { orderId })
+      .andWhere('reservation.status = :status', { status: 'ACTIVE' })
+      .andWhere('reservation.expiresAt <= clock_timestamp()')
+      .getExists();
   }
   async consume(manager: EntityManager, orderId: string): Promise<number> {
     const reservations = await this.lock(manager, orderId);
@@ -26,45 +47,54 @@ export class ReservationRepository {
       !reservations.length ||
       reservations.some((entry) => entry.status !== 'ACTIVE')
     )
-      throw new PermanentActivationError('No active reservation');
-    const [result]: { expired: boolean }[] = await manager.query(
-      'SELECT EXISTS(SELECT 1 FROM stock_reservation WHERE order_id=$1 AND expires_at<=clock_timestamp()) AS expired',
-      [orderId],
-    );
-    if (result?.expired)
+      throw new InventoryError('No active reservation');
+    if (await this.hasExpired(manager, orderId))
       throw new ReservationExpiredError('Reservation expired');
-    for (const reservation of reservations) {
-      const [affected]: [{ id: string }[], number] = await manager.query(
-        `UPDATE stock SET physical_quantity=physical_quantity-$2,reserved_quantity=reserved_quantity-$2
-        WHERE product_id=$1 AND reserved_quantity >= $2 AND physical_quantity >= $2 RETURNING id`,
-        [reservation.productId, reservation.quantity],
-      );
-      if (!affected.length)
-        throw new PermanentActivationError('Stock invariant violated');
+    for (const entry of reservations) {
+      const result = await manager
+        .getRepository(StockEntity)
+        .createQueryBuilder()
+        .update()
+        .set({
+          physicalQuantity: () => 'physical_quantity - :quantity',
+          reservedQuantity: () => 'reserved_quantity - :quantity',
+        })
+        .where('product_id = :productId', { productId: entry.productId })
+        .andWhere(
+          'reserved_quantity >= :quantity AND physical_quantity >= :quantity',
+          { quantity: entry.quantity },
+        )
+        .execute();
+      if (!result.affected)
+        throw new InventoryError('Stock invariant violated');
     }
-    await manager.query(
-      "UPDATE stock_reservation SET status='CONSUMED' WHERE order_id=$1",
-      [orderId],
-    );
+    await manager
+      .getRepository(ReservationEntity)
+      .update({ orderId }, { status: 'CONSUMED' });
     return reservations.length;
   }
-  /** Caller holds the order row lock. Only still-active reservations are released. */
+  // Caller holds the order row lock. Release only reservations that are still active.
   async release(manager: EntityManager, orderId: string): Promise<number> {
     const reservations = await this.lock(manager, orderId);
     let released = 0;
     for (const entry of reservations.filter(
       (item) => item.status === 'ACTIVE',
     )) {
-      const [affected]: [{ id: string }[], number] = await manager.query(
-        'UPDATE stock SET reserved_quantity=reserved_quantity-$2 WHERE product_id=$1 AND reserved_quantity >= $2 RETURNING id',
-        [entry.productId, entry.quantity],
-      );
-      if (!affected.length)
-        throw new PermanentActivationError('Stock invariant violated');
-      await manager.query(
-        "UPDATE stock_reservation SET status='EXPIRED' WHERE id=$1",
-        [entry.id],
-      );
+      const result = await manager
+        .getRepository(StockEntity)
+        .createQueryBuilder()
+        .update()
+        .set({ reservedQuantity: () => 'reserved_quantity - :quantity' })
+        .where('product_id = :productId', { productId: entry.productId })
+        .andWhere('reserved_quantity >= :quantity', {
+          quantity: entry.quantity,
+        })
+        .execute();
+      if (!result.affected)
+        throw new InventoryError('Stock invariant violated');
+      await manager
+        .getRepository(ReservationEntity)
+        .update({ id: entry.id }, { status: 'EXPIRED' });
       released++;
     }
     return released;

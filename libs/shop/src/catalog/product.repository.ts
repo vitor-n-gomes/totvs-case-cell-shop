@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { ProductEntity } from '../entities';
 
 @Injectable()
 export class ProductRepository {
-  constructor(private readonly database: DataSource) {}
+  constructor(
+    @InjectRepository(ProductEntity)
+    private readonly products: Repository<ProductEntity>,
+  ) {}
   findAll(): Promise<ProductEntity[]> {
-    return this.database
-      .getRepository(ProductEntity)
-      .find({ order: { productKey: 'ASC' } });
+    return this.products.find({ order: { productKey: 'ASC' } });
   }
 }

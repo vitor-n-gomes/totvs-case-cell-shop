@@ -2,7 +2,11 @@
 
 Updated on November 11, 2026. Verification used Node.js 24.22.2 and Docker Engine 28.5.1. Local verification scripts ran with npm 11.19.1; clean container builds, migrations and seed used the pinned npm 12.2.2. This supersedes the earlier foundation-only verification record.
 
-## Automated verification
+## Orders refactor status
+
+The verification record below describes the version before the Orders refactor. Its passing test and container results do not verify the refactored applications. Production TypeScript, the `http` / `consumer` builds, changed-file lint/formatting and OpenAPI generation passed on Node 24.22.2. An offline TypeORM metadata inspection found nine distinct tables, no duplicate order columns and resolved query bindings; no database connection was opened. Unit and integration suites are intentionally unchanged and were not run; their imports still point at the previous structure. Infrastructure behavior is awaiting the user's manual validation using [manual-validation.md](manual-validation.md).
+
+## Earlier automated verification
 
 | Check                                                   | Result                                                        |
 | ------------------------------------------------------- | ------------------------------------------------------------- |
@@ -101,7 +105,7 @@ npm run build
 npm run infra:up
 cp .env.test.example .env.test.local
 npm run test:integration
-docker compose up -d --build --wait api worker
+docker compose up -d --build --wait http consumer
 docker compose run --rm migrate npm run seed
 npm run test:smoke
 ```

@@ -18,7 +18,8 @@
       "@app/shop/*": ["./libs/shop/src/*"],
       "@app/contracts": ["./libs/contracts/src/index.ts"],
       "@app/demo/*": ["./libs/demo/src/*"],
-      "@app/platform/*": ["./libs/platform/src/*"]
+      "@app/platform/*": ["./libs/platform/src/*"],
+      "@app/order/*": ["./libs/order/src/*"]
     },
     "isolatedModules": true,
     "types": ["node"],

@@ -37,7 +37,7 @@ jobs:
           npm run test:integration
       - name: Compose application smoke check
         run: |
-          docker compose up -d --build --wait api worker
+          docker compose up -d --build --wait http consumer
           docker compose run --rm migrate npm run seed
           npm run test:smoke
       - name: Service logs on failure

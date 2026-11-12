@@ -1,53 +1,30 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
-import { Environment, OrderStatus, PaymentType, ProcessingStatus } from "../shared/types/order.type";
+import { Column, Entity, PrimaryColumn } from 'typeorm';
+import {
+  ENVIRONMENTS,
+  ORDER_STATUSES,
+  PAYMENT_TYPES,
+  PROCESSING_STATUSES,
+} from '@app/contracts';
 
-@Entity({ name: "order" })
+@Entity('order')
 export class OrderEntity {
-    @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: "pk_order" })
-    id: string;
-
-    @Column('varchar', { name: 'payment_type' })
-    paymentType: PaymentType;
-
-    @Column('date', { name: 'due_date' })
-    dueDate: string;
-
-    @Column('varchar', { name: 'main_contact' })
-    mainContact: string;
-
-    @Column('varchar', { name: 'alt_contact', nullable: true })
-    altContact?: string;
-
-    @Column('varchar', { name: 'payment_method' })
-    paymentMethod: string;
-
-    @Column('varchar')
-    environment: Environment;
-
-    @Column('varchar')
-    status: OrderStatus;
-
-    @Column('varchar', { name: 'processing_status' })
-    processingStatus: ProcessingStatus;
-
-    @Column('varchar', { name: 'idempotency_key' })
-    idempotencyKey: string;
-
-    @Column('varchar', { name: 'request_hash' })
-    requestHash: string;
-
-    @Column('integer', { name: 'last_attempt' })
-    lastAttempt: number;
-
-    @Column('uuid', { name: 'correlation_id' })
-    correlationId: string;
-
-    @Column('timestamptz', { name: 'created_at' })
-    createdAt: Date;
-
-    @Column('timestamptz', { name: 'created_at' })
-    updateddAt: Date;
-
-    @Column('timestamptz', { name: 'created_at' })
-    deletedAt: Date;
+  @PrimaryColumn('uuid') id!: string;
+  @Column('varchar', { name: 'payment_type' })
+  paymentType!: (typeof PAYMENT_TYPES)[number];
+  @Column('date', { name: 'due_date' }) dueDate!: string;
+  @Column('varchar', { name: 'main_contact' }) mainContact!: string;
+  @Column('varchar', { name: 'alt_contact', nullable: true }) altContact!:
+    string | null;
+  @Column('varchar', { name: 'payment_method' }) paymentMethod!: string;
+  @Column('varchar') environment!: (typeof ENVIRONMENTS)[number];
+  @Column('varchar', { default: 'PENDING' })
+  status!: (typeof ORDER_STATUSES)[number];
+  @Column('varchar', { name: 'processing_status', default: 'PENDING' })
+  processingStatus!: (typeof PROCESSING_STATUSES)[number];
+  @Column('varchar', { name: 'idempotency_key' }) idempotencyKey!: string;
+  @Column('varchar', { name: 'request_hash' }) requestHash!: string;
+  @Column('integer', { name: 'last_attempt', default: 0 }) lastAttempt!: number;
+  @Column('uuid', { name: 'correlation_id' }) correlationId!: string;
+  @Column('timestamptz', { name: 'created_at', default: () => 'now()' })
+  createdAt!: Date;
 }

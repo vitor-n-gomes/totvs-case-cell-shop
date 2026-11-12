@@ -1,17 +1,13 @@
-import pino from 'pino';
+import { PinoLogger } from 'nestjs-pino';
 import { executionContext } from '../observability/context';
 import { Injectable, LoggerService } from '@nestjs/common';
 
 @Injectable()
 export class AppLogger implements LoggerService {
   private app = 'bootstrap';
-  private readonly output = pino({
-    base: undefined,
-    timestamp: pino.stdTimeFunctions.isoTime,
-    level: 'info',
-  });
+  constructor(private readonly output: PinoLogger) {}
 
-  setApp(app: 'api' | 'worker'): void {
+  setApp(app: 'http' | 'consumer'): void {
     this.app = app;
   }
 
@@ -37,7 +33,7 @@ export class AppLogger implements LoggerService {
     this.write('fatal', message, { context });
   }
 
-  startupFailure(app: 'api' | 'worker', error: unknown): void {
+  startupFailure(app: 'http' | 'consumer', error: unknown): void {
     this.setApp(app);
     this.info(`${app}.startup.failed`, {
       error:

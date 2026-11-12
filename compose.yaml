@@ -97,10 +97,10 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
-  api:
+  http:
     build: { context: ., target: runtime }
     environment: *app-environment
-    command: ['node', 'dist/apps/api/main.js']
+    command: ['node', 'dist/apps/http/main.js']
     ports: ['127.0.0.1:${API_HOST_PORT:-3000}:3000']
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -117,10 +117,10 @@ services:
       retries: 10
     stop_grace_period: 30s
 
-  worker:
+  consumer:
     build: { context: ., target: runtime }
     environment: *app-environment
-    command: ['node', 'dist/apps/worker/main.js']
+    command: ['node', 'dist/apps/consumer/main.js']
     ports: ['127.0.0.1:${WORKER_HOST_PORT:-3001}:3001']
     depends_on:
       migrate: { condition: service_completed_successfully }

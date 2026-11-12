@@ -1,6 +1,6 @@
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ShopApiModule } from '@app/shop/shop-api.module';
-import { ShopController } from './shop/shop.controller';
+import { OrderModule } from '@app/order/order.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import {
   RequestAuditInterceptor,
@@ -20,19 +20,20 @@ import { DemoController } from './demo/demo.controller';
   imports: [
     ConfigurationModule,
     ShopApiModule,
+    OrderModule,
     ObservabilityModule,
     LoggingModule,
     DatabaseModule,
     DemoApiModule,
     HealthModule,
   ],
-  controllers: [DemoController, ShopController],
+  controllers: [DemoController],
   providers: [
     RequestAuditRepository,
     { provide: APP_INTERCEPTOR, useClass: RequestAuditInterceptor },
   ],
 })
-export class ApiModule implements NestModule {
+export class HttpModule implements NestModule {
   constructor(health: HealthService) {
     health.requireKafka = false;
   }

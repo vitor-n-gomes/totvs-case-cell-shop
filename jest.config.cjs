@@ -29,6 +29,7 @@ module.exports = {
     'libs/demo/src/**/*.ts',
     'libs/contracts/src/**/*.ts',
     'libs/platform/src/config/*.ts',
+    'libs/order/src/**/*.ts',
   ],
   coverageDirectory: 'coverage',
 };

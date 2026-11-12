@@ -1,35 +1,31 @@
-import { Module } from "@nestjs/common";
-import { KafkaService } from "./kafka.service";
-import { ClientsModule, Transport } from "@nestjs/microservices";
-import { ConfigService } from "@nestjs/config";
-
+import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ClientsModule, Transport } from '@nestjs/microservices';
+import { LoggingModule } from '../logging/logging.module';
+import { KafkaService } from './kafka.service';
+import { kafkaClientOptions } from './kafka.options';
+import { KAFKA_CLIENT } from './kafka.topics';
 @Module({
-    imports: [
-        ClientsModule.registerAsync({
-            isGlobal: true,
-            clients: [{
-                name: "case_cell_client",
-                inject: [ConfigService],
-                useFactory: (configService: ConfigService) => {
-                    const brokers: string[] = configService.getOrThrow<string>("kafka.brokers")?.split(',');
-
-                    return {
-                        transport: Transport.KAFKA,
-                        options: {
-                            postfixId: "",
-                            producerOnlyMode: true,
-                            client: {
-                                clientId: "case_cell_client",
-                                brokers
-                            }
-                        }
-                    }
-                }
-            }]
-        })
-
-    ],
-    exports: [KafkaService],
-    providers: [KafkaService]
+  imports: [
+    LoggingModule,
+    ClientsModule.registerAsync([
+      {
+        name: KAFKA_CLIENT,
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.KAFKA,
+          options: {
+            postfixId: '',
+            producerOnlyMode: true,
+            client: kafkaClientOptions(config),
+            producer: { allowAutoTopicCreation: false },
+            send: { acks: -1 },
+          },
+        }),
+      },
+    ]),
+  ],
+  providers: [KafkaService],
+  exports: [KafkaService],
 })
-export class KafkaModule { }
+export class KafkaModule {}

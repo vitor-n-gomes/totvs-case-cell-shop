@@ -22,14 +22,14 @@ npm run seed
 Start the applications in separate terminals:
 
 ```bash
-npm run start:api:dev
-npm run start:worker:dev
+npm run start:http:dev
+npm run start:consumer:dev
 ```
 
 Alternatively, start the containers and then seed their database:
 
 ```bash
-docker compose up -d --build --wait api worker
+docker compose up -d --build --wait http consumer
 docker compose run --rm migrate npm run seed
 ```
 
@@ -95,7 +95,7 @@ flowchart LR
     Cleanup[Worker expiration job] --> DB
 ```
 
-Feature modules live in `libs/shop`; controllers and consumer lifecycle belong to the applications. Shared contracts are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
+`libs/order` owns checkout, order queries, activation, retries, the transactional outbox and expiration orchestration. `libs/shop` owns catalog and inventory; its inventory module exports reservation operations without importing Orders. Feature controllers live with their modules. `apps/http` serves the public API, while `apps/consumer` runs two Nest Kafka transports (preserving the demo group and the `-checkout` group), scheduled jobs and an operations HTTP server. HTTP imports no consumer or scheduler module. Shared contracts are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
 
 ### Checkout and inventory
 
@@ -118,7 +118,7 @@ Consumption, activation and both success records commit together. Order/reservat
 
 `ACTIVE` means stock was consumed. It does **not** promise successful invoicing. `processingStatus` reports `PENDING`, `PROCESSING`, `RETRYING`, `COMPLETED` or `FAILED`. Success records are unique per order/action/step, so subsequent attempts resume at unfinished steps. Failure of ERP/email keeps the order active and does not replenish stock.
 
-A failed attempt atomically records the failure, processing state and next outbox entry. There are at most five attempts, separated by 1, 2, 4 and 8 seconds plus relay/broker latency. Permanent errors and exhausted attempts create a DLQ outbox entry. A terminal failure before consumption releases the reservation and cancels the pending order. Infrastructure failures while recording outcomes keep the Kafka offset unresolved; the consumer waits with heartbeats and retries after recovery.
+A failed attempt atomically records the failure, processing state and next outbox entry. There are at most five attempts, separated by 1, 2, 4 and 8 seconds plus relay/broker latency. Permanent errors and exhausted attempts create a DLQ outbox entry. A terminal failure before consumption releases the reservation and cancels the pending order. Infrastructure failures while recording outcomes propagate to the Nest Kafka transport and prevent offset advancement. The order handler sends heartbeats while processing; Kafka redelivers failed messages after recovery.
 
 The relay runs every second. It claims up to 20 rows with `SKIP LOCKED` and a 30-second lease, publishes with `acks=-1` and `order_id` as key, then marks them processed only when its lease token still matches. Expired leases can be reclaimed. Crashing after Kafka acknowledgment but before the database update can duplicate publication; consumers must remain idempotent. A log statement alone does not implement retries or DLQ delivery.
 
@@ -170,7 +170,24 @@ A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache
 
 **Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For FAILED active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
 
-## Verification
+## Manual validation after the Orders refactor
+
+See [docs/manual-validation.md](docs/manual-validation.md) for startup commands, expected responses and database checks. This refactor validates production types, builds, formatting and lint. Unit/integration tests have deliberately not been migrated or run; their old imports still need updating after manual validation.
+
+Kafka uses `@nestjs/microservices` (`ClientKafka` and `@EventPattern`) and logging uses `nestjs-pino`. Brokers and topics come from the shared validated configuration. Both applications start without SASL locally; optional `KAFKA_SSL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME` and `KAFKA_SASL_PASSWORD` configure authentication in one place for producer, consumers and metadata checks. Supported mechanisms are `plain`, `scram-sha-256` and `scram-sha-512`. All three SASL fields must be supplied together. Credentials are not logged. Existing `API_PORT` / `WORKER_PORT` and host-port variables remain supported.
+
+For the checks applicable to this stage:
+
+```bash
+npm run typecheck:app
+npm run build
+npx eslint apps libs scripts
+npx prettier --check apps libs scripts package.json nest-cli.json compose.yaml
+```
+
+## Earlier verification workflow
+
+The commands below describe the previous test workflow. Its suites require a follow-up migration to the new module/application locations before the full workflow can pass.
 
 ```bash
 npm run format:check
