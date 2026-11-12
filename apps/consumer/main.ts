@@ -9,8 +9,6 @@ import { HealthService } from '@app/platform/health/health.service';
 import { kafkaConsumerOptions } from '@app/platform/kafka/kafka.options';
 import { TopicKafkaServer } from '@app/platform/kafka/topic-kafka.server';
 import {
-  DEMO_EVENT_PATTERN,
-  DEMO_KAFKA_TRANSPORT,
   ORDER_EVENT_PATTERN,
   ORDER_KAFKA_TRANSPORT,
 } from '@app/platform/kafka/kafka.topics';
@@ -31,20 +29,7 @@ async function bootstrap(): Promise<void> {
     health.consumerReady = false;
     health.checkoutConsumerReady = false;
     const group = config.getOrThrow<string>('KAFKA_GROUP_ID');
-    app.connectMicroservice<MicroserviceOptions>(
-      {
-        strategy: new TopicKafkaServer(
-          kafkaConsumerOptions(config, group),
-          DEMO_KAFKA_TRANSPORT,
-          DEMO_EVENT_PATTERN,
-          config.getOrThrow<string>('KAFKA_TOPIC'),
-          (ready) => {
-            health.consumerReady = ready;
-          },
-        ),
-      },
-      { inheritAppConfig: true },
-    );
+
     app.connectMicroservice<MicroserviceOptions>(
       {
         strategy: new TopicKafkaServer(

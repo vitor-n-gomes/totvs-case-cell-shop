@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEMO_MESSAGE_TOPIC } from '@app/contracts';
+import { ORDER_EVENT_PATTERN } from '../kafka/kafka.topics';
 
 const port = z.coerce.number().int().min(1).max(65535);
 
@@ -62,7 +62,7 @@ const environmentSchema = z
     KAFKA_TOPIC: z
       .string()
       .regex(/^[a-zA-Z0-9._-]+$/)
-      .default(DEMO_MESSAGE_TOPIC),
+      .default(ORDER_EVENT_PATTERN),
     KAFKA_GROUP_ID: z.string().min(1).default('casecellshop-demo-worker'),
   })
   .superRefine((value, context) => {

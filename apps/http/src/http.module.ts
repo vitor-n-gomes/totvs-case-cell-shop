@@ -13,8 +13,7 @@ import { DatabaseModule } from '@app/platform/database/database.module';
 import { LoggingModule } from '@app/platform/logging/logging.module';
 import { CorrelationMiddleware } from '@app/platform/logging/correlation.middleware';
 import { HealthModule } from '@app/platform/health/health.module';
-import { DemoApiModule } from '@app/demo/demo-api.module';
-import { DemoController } from './demo/demo.controller';
+
 
 @Module({
   imports: [
@@ -24,10 +23,8 @@ import { DemoController } from './demo/demo.controller';
     ObservabilityModule,
     LoggingModule,
     DatabaseModule,
-    DemoApiModule,
     HealthModule,
   ],
-  controllers: [DemoController],
   providers: [
     RequestAuditRepository,
     { provide: APP_INTERCEPTOR, useClass: RequestAuditInterceptor },

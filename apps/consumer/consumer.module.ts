@@ -6,7 +6,6 @@ import { LoggingModule } from '@app/platform/logging/logging.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import { HealthModule } from '@app/platform/health/health.module';
 import { OrderConsumerModule } from '@app/order/order-consumer.module';
-import { DemoWorkerModule } from '@app/demo/demo-worker.module';
 @Module({
   imports: [
     ConfigurationModule,
@@ -15,8 +14,7 @@ import { DemoWorkerModule } from '@app/demo/demo-worker.module';
     ObservabilityModule,
     HealthModule,
     ScheduleModule.forRoot(),
-    OrderConsumerModule,
-    DemoWorkerModule,
+    OrderConsumerModule
   ],
 })
 export class ConsumerModule {}

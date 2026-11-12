@@ -19,15 +19,6 @@
         "tsConfigPath": "libs/contracts/tsconfig.lib.json"
       }
     },
-    "demo": {
-      "type": "library",
-      "root": "libs/demo",
-      "entryFile": "index",
-      "sourceRoot": "libs/demo/src",
-      "compilerOptions": {
-        "tsConfigPath": "libs/demo/tsconfig.lib.json"
-      }
-    },
     "shop": {
       "type": "library",
       "root": "libs/shop",
