@@ -56,16 +56,18 @@ export interface OrderEvent<T = any> {
  * Event emitted when an order is activated
  * Used by ActivationStrategy to process order activation
  */
-export type OrderActivatedEvent = OrderEvent<{
-  // Placeholder for future implementation
-  // Event data structure for order activation will be defined when implementing ActivationStrategy
-}>;
+export interface OrderActivatedEvent extends OrderEvent<{
+  orderId: string;
+}>{
+    kind: 'ORDER_ACTIVATED';
+};
 
 /**
  * Event emitted when a reservation expires
  * Used by ExpireReservationsUseCase to handle expired reservations
  */
-export type ReservationExpiredEvent = OrderEvent<{
-  // Placeholder for future implementation
-  // Event data structure for reservation expiration will be defined when implementing ExpireReservationsUseCase
-}>;
+export interface ReservationExpiredEvent extends OrderEvent<{
+  orderId: string;
+}> {
+  kind: 'ORDER_RESERVATION_EXPIRED';
+}

@@ -8,10 +8,8 @@ import { AppLogger } from '@app/platform/logging/app-logger';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
+import { ReservationExpiredEvent } from '@app/order/domain/events';
 
-/**
- *
- */
 @Injectable()
 export class ExpireReservationsUseCase {
   private running = false;
@@ -55,15 +53,19 @@ export class ExpireReservationsUseCase {
       if (released) {
         this.metrics.reservations.inc({ result: 'expired' }, released);
 
-        await this.eventBus.dispatch({
+        const event: ReservationExpiredEvent = {
           kind: 'ORDER_RESERVATION_EXPIRED',
-          data: { data: { order_id: id }, kind: 'ORDER_RESERVATION_EXPIRED' },
+          data: {
+            orderId: id,
+          },
           meta: {
             correlationId: randomUUID(),
             traceId: randomBytes(16).toString('hex'),
             timestamp: Date.now(),
           },
-        } as any);
+        };
+
+        await this.eventBus.dispatch(event);
       }
     }
   }
