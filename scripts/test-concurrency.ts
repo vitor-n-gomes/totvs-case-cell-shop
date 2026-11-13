@@ -5,7 +5,11 @@ import { config } from 'dotenv';
 import { DataSource } from 'typeorm';
 import { validateEnvironment } from '@app/platform/config/environment';
 import { databaseOptions } from '@app/platform/database/options';
-import { Environment, OrderStatus, PaymentType } from '@app/contracts';
+import {
+  Environment,
+  OrderStatus,
+  PaymentType,
+} from '@app/order/domain/shared/types/order.type';
 
 const PRODUCT_KEY = 'CASE-LIMITED-001';
 const REQUESTS = 5;

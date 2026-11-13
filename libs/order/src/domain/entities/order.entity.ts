@@ -16,7 +16,7 @@ import {
   OrderStatus,
   PaymentType,
   ProcessingStatus,
-} from '@app/contracts';
+} from '../shared/types/order.type';
 
 @Entity('order')
 export class OrderEntity {

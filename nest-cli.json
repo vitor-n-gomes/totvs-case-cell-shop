@@ -10,15 +10,6 @@
     "tsConfigPath": "apps/http/tsconfig.app.json"
   },
   "projects": {
-    "contracts": {
-      "type": "library",
-      "root": "libs/contracts",
-      "entryFile": "index",
-      "sourceRoot": "libs/contracts/src",
-      "compilerOptions": {
-        "tsConfigPath": "libs/contracts/tsconfig.lib.json"
-      }
-    },
     "shop": {
       "type": "library",
       "root": "libs/shop",

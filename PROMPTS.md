@@ -133,3 +133,29 @@ Add convenient commands to `package.json`:
 
 - `"seed:run"`: executes the seed script.
 - `"test:overselling"`: runs the seed first and then executes `scripts/test-concurrency.ts`.
+
+## Contracts library removal request
+
+I did not like how the `libs/contracts` library existed. It was a shared grab-bag
+of enums, event schemas, DTO-like types and demo leftovers that no single feature
+owned, and it made `order` and `shop` depend on a catch-all package instead of
+their own domain.
+
+Delete `libs/contracts`, move its DTOs, enums and similar types into the `order`,
+`platform` and `shop` libraries that own them, and remove whatever is not used.
+
+During planning I decided:
+
+- All event-related code (event envelope, event schemas, `ORDER_*` kinds and
+  `normalizeOrderEvent`) lives in `libs/order/src/messaging`, not in `platform`.
+- The legacy flat-event format stays supported, so the move does not change behavior.
+
+Outcome and review notes:
+
+- The order enums now live in `libs/order`, `CheckoutInput` is inferred from the
+  checkout Zod schema, and `ProductView` is local to `libs/shop`. `shop` receives a
+  plain items type, so it does not import from `order`.
+- Unused code was removed: the demo message schemas and topic, the `CHECKOUT_TOPIC`
+  constant (the environment variable remains) and unused event types.
+- Typecheck, both builds and Prettier pass. Lint reports the same 18 errors as
+  before the change, and the jest suite was not run because `test/` does not exist.

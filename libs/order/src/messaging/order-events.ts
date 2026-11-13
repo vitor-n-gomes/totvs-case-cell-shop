@@ -1,31 +1,5 @@
 import { z } from 'zod';
 
-export enum PaymentType {
-  PrePaid = 'PrePaid',
-  PostPaid = 'PostPaid',
-}
-
-export enum Environment {
-  Local = 'Local',
-  PreProd = 'PreProd',
-  Prod = 'Prod',
-}
-
-export enum OrderStatus {
-  Pending = 'Pending',
-  Active = 'Active',
-  Cancelled = 'Cancelled',
-}
-
-export enum ProcessingStatus {
-  Pending = 'Pending',
-  Processing = 'Processing',
-  Retrying = 'Retrying',
-  Completed = 'Completed',
-  Failed = 'Failed',
-}
-
-export const CHECKOUT_TOPIC = 'order.checkout.initiated';
 export const ORDER_CHECKOUT_INITIATED = 'ORDER_CHECKOUT_INITIATED';
 export const ORDER_RESERVATION_EXPIRED = 'ORDER_RESERVATION_EXPIRED';
 export const ORDER_CHECKOUT_FAILED = 'ORDER_CHECKOUT_FAILED';
@@ -43,9 +17,8 @@ export type EventMeta = z.infer<typeof eventMetaSchema>;
 const checkoutEventMetaSchema = eventMetaSchema.extend({
   attempt: z.number().int().min(1).max(5),
 });
-export type CheckoutEventMeta = z.infer<typeof checkoutEventMetaSchema>;
 
-export const checkoutEventSchema = z.strictObject({
+const checkoutEventSchema = z.strictObject({
   data: z.strictObject({
     kind: z.literal(ORDER_CHECKOUT_INITIATED),
     data: z.strictObject({ order_id: z.uuid() }),
@@ -54,18 +27,15 @@ export const checkoutEventSchema = z.strictObject({
 });
 export type CheckoutInitiatedEvent = z.infer<typeof checkoutEventSchema>;
 
-export const reservationExpiredEventSchema = z.strictObject({
+const reservationExpiredEventSchema = z.strictObject({
   data: z.strictObject({
     kind: z.literal(ORDER_RESERVATION_EXPIRED),
     data: z.strictObject({ order_id: z.uuid() }),
   }),
   meta: eventMetaSchema,
 });
-export type ReservationExpiredEvent = z.infer<
-  typeof reservationExpiredEventSchema
->;
 
-export const checkoutFailedEventSchema = z.strictObject({
+const checkoutFailedEventSchema = z.strictObject({
   data: z.strictObject({
     kind: z.literal(ORDER_CHECKOUT_FAILED),
     data: z.strictObject({
@@ -80,9 +50,8 @@ export const checkoutFailedEventSchema = z.strictObject({
   }),
   meta: checkoutEventMetaSchema,
 });
-export type CheckoutFailedEvent = z.infer<typeof checkoutFailedEventSchema>;
 
-export const invalidOrderEventSchema = z.strictObject({
+const invalidOrderEventSchema = z.strictObject({
   data: z.strictObject({
     kind: z.literal(ORDER_EVENT_INVALID),
     data: z.strictObject({
@@ -95,17 +64,15 @@ export const invalidOrderEventSchema = z.strictObject({
   }),
   meta: eventMetaSchema,
 });
-export type InvalidOrderEvent = z.infer<typeof invalidOrderEventSchema>;
 
-export const orderEventSchema = z.union([
+const orderEventSchema = z.union([
   checkoutEventSchema,
   reservationExpiredEventSchema,
   checkoutFailedEventSchema,
   invalidOrderEventSchema,
 ]);
-export type OrderEvent = z.infer<typeof orderEventSchema>;
 
-export const legacyCheckoutEventSchema = z.strictObject({
+const legacyCheckoutEventSchema = z.strictObject({
   schema_version: z.literal(1),
   event_id: z.uuid(),
   order_id: z.uuid(),
@@ -126,7 +93,9 @@ const legacyCheckoutFailedEventSchema = legacyCheckoutEventSchema.extend({
   failed_step: z.string(),
 });
 
-export function normalizeOrderEvent(payload: unknown): OrderEvent | null {
+export function normalizeOrderEvent(
+  payload: unknown,
+): z.infer<typeof orderEventSchema> | null {
   const parsed = orderEventSchema.safeParse(payload);
   if (parsed.success) return parsed.data;
 
@@ -175,21 +144,4 @@ export function normalizeOrderEvent(payload: unknown): OrderEvent | null {
   };
   const migrated = checkoutEventSchema.safeParse(normalized);
   return migrated.success ? migrated.data : null;
-}
-
-export interface CheckoutInput {
-  paymentType: PaymentType;
-  dueDate: string;
-  mainContact: string;
-  altContact?: string;
-  paymentMethod: string;
-  environment: Environment;
-  items: { productId: string; quantity: number }[];
-}
-export interface ProductView {
-  id: string;
-  name: string;
-  productKey: string;
-  netPrice: number;
-  listPrice: number;
 }

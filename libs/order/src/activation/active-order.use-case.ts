@@ -2,7 +2,11 @@ import { StepName } from './constants/step-names';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { CheckoutEvent, OrderStatus, ProcessingStatus } from '@app/contracts';
+import { CheckoutEvent } from '@app/order/messaging/order-events';
+import {
+  OrderStatus,
+  ProcessingStatus,
+} from '@app/order/domain/shared/types/order.type';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { Spans } from '@app/platform/observability/spans';

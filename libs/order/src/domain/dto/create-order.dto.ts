@@ -5,7 +5,7 @@ import {
   OrderStatus,
   PaymentType,
   ProcessingStatus,
-} from '@app/contracts';
+} from '../shared/types/order.type';
 
 export const checkoutItemSchema = z.strictObject({
   productId: z.uuid(),
@@ -26,6 +26,8 @@ export const checkoutSchema = z.strictObject({
   environment: z.enum(Environment),
   items: z.array(checkoutItemSchema).min(1).max(100),
 });
+
+export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
 export class CheckoutItemDto implements z.infer<typeof checkoutItemSchema> {
   @ApiProperty({ format: 'uuid' })

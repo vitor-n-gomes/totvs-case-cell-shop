@@ -1,4 +1,4 @@
-import { OrderStatus } from '@app/contracts';
+import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';

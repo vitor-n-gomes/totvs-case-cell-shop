@@ -1,5 +1,5 @@
 import { StepName } from '../constants/step-names';
-import { OrderStatus } from '@app/contracts';
+import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Injectable } from '@nestjs/common';
 import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
 import { InventoryError } from '@app/shop/inventory/inventory-errors';

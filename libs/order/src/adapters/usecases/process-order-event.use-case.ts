@@ -7,7 +7,7 @@ import {
   ORDER_RESERVATION_EXPIRED,
   ORDER_CHECKOUT_FAILED,
   ORDER_EVENT_INVALID,
-} from '@app/contracts';
+} from '@app/order/messaging/order-events';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';

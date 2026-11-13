@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, QueryRunner, Repository } from 'typeorm';
-import { CheckoutInput } from '@app/contracts';
+import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
 import { OrderEntity, OrderItemEntity } from '../domain/entities';
 
 type OrderItemInput = Pick<

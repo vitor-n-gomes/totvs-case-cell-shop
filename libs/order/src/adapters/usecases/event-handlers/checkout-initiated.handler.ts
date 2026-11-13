@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { CheckoutEvent, CheckoutInitiatedEvent } from '@app/contracts';
+import {
+  CheckoutEvent,
+  CheckoutInitiatedEvent,
+} from '@app/order/messaging/order-events';
 import { ActiveOrderUseCase } from '../../../activation/active-order.use-case';
 
 @Injectable()

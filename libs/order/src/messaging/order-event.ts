@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { EventMeta } from '@app/contracts';
+import { EventMeta } from '@app/order/messaging/order-events';
 import {
   executionContext,
   newTraceContext,

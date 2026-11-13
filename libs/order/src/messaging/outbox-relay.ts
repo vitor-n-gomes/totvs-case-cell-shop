@@ -9,7 +9,7 @@ import {
 } from '@app/platform/observability/context';
 import { Spans } from '@app/platform/observability/spans';
 import { OutboxRepository } from '../repositories/outbox.repository';
-import { normalizeOrderEvent } from '@app/contracts';
+import { normalizeOrderEvent } from '@app/order/messaging/order-events';
 
 @Injectable()
 export class OutboxRelay implements BeforeApplicationShutdown {

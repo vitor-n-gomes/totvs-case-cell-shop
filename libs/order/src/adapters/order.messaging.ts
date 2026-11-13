@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { KafkaEvents, KafkaService } from '@app/platform/kafka/kafka.service';
-import { OrderEvent } from '@app/contracts';
-export type { OrderEvent };
+
 @Injectable()
 export class OrderMessaging {
   constructor(private readonly kafka: KafkaService) {}

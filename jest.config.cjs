@@ -26,7 +26,6 @@ module.exports = {
     },
   ],
   collectCoverageFrom: [
-    'libs/contracts/src/**/*.ts',
     'libs/platform/src/config/*.ts',
     'libs/order/src/**/*.ts',
   ],

@@ -10,10 +10,10 @@ import { DataSource, EntityManager } from 'typeorm';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   CheckoutInitiatedEvent,
-  CheckoutInput,
-  OrderStatus,
   ORDER_CHECKOUT_INITIATED,
-} from '@app/contracts';
+} from '@app/order/messaging/order-events';
+import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { StockRepository } from '@app/shop/inventory/stock.repository';

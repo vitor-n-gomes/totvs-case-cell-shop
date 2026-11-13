@@ -1,7 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { ProductView } from '@app/contracts';
 import { RedisConnection } from '@app/platform/cache/redis-connection';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
@@ -19,6 +18,7 @@ const productSchema = z.array(
     listPrice: z.number(),
   }),
 );
+type ProductView = z.infer<typeof productSchema>[number];
 @Injectable()
 export class GetProducts {
   private flight?: Promise<ProductView[]>;

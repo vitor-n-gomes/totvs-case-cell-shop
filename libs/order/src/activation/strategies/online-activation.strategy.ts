@@ -1,4 +1,7 @@
-import { OrderStatus, ProcessingStatus } from '@app/contracts';
+import {
+  OrderStatus,
+  ProcessingStatus,
+} from '@app/order/domain/shared/types/order.type';
 import { Injectable } from '@nestjs/common';
 import { QueryRunner } from 'typeorm';
 import { Metrics } from '@app/platform/observability/metrics';

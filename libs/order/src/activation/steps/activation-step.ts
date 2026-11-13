@@ -1,5 +1,5 @@
 import { EntityManager } from 'typeorm';
-import { CheckoutEvent } from '@app/contracts';
+import { CheckoutEvent } from '@app/order/messaging/order-events';
 import { OrderEntity } from '../../domain/entities';
 import { StepName } from '../constants/step-names';
 export interface ActivationContext {

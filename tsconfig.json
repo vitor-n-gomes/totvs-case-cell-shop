@@ -16,7 +16,6 @@
     "outDir": "dist",
     "paths": {
       "@app/shop/*": ["./libs/shop/src/*"],
-      "@app/contracts": ["./libs/contracts/src/index.ts"],
       "@app/platform/*": ["./libs/platform/src/*"],
       "@app/order/*": ["./libs/order/src/*"]
     },

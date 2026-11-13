@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
-import { CheckoutInput } from '@app/contracts';
 import { ProductEntity, ReservationEntity, StockEntity } from '../entities';
 
 export interface ReservedItem {
@@ -20,7 +19,7 @@ export class StockRepository {
   async reserve(
     manager: EntityManager,
     orderId: string,
-    items: CheckoutInput['items'],
+    items: { productId: string; quantity: number }[],
     ttl: number,
   ): Promise<ReservedItem[]> {
     const reserved: ReservedItem[] = [];
