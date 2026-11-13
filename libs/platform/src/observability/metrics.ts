@@ -63,6 +63,7 @@ export class Metrics {
 @Controller('metrics')
 export class MetricsController {
   constructor(private readonly metrics: Metrics) {}
+
   @Get()
   async get(@Res() response: Response): Promise<void> {
     response

@@ -1,43 +1,45 @@
-import pino from 'pino';
+import { PinoLogger } from 'nestjs-pino';
 import { executionContext } from '../observability/context';
 import { Injectable, LoggerService } from '@nestjs/common';
 
 @Injectable()
 export class AppLogger implements LoggerService {
   private app = 'bootstrap';
-  private readonly output = pino({
-    base: undefined,
-    timestamp: pino.stdTimeFunctions.isoTime,
-    level: 'info',
-  });
+  constructor(private readonly output: PinoLogger) {}
 
-  setApp(app: 'api' | 'worker'): void {
+  setApp(app: 'http' | 'consumer' | 'scheduler'): void {
     this.app = app;
   }
 
   info(message: string, fields: Record<string, unknown> = {}): void {
     this.write('info', message, fields);
   }
+
   log(message: unknown, ...context: unknown[]): void {
     this.write('info', message, { context });
   }
+
   warn(message: unknown, ...context: unknown[]): void {
     this.write('warn', message, { context });
   }
+
   error(message: unknown, ...context: unknown[]): void {
     this.write('error', message, { context });
   }
+
   debug(message: unknown, ...context: unknown[]): void {
     this.write('debug', message, { context });
   }
+
   verbose(message: unknown, ...context: unknown[]): void {
     this.write('debug', message, { context });
   }
+
   fatal(message: unknown, ...context: unknown[]): void {
     this.write('fatal', message, { context });
   }
 
-  startupFailure(app: 'api' | 'worker', error: unknown): void {
+  startupFailure(app: 'http' | 'consumer' | 'scheduler', error: unknown): void {
     this.setApp(app);
     this.info(`${app}.startup.failed`, {
       error:

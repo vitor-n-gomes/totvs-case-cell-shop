@@ -22,18 +22,24 @@ npm run seed
 Start the applications in separate terminals:
 
 ```bash
-npm run start:api:dev
-npm run start:worker:dev
+npm run start:dev
+npm run consumer:debug
 ```
 
 Alternatively, start the containers and then seed their database:
 
 ```bash
-docker compose up -d --build --wait api worker
+docker compose up -d --build --wait http consumer
 docker compose run --rm migrate npm run seed
 ```
 
-Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Only the worker waits for Kafka topic initialization; the API can start with PostgreSQL while Redis or Kafka is unavailable. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed creates three products with 100 units each and **never resets existing stock**. Re-running it updates catalog descriptions/prices and invalidates the cache.
+Kafka UI starts automatically with `npm run infra:up` and when Compose starts `http` or `consumer`. It waits for a healthy Kafka broker and is available at [http://localhost:8080](http://localhost:8080).
+
+Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Both the API and the worker wait for PostgreSQL migrations, a healthy Redis and Kafka topic initialization. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed (`src/database/seeds/seed.ts`) creates three products with 100 units each and **never resets existing stock** for them. Product names combine phone-case styles, phone models and colors using Faker with a fixed seed (`42`); the pinned Faker version and generation order keep names reproducible across runs. IDs, product keys and prices remain fixed. Re-running it updates catalog names/prices (integer cents) and invalidates the cache. The one exception is the flash-sale product `CASE-LIMITED-001`, whose stock is reset to 1 unit (0 reserved) and its reservations are cleared on every run.
+
+With the API and consumer running, `npm run test:overselling` re-seeds and fires 5 simultaneous checkouts for that single unit. It prints a summary and exits `1` if more than one order is activated, stock goes negative or an order stays `Pending` (override the target with `API_URL`).
+
+For a successful purchase, run `npm run test:happy-path` with the API and consumer running. It re-seeds the same single-unit product, checks `202 Pending`, waits up to 30 seconds for `Active / Completed`, verifies the item prices, consumed reservation, final stock and all four successful activation steps, then checks that replaying the checkout returns the original order without consuming more stock. Failures exit `1`. Use `API_URL` to override the HTTP target; the configured database must belong to those applications. Run it separately from the overselling test because both reset and consume `CASE-LIMITED-001`.
 
 If ports 3000/3001 are already used by local development, set `API_HOST_PORT=3300 WORKER_HOST_PORT=3301` when running Compose. Run the smoke test with `API_URL=http://localhost:3300 WORKER_URL=http://localhost:3301` in that case.
 
@@ -49,11 +55,13 @@ curl -i http://localhost:3000/checkout \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: example-purchase-001' \
   -H 'x-correlation-id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
-  -d '{"paymentType":"PREPAID","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","environment":"LOCAL","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
+  -d '{"paymentType":"PrePaid","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","environment":"Local","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
 curl -s http://localhost:3000/orders/REPLACE_WITH_ORDER_ID/status
 ```
 
-Checkout returns `202` and `{ "orderId": "<uuid>", "status": "PENDING" }` after the database commit, without waiting for Kafka or ERP. Retry ambiguous HTTP outcomes with the **same key and content**. An identical replay returns the original acceptance response, even if activation has since completed. Changed content under that key returns `409`. Idempotency keys are global to this unauthenticated demonstration and are retained with the order.
+Checkout returns `202` and `{ "orderId": "<uuid>", "status": "Pending" }` after the database commit, without waiting for Kafka or ERP. Retry ambiguous HTTP outcomes with the **same key and content**. An identical replay returns the original acceptance response, even if activation has since completed. Changed content under that key returns `409`. Idempotency keys are global to this unauthenticated demonstration and are retained with the order.
+
+Checkout enum values are case-sensitive: `PrePaid`/`PostPaid`, `Local`/`PreProd`/`Prod`, and PascalCase order/processing statuses. Uppercase legacy values are rejected by API validation. The database stores these fields as ordinary `varchar(16)` columns; enum validation stays in the application. The migration history was rebuilt from scratch (parent tables first, child tables with named foreign keys and indexed FK columns); an installation created from the previous history must be recreated (drop the schema, then `npm run migration:run`). Existing idempotency hashes retain the original request representation; retrying a pre-upgrade key with PascalCase content returns `409`.
 
 All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are decimal strings, not floating-point numbers. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
 
@@ -95,7 +103,7 @@ flowchart LR
     Cleanup[Worker expiration job] --> DB
 ```
 
-Feature modules live in `libs/shop`; controllers and consumer lifecycle belong to the applications. Shared contracts are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
+`libs/order` owns checkout, order queries, activation, retries, the transactional outbox and expiration orchestration. `libs/products` owns the catalog (products module) and, in its `inventory` sub-module, stock and reservations; the inventory module exports reservation operations without importing Orders. Like `libs/order`, it is laid out as `domain/` (entities, dto), `adapters/` (http, usecases), `repositories/` and a persistence module. Feature controllers live with their modules. `apps/http` serves the public API, while `apps/consumer` runs two Nest Kafka transports (preserving the demo group and the `-checkout` group), scheduled jobs and an operations HTTP server. HTTP imports no consumer or scheduler module. Event schemas live in `libs/order/src/messaging` and are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
 
 ### Checkout and inventory
 
@@ -103,7 +111,7 @@ A single transaction creates the order, immutable item prices, stock reservation
 
 Stock is reserved with `UPDATE ... WHERE physical_quantity - reserved_quantity >= quantity`. Products are processed in stable ID order. Failure of any item rolls back the entire purchase. Database checks prohibit negative quantities and reservations above physical stock; uniqueness prevents duplicate product rows per order. UUIDs identify all domain records.
 
-Reservations last 900 seconds by default. The example has no payment gateway: checkout authorizes immediate processing. `PREPAID`, `POSTPAID`, payment method and due date are metadata; they do not prove an actual payment.
+Reservations last 900 seconds by default. The example has no payment gateway: checkout authorizes immediate processing. `PrePaid`, `PostPaid`, payment method and due date are metadata; they do not prove an actual payment.
 
 ### Activation and recovery
 
@@ -116,9 +124,9 @@ The exact step order is:
 
 Consumption, activation and both success records commit together. Order/reservation rows are locked and expiration uses PostgreSQL time. Physical and reserved quantities decrease together. A dedicated PostgreSQL advisory lock serializes activations of the same order; external calls happen outside transactions.
 
-`ACTIVE` means stock was consumed. It does **not** promise successful invoicing. `processingStatus` reports `PENDING`, `PROCESSING`, `RETRYING`, `COMPLETED` or `FAILED`. Success records are unique per order/action/step, so subsequent attempts resume at unfinished steps. Failure of ERP/email keeps the order active and does not replenish stock.
+`Active` means stock was consumed. It does **not** promise successful invoicing. `processingStatus` reports `Pending`, `Processing`, `Retrying`, `Completed` or `Failed`. Success records are unique per order/action/step, so subsequent attempts resume at unfinished steps. Failure of ERP/email keeps the order active and does not replenish stock.
 
-A failed attempt atomically records the failure, processing state and next outbox entry. There are at most five attempts, separated by 1, 2, 4 and 8 seconds plus relay/broker latency. Permanent errors and exhausted attempts create a DLQ outbox entry. A terminal failure before consumption releases the reservation and cancels the pending order. Infrastructure failures while recording outcomes keep the Kafka offset unresolved; the consumer waits with heartbeats and retries after recovery.
+A failed attempt atomically records the failure, processing state and next outbox entry. There are at most five attempts, separated by 1, 2, 4 and 8 seconds plus relay/broker latency. Permanent errors and exhausted attempts create a DLQ outbox entry. A terminal failure before consumption releases the reservation and cancels the pending order. Infrastructure failures while recording outcomes propagate to the Nest Kafka transport and prevent offset advancement. The order handler sends heartbeats while processing; Kafka redelivers failed messages after recovery.
 
 The relay runs every second. It claims up to 20 rows with `SKIP LOCKED` and a 30-second lease, publishes with `acks=-1` and `order_id` as key, then marks them processed only when its lease token still matches. Expired leases can be reclaimed. Crashing after Kafka acknowledgment but before the database update can duplicate publication; consumers must remain idempotent. A log statement alone does not implement retries or DLQ delivery.
 
@@ -168,9 +176,26 @@ A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache
 
 **Terminal active order:** verify invoice/email state using the stable provider key before any manual action. Complete missing remote work with that key, then record its verified success through a reviewed database transaction and mark processing complete only after all four success records exist. Preserve successful steps and stock history. There is deliberately no automatic terminal-reset endpoint: creating a new retry cycle requires an explicit administrative design, not resetting `last_attempt` in isolation.
 
-**Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For FAILED active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
+**Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For Failed active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
 
-## Verification
+## Manual validation after the Orders refactor
+
+See [docs/manual-validation.md](docs/manual-validation.md) for startup commands, expected responses and database checks. This refactor validates production types, builds, formatting and lint. Unit/integration tests have deliberately not been migrated or run; their old imports still need updating after manual validation.
+
+Kafka uses `@nestjs/microservices` (`ClientKafka` and `@EventPattern`) and logging uses `nestjs-pino`. Brokers and topics come from the shared validated configuration. Both applications start without SASL locally; optional `KAFKA_SSL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME` and `KAFKA_SASL_PASSWORD` configure authentication in one place for producer, consumers and metadata checks. Supported mechanisms are `plain`, `scram-sha-256` and `scram-sha-512`. All three SASL fields must be supplied together. Credentials are not logged. Existing `API_PORT` / `WORKER_PORT` and host-port variables remain supported.
+
+For the checks applicable to this stage:
+
+```bash
+npm run typecheck:app
+npm run build
+npx eslint apps libs scripts
+npx prettier --check apps libs scripts package.json nest-cli.json compose.yaml
+```
+
+## Earlier verification workflow
+
+The commands below describe the previous test workflow. Its suites require a follow-up migration to the new module/application locations before the full workflow can pass.
 
 ```bash
 npm run format:check

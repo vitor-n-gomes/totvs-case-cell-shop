@@ -22,11 +22,11 @@ const purchase = {
     'idempotency-key': `smoke-${randomUUID()}`,
   },
   body: JSON.stringify({
-    paymentType: 'PREPAID',
+    paymentType: 'PrePaid',
     dueDate: new Date().toISOString().slice(0, 10),
     mainContact: 'smoke@example.test',
     paymentMethod: 'PIX',
-    environment: 'LOCAL',
+    environment: 'Local',
     items: [{ productId: products.body[0].id, quantity: 1 }],
   }),
 };
@@ -37,12 +37,12 @@ const deadline = Date.now() + 30000;
 let completed = false;
 while (Date.now() < deadline) {
   const result = await json(`${api}/orders/${accepted.body.orderId}/status`);
-  if (result.body.processingStatus === 'COMPLETED') {
-    assert.equal(result.body.status, 'ACTIVE');
+  if (result.body.processingStatus === 'Completed') {
+    assert.equal(result.body.status, 'Active');
     completed = true;
     break;
   }
-  assert.notEqual(result.body.processingStatus, 'FAILED');
+  assert.notEqual(result.body.processingStatus, 'Failed');
   await new Promise((resolve) => setTimeout(resolve, 200));
 }
 assert.ok(completed, 'Order did not complete before the deadline');

@@ -7,6 +7,7 @@
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
     "strict": true,
+    "strictPropertyInitialization": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
@@ -14,14 +15,13 @@
     "sourceMap": true,
     "outDir": "dist",
     "paths": {
-      "@app/shop/*": ["./libs/shop/src/*"],
-      "@app/contracts": ["./libs/contracts/src/index.ts"],
-      "@app/demo/*": ["./libs/demo/src/*"],
-      "@app/platform/*": ["./libs/platform/src/*"]
+      "@app/products/*": ["./libs/products/src/*"],
+      "@app/platform/*": ["./libs/platform/src/*"],
+      "@app/order/*": ["./libs/order/src/*"]
     },
     "isolatedModules": true,
     "types": ["node"],
     "rootDir": "."
   },
-  "include": ["apps/**/*.ts", "libs/**/*.ts", "scripts/**/*.ts"]
+  "include": ["apps/**/*.ts", "libs/**/*.ts", "scripts/**/*.ts", "src/**/*.ts"]
 }

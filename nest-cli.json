@@ -2,57 +2,21 @@
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
   "monorepo": true,
-  "root": "apps/api",
-  "sourceRoot": "apps/api/src",
+  "root": "apps/http",
+  "sourceRoot": "apps/http/src",
   "compilerOptions": {
     "webpack": true,
     "webpackConfigPath": "webpack.config.cjs",
-    "tsConfigPath": "apps/api/tsconfig.app.json"
+    "tsConfigPath": "apps/http/tsconfig.app.json"
   },
   "projects": {
-    "api": {
-      "type": "application",
-      "root": "apps/api",
-      "entryFile": "main",
-      "sourceRoot": "apps/api/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/api/tsconfig.app.json"
-      }
-    },
-    "worker": {
-      "type": "application",
-      "root": "apps/worker",
-      "entryFile": "main",
-      "sourceRoot": "apps/worker/src",
-      "compilerOptions": {
-        "tsConfigPath": "apps/worker/tsconfig.app.json"
-      }
-    },
-    "contracts": {
+    "products": {
       "type": "library",
-      "root": "libs/contracts",
+      "root": "libs/products",
       "entryFile": "index",
-      "sourceRoot": "libs/contracts/src",
+      "sourceRoot": "libs/products/src",
       "compilerOptions": {
-        "tsConfigPath": "libs/contracts/tsconfig.lib.json"
-      }
-    },
-    "demo": {
-      "type": "library",
-      "root": "libs/demo",
-      "entryFile": "index",
-      "sourceRoot": "libs/demo/src",
-      "compilerOptions": {
-        "tsConfigPath": "libs/demo/tsconfig.lib.json"
-      }
-    },
-    "shop": {
-      "type": "library",
-      "root": "libs/shop",
-      "entryFile": "index",
-      "sourceRoot": "libs/shop/src",
-      "compilerOptions": {
-        "tsConfigPath": "libs/shop/tsconfig.lib.json"
+        "tsConfigPath": "libs/products/tsconfig.lib.json"
       }
     },
     "platform": {
@@ -62,6 +26,42 @@
       "sourceRoot": "libs/platform/src",
       "compilerOptions": {
         "tsConfigPath": "libs/platform/tsconfig.lib.json"
+      }
+    },
+    "order": {
+      "type": "library",
+      "root": "libs/order",
+      "entryFile": "index",
+      "sourceRoot": "libs/order/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/order/tsconfig.lib.json"
+      }
+    },
+    "http": {
+      "type": "application",
+      "root": "apps/http",
+      "entryFile": "main",
+      "sourceRoot": "apps/http/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/http/tsconfig.app.json"
+      }
+    },
+    "consumer": {
+      "type": "application",
+      "root": "apps/consumer",
+      "entryFile": "main",
+      "sourceRoot": "apps/consumer",
+      "compilerOptions": {
+        "tsConfigPath": "apps/consumer/tsconfig.app.json"
+      }
+    },
+    "scheduler": {
+      "type": "application",
+      "root": "apps/scheduler",
+      "entryFile": "main",
+      "sourceRoot": "apps/scheduler",
+      "compilerOptions": {
+        "tsConfigPath": "apps/scheduler/tsconfig.app.json"
       }
     }
   }

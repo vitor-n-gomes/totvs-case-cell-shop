@@ -1,26 +1,22 @@
-import { ShopController } from '../apps/api/src/shop/shop.controller';
-import { GetProducts } from '@app/shop/catalog/get-products';
-import { Checkout } from '@app/shop/orders/checkout';
-import { OrderRepository } from '@app/shop/orders/order.repository';
+import { ProductsController } from '@app/products/adapters/http/products.controller';
+import { OrderController } from '@app/order/adapters/http/order.controller';
+import { GetProductsUseCase } from '@app/products/adapters/usecases/get-products.use-case';
+import { CheckoutUseCase } from '@app/order/adapters/usecases/checkout.use-case';
+import { GetOrderStatusUseCase } from '@app/order/adapters/usecases/get-order-status.use-case';
 import 'reflect-metadata';
 import { writeFile } from 'node:fs/promises';
 import { Test } from '@nestjs/testing';
-import { DemoController } from '../apps/api/src/demo/demo.controller';
-import { createOpenApiDocument } from '../apps/api/src/configure-api';
-import { PublishMessage } from '@app/demo/use-cases/publish-message';
-import { GetReceipt } from '@app/demo/use-cases/get-receipt';
-import { AppLogger } from '@app/platform/logging/app-logger';
+import { createOpenApiDocument } from '../apps/http/src/configure-api';
+import { LoggingModule } from '@app/platform/logging/logging.module';
 
 async function exportDocument(): Promise<void> {
   const module = await Test.createTestingModule({
-    controllers: [DemoController, ShopController],
+    imports: [LoggingModule],
+    controllers: [ProductsController, OrderController],
     providers: [
-      AppLogger,
-      { provide: GetProducts, useValue: {} },
-      { provide: Checkout, useValue: {} },
-      { provide: OrderRepository, useValue: {} },
-      { provide: PublishMessage, useValue: {} },
-      { provide: GetReceipt, useValue: {} },
+      { provide: GetProductsUseCase, useValue: {} },
+      { provide: CheckoutUseCase, useValue: {} },
+      { provide: GetOrderStatusUseCase, useValue: {} },
     ],
   }).compile();
   const app = module.createNestApplication();

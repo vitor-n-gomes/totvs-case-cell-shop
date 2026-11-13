@@ -7,6 +7,7 @@ import { executionContext } from './context';
 @Injectable()
 export class Spans {
   constructor(private readonly logger: AppLogger) {}
+
   async run<T>(name: string, operation: () => Promise<T>): Promise<T> {
     const parent = executionContext.getStore();
     const spanId = randomBytes(8).toString('hex');

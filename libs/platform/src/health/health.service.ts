@@ -1,6 +1,6 @@
 import { BeforeApplicationShutdown, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { KafkaConnection } from '../messaging/kafka-connection';
+import { KafkaService } from '../kafka/kafka.service';
 import { RedisConnection } from '../cache/redis-connection';
 
 @Injectable()
@@ -8,11 +8,12 @@ export class HealthService implements BeforeApplicationShutdown {
   requireKafka = true;
   checkoutConsumerReady: boolean | undefined;
   consumerReady: boolean | undefined;
+  schedulerReady: boolean | undefined;
   private shuttingDown = false;
 
   constructor(
     private readonly database: DataSource,
-    private readonly kafka: KafkaConnection,
+    private readonly kafka: KafkaService,
     private readonly redis: RedisConnection,
   ) {}
 
@@ -33,6 +34,8 @@ export class HealthService implements BeforeApplicationShutdown {
     if (!this.requireKafka) delete checks.kafka;
     if (this.checkoutConsumerReady !== undefined)
       checks.checkoutConsumer = this.checkoutConsumerReady ? 'up' : 'down';
+    if (this.schedulerReady !== undefined)
+      checks.scheduler = this.schedulerReady ? 'up' : 'down';
     return {
       ready:
         !this.shuttingDown &&

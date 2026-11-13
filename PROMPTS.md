@@ -81,3 +81,81 @@ uncoupled from Kafka/Redis health. Containers built and completed a purchase smo
 test on ports 3300/3301, preserving the process already using port 3000. The seed,
 migrations, generated contract and validation results are recorded in
 `docs/verification.md`. All work remains local with no commit or push.
+
+## Validation refactor request
+
+When I started this project, I asked Codex to create a boilerplate. It did, but
+some of its choices need correcting: the generated boilerplate uses
+`class-validator`, while I want to use Zod for validation.
+
+Refactor the project to use Zod instead of `class-validator`.
+
+## Idempotent seed and overselling concurrency test request
+
+Create an idempotent database seed and a concurrency test script to validate zero-overselling under simultaneous checkout requests.
+
+Follow the project conventions (`snake_case` database columns, integer cents for prices, TypeORM entities, and PascalCase enums).
+
+### 1. Refactor / Create Idempotent Product & Stock Seed (`src/database/seeds/seed.ts`)
+
+- Ensure the seed can be executed multiple times safely (using `upsert` or checking by `sku`).
+- Include standard catalog products AND a specific restricted-inventory product for concurrency testing:
+  - `sku`: `'CASE-LIMITED-001'`
+  - `name`: `'Limited Edition Titanium MagSafe Case'`
+  - `net_price`: `14990` (integer cents)
+  - `list_price`: `19990` (integer cents)
+  - `is_active`: `true`
+- In the `stock` table for `'CASE-LIMITED-001'`, explicitly reset:
+  - `available_quantity`: `1`
+  - `reserved_quantity`: `0`
+- Also clean up any leftover `stock_reservation` rows for this product so repeated test runs start from a clean state.
+
+### 2. Concurrency & Overselling Validation Script (`scripts/test-concurrency.ts`)
+
+Create a standalone TypeScript script (using `axios` or native `fetch`) that simulates a flash-sale race condition:
+
+1. Fetch the product ID for `'CASE-LIMITED-001'` (via `GET /products` or direct DB query).
+2. Fire **5 simultaneous `POST /checkout` requests** using `Promise.allSettled()`, each requesting `quantity: 1` of `'CASE-LIMITED-001'`, with distinct customer data and unique `idempotencyKey` / `correlationId` headers.
+3. Collect all `orderId`s returned with `202 Accepted` (and log any immediate `409 Conflict` / `422` rejections if stock reservation happens synchronously).
+4. **Poll `GET /orders/{orderId}/status`** every 500ms (with a 15-second timeout) until every accepted order transitions out of `Pending` into a terminal state (`Active` or `Cancelled`).
+5. **Final Assertions & Summary Report:**
+   - Query the database directly (or via endpoints) and print a clear summary table showing:
+     - Total requests sent (`5`)
+     - Orders with final status `Active` (MUST be strictly `1`)
+     - Orders with final status `Cancelled` or rejected at checkout (MUST be `4`)
+     - Final `available_quantity` in `stock` table (MUST be `0`, NEVER negative)
+     - Final `reserved_quantity` in `stock` table (MUST be `0`)
+   - Exit with code `0` if all assertions pass, or exit with code `1` with an explicit error message if overselling or stuck `Pending` orders occurred.
+
+### 3. NPM Scripts (`package.json`)
+
+Add convenient commands to `package.json`:
+
+- `"seed:run"`: executes the seed script.
+- `"test:overselling"`: runs the seed first and then executes `scripts/test-concurrency.ts`.
+
+## Contracts library removal request
+
+I did not like how the `libs/contracts` library existed. It was a shared grab-bag
+of enums, event schemas, DTO-like types and demo leftovers that no single feature
+owned, and it made `order` and `shop` depend on a catch-all package instead of
+their own domain.
+
+Delete `libs/contracts`, move its DTOs, enums and similar types into the `order`,
+`platform` and `shop` libraries that own them, and remove whatever is not used.
+
+During planning I decided:
+
+- All event-related code (event envelope, event schemas, `ORDER_*` kinds and
+  `normalizeOrderEvent`) lives in `libs/order/src/messaging`, not in `platform`.
+- The legacy flat-event format stays supported, so the move does not change behavior.
+
+Outcome and review notes:
+
+- The order enums now live in `libs/order`, `CheckoutInput` is inferred from the
+  checkout Zod schema, and `ProductView` is local to `libs/shop`. `shop` receives a
+  plain items type, so it does not import from `order`.
+- Unused code was removed: the demo message schemas and topic, the `CHECKOUT_TOPIC`
+  constant (the environment variable remains) and unused event types.
+- Typecheck, both builds and Prettier pass. Lint reports the same 18 errors as
+  before the change, and the jest suite was not run because `test/` does not exist.

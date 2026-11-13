@@ -6,6 +6,7 @@ import { AppLogger } from '../logging/app-logger';
 @Injectable()
 export class RedisConnection implements OnModuleInit, OnModuleDestroy {
   readonly client;
+  private unavailable = false;
 
   constructor(
     config: ConfigService,
@@ -19,9 +20,17 @@ export class RedisConnection implements OnModuleInit, OnModuleDestroy {
         reconnectStrategy: (retries) => Math.min(250 * (retries + 1), 3000),
       },
     });
-    this.client.on('error', () =>
-      this.logger.warn('redis.connection.unavailable'),
-    );
+    // Log once per outage instead of on every reconnect attempt.
+    this.client.on('error', () => {
+      if (this.unavailable) return;
+      this.unavailable = true;
+      this.logger.warn('redis.connection.unavailable');
+    });
+    this.client.on('ready', () => {
+      if (!this.unavailable) return;
+      this.unavailable = false;
+      this.logger.info('redis.connection.restored');
+    });
   }
 
   onModuleInit(): void {

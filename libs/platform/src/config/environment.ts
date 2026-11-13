@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEMO_MESSAGE_TOPIC } from '@app/contracts';
+import { ORDER_EVENT_PATTERN } from '../kafka/kafka.topics';
 
 const port = z.coerce.number().int().min(1).max(65535);
 
@@ -50,13 +50,40 @@ const environmentSchema = z
           .array(z.string().regex(/^[^\s:,]+:\d+$/, 'Expected host:port'))
           .min(1),
       ),
+    KAFKA_SSL: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    KAFKA_SASL_MECHANISM: z
+      .enum(['plain', 'scram-sha-256', 'scram-sha-512'])
+      .optional(),
+    KAFKA_SASL_USERNAME: z.string().min(1).optional(),
+    KAFKA_SASL_PASSWORD: z.string().min(1).optional(),
     KAFKA_TOPIC: z
       .string()
       .regex(/^[a-zA-Z0-9._-]+$/)
-      .default(DEMO_MESSAGE_TOPIC),
+      .default(ORDER_EVENT_PATTERN),
     KAFKA_GROUP_ID: z.string().min(1).default('casecellshop-demo-worker'),
   })
   .superRefine((value, context) => {
+    if (
+      value.KAFKA_SASL_MECHANISM ||
+      value.KAFKA_SASL_USERNAME ||
+      value.KAFKA_SASL_PASSWORD
+    ) {
+      for (const key of [
+        'KAFKA_SASL_MECHANISM',
+        'KAFKA_SASL_USERNAME',
+        'KAFKA_SASL_PASSWORD',
+      ] as const) {
+        if (!value[key])
+          context.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'Required for Kafka SASL authentication',
+          });
+      }
+    }
     if (value.API_PORT === value.WORKER_PORT) {
       context.addIssue({
         code: 'custom',
