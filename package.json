@@ -26,8 +26,8 @@
     "test:smoke": "node scripts/smoke.mjs",
     "build:http": "nest build http",
     "build:consumer": "nest build consumer",
-    "start:http:dev": "nest start http --watch",
-    "start:consumer:dev": "nest start consumer --watch",
+    "start:dev": "nest start http --watch",
+    "consumer:debug": "nest start consumer --watch",
     "start:http:prod": "node dist/apps/http/main.js",
     "start:consumer:prod": "node dist/apps/consumer/main.js",
     "typecheck:app": "tsc --noEmit"

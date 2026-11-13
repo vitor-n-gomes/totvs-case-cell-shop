@@ -19,8 +19,8 @@ npm run build
 Inicie em dois terminais:
 
 ```bash
-npm run start:http:dev
-npm run start:consumer:dev
+npm run start:dev
+npm run consumer:debug
 ```
 
 Alternativa com containers:
@@ -95,7 +95,7 @@ Para conferir especificamente o job de limpeza, deixe o consumer na configuraç�
 docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --create --if-not-exists --topic order.checkout.manual-expiration --partitions 1 --replication-factor 1
 ```
 
-Reinicie somente a API com `CHECKOUT_TOPIC=order.checkout.manual-expiration RESERVATION_TTL_SECONDS=1 npm run start:http:dev`. Crie um pedido e aguarde o ciclo de cinco minutos do scheduler: o relay publicará o evento no tópico temporário, enquanto o job deverá cancelar o pedido e liberar a reserva uma única vez. O consumer continua inscrito apenas no tópico normal. Depois, reinicie a API na configuração padrão, com TTL de 900 segundos. Não reutilize o tópico temporário para pedidos normais.
+Reinicie somente a API com `CHECKOUT_TOPIC=order.checkout.manual-expiration RESERVATION_TTL_SECONDS=1 npm run start:dev`. Crie um pedido e aguarde o ciclo de cinco minutos do scheduler: o relay publicará o evento no tópico temporário, enquanto o job deverá cancelar o pedido e liberar a reserva uma única vez. O consumer continua inscrito apenas no tópico normal. Depois, reinicie a API na configuração padrão, com TTL de 900 segundos. Não reutilize o tópico temporário para pedidos normais.
 
 ## Recuperação e logs
 

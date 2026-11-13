@@ -22,8 +22,8 @@ npm run seed
 Start the applications in separate terminals:
 
 ```bash
-npm run start:http:dev
-npm run start:consumer:dev
+npm run start:dev
+npm run consumer:debug
 ```
 
 Alternatively, start the containers and then seed their database:
@@ -33,7 +33,7 @@ docker compose up -d --build --wait http consumer
 docker compose run --rm migrate npm run seed
 ```
 
-Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Only the worker waits for Kafka topic initialization; the API can start with PostgreSQL while Redis or Kafka is unavailable. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed creates three products with 100 units each and **never resets existing stock**. Re-running it updates catalog descriptions/prices and invalidates the cache.
+Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Both the API and the worker wait for PostgreSQL migrations, a healthy Redis and Kafka topic initialization. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed creates three products with 100 units each and **never resets existing stock**. Re-running it updates catalog descriptions/prices and invalidates the cache.
 
 If ports 3000/3001 are already used by local development, set `API_HOST_PORT=3300 WORKER_HOST_PORT=3301` when running Compose. Run the smoke test with `API_URL=http://localhost:3300 WORKER_URL=http://localhost:3301` in that case.
 

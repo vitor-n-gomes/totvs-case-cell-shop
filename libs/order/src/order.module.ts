@@ -6,8 +6,6 @@ import { OrderPersistenceModule } from './order-persistence.module';
 import { OrderController } from './adapters/http/order.controller';
 import { CheckoutUseCase } from './adapters/usecases/checkout.use-case';
 import { GetOrderStatusUseCase } from './adapters/usecases/get-order-status.use-case';
-import { EventBus } from './adapters/handlers/event.bus';
-import { HandlersRegistry } from './adapters/handlers/handlers.registry';
 
 @Module({
   imports: [
@@ -17,12 +15,7 @@ import { HandlersRegistry } from './adapters/handlers/handlers.registry';
     ObservabilityModule,
   ],
   controllers: [OrderController],
-  providers: [CheckoutUseCase, GetOrderStatusUseCase, EventBus, HandlersRegistry],
-  exports: [
-    CheckoutUseCase,
-    GetOrderStatusUseCase,
-    EventBus,
-    HandlersRegistry,
-  ],
+  providers: [CheckoutUseCase, GetOrderStatusUseCase],
+  exports: [CheckoutUseCase, GetOrderStatusUseCase],
 })
 export class OrderModule {}
