@@ -1,20 +1,4 @@
-import { Type } from 'class-transformer';
-import {
-  ArrayMaxSize,
-  ArrayMinSize,
-  IsArray,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  Max,
-  MaxLength,
-  Min,
-  ValidateNested,
-  IsDateString,
-} from 'class-validator';
+import { z } from 'zod';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Environment,
@@ -23,58 +7,59 @@ import {
   ProcessingStatus,
 } from '@app/contracts';
 
-export class CheckoutItemDto {
+export const checkoutItemSchema = z.strictObject({
+  productId: z.uuid(),
+  quantity: z.number().int().min(1).max(1000000),
+});
+
+const contactSchema = z.string().max(254).regex(/\S/);
+
+export const checkoutSchema = z.strictObject({
+  paymentType: z.enum(PaymentType),
+  dueDate: z.iso.date(),
+  mainContact: contactSchema,
+  altContact: contactSchema
+    .nullable()
+    .transform((value) => value ?? undefined)
+    .optional(),
+  paymentMethod: z.string().max(100).regex(/\S/),
+  environment: z.enum(Environment),
+  items: z.array(checkoutItemSchema).min(1).max(100),
+});
+
+export class CheckoutItemDto implements z.infer<typeof checkoutItemSchema> {
   @ApiProperty({ format: 'uuid' })
-  @IsUUID()
   productId: string;
 
   @ApiProperty({ minimum: 1, maximum: 1000000 })
-  @IsInt()
-  @Min(1)
-  @Max(1000000)
   quantity: number;
 }
-export class CheckoutDto {
+
+export class CheckoutDto implements z.infer<typeof checkoutSchema> {
+  static readonly schema = checkoutSchema;
+
   @ApiProperty({ enum: PaymentType })
-  @IsEnum(PaymentType)
   paymentType: PaymentType;
 
   @ApiProperty({ format: 'date', example: '2026-11-10' })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
-  @IsDateString({ strict: true })
   dueDate: string;
 
   @ApiProperty({ maxLength: 254 })
-  @IsString()
-  @Matches(/\S/)
-  @MaxLength(254)
   mainContact: string;
 
   @ApiPropertyOptional({ maxLength: 254 })
-  @IsOptional()
-  @IsString()
-  @Matches(/\S/)
-  @MaxLength(254)
   altContact?: string;
 
   @ApiProperty({ maxLength: 100 })
-  @IsString()
-  @Matches(/\S/)
-  @MaxLength(100)
   paymentMethod: string;
 
   @ApiProperty({ enum: Environment })
-  @IsEnum(Environment)
   environment: Environment;
 
   @ApiProperty({ type: [CheckoutItemDto], minItems: 1, maxItems: 100 })
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(100)
-  @ValidateNested({ each: true })
-  @Type(() => CheckoutItemDto)
   items: CheckoutItemDto[];
 }
+
 export class CheckoutAcceptedDto {
   @ApiProperty({ format: 'uuid' })
   orderId: string;

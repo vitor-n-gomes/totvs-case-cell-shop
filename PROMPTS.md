@@ -81,3 +81,11 @@ uncoupled from Kafka/Redis health. Containers built and completed a purchase smo
 test on ports 3300/3301, preserving the process already using port 3000. The seed,
 migrations, generated contract and validation results are recorded in
 `docs/verification.md`. All work remains local with no commit or push.
+
+## Validation refactor request
+
+When I started this project, I asked Codex to create a boilerplate. It did, but
+some of its choices need correcting: the generated boilerplate uses
+`class-validator`, while I want to use Zod for validation.
+
+Refactor the project to use Zod instead of `class-validator`.
