@@ -1,5 +1,6 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -31,6 +32,13 @@ export class ProductEntity {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
+  createdAt: Date;
 
   @OneToOne(() => StockEntity, (stock) => stock.product)
   stock?: Relation<StockEntity>;
@@ -66,6 +74,13 @@ export class StockEntity {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
+  createdAt: Date;
 }
 
 @Entity('stock_reservation')
@@ -106,6 +121,13 @@ export class ReservationEntity {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
+  createdAt: Date;
 }
 
 export const shopEntities = [ProductEntity, StockEntity, ReservationEntity];

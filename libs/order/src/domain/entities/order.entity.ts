@@ -1,5 +1,6 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -74,7 +75,11 @@ export class OrderEntity {
   @Column('uuid', { name: 'correlation_id' })
   correlationId: string;
 
-  @Column('timestamptz', { name: 'created_at', default: () => 'now()' })
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })

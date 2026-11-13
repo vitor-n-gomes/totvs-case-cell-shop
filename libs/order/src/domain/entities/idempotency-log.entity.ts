@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   type Relation,
   UpdateDateColumn,
+  CreateDateColumn,
 } from 'typeorm';
 import { OrderEntity } from './order.entity';
 
@@ -41,7 +42,11 @@ export class IdempotencyLogEntity {
   @Column('text')
   description: string;
 
-  @Column('timestamptz', { name: 'created_at', default: () => 'now()' })
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })

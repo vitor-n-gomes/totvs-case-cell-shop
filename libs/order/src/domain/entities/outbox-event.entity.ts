@@ -1,5 +1,6 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -39,15 +40,19 @@ export class OutboxEventEntity {
   availableAt: Date;
 
   @Column('uuid', { name: 'lease_token', nullable: true })
-  leaseToken?: string;
+  leaseToken: string | null;
 
   @Column('timestamptz', { name: 'lease_until', nullable: true })
-  leaseUntil?: Date;
+  leaseUntil: Date | null;
 
   @Column('varchar', { name: 'deduplication_key' })
   deduplicationKey: string;
 
-  @Column('timestamptz', { name: 'created_at', default: () => 'now()' })
+  @CreateDateColumn({
+    name: 'created_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })

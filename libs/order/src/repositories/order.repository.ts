@@ -44,7 +44,7 @@ export class OrderRepository {
       .insert()
       .values({
         ...details,
-        altContact: input.altContact ?? null,
+        altContact: input.altContact,
         id,
         idempotencyKey,
         requestHash,
