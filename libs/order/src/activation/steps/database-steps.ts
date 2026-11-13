@@ -11,6 +11,7 @@ import { ActivationContext, ActivationStep } from './activation-step';
 @RegisteredStep(StepName.ConsumeStockReservationStep)
 export class ConsumeStockReservationStep implements ActivationStep {
   constructor(private readonly reservations: ReservationRepository) {}
+
   async exec(context: ActivationContext): Promise<void> {
     try {
       context.consumedReservations = await this.reservations.consume(
@@ -28,6 +29,7 @@ export class ConsumeStockReservationStep implements ActivationStep {
 @RegisteredStep(StepName.ActivateOrderStep)
 export class ActivateOrderStep implements ActivationStep {
   constructor(private readonly orders: OrderRepository) {}
+
   async exec(context: ActivationContext): Promise<void> {
     await this.orders.update(context.manager, context.order.id, {
       status: OrderStatus.Active,

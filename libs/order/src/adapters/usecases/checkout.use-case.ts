@@ -88,6 +88,7 @@ export class CheckoutUseCase {
     private readonly metrics: Metrics,
     private readonly spans: Spans,
   ) {}
+
   async execute(
     input: CheckoutInput,
     key: string | undefined,

@@ -19,6 +19,7 @@ import { ProductDto } from './product.dto';
 @Controller()
 export class CatalogController {
   constructor(private readonly products: GetProducts) {}
+
   @Get('products')
   @ApiOperation({ operationId: 'ShopController_getProducts' })
   @ApiOkResponse({ type: [ProductDto] })

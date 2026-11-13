@@ -31,6 +31,7 @@ export class ActivationStepRegistry {
     if (this.steps.size !== Object.values(StepName).length)
       throw new Error('Missing activation step');
   }
+
   get(name: StepName): ActivationStep {
     return this.steps.get(name)!;
   }

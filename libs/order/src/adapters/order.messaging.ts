@@ -5,9 +5,11 @@ export type { OrderEvent };
 @Injectable()
 export class OrderMessaging {
   constructor(private readonly kafka: KafkaService) {}
+
   ensureConnected(): Promise<void> {
     return this.kafka.ensureConnected();
   }
+
   publish(
     topic: string,
     key: string,

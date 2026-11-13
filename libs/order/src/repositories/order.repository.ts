@@ -62,24 +62,29 @@ export class OrderRepository {
   ): Promise<OrderEntity | null> {
     return manager.getRepository(OrderEntity).findOneBy({ idempotencyKey });
   }
+
   findById(id: string, manager?: EntityManager): Promise<OrderEntity | null> {
     return (manager?.getRepository(OrderEntity) ?? this.orders).findOneBy({
       id,
     });
   }
+
   findItems(orderId: string): Promise<OrderItemEntity[]> {
     return this.items.find({ where: { orderId }, order: { productId: 'ASC' } });
   }
+
   lock(manager: EntityManager, id: string): Promise<OrderEntity | null> {
     return manager
       .getRepository(OrderEntity)
       .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
   }
+
   async lockOrFail(manager: EntityManager, id: string): Promise<OrderEntity> {
     return manager
       .getRepository(OrderEntity)
       .findOneOrFail({ where: { id }, lock: { mode: 'pessimistic_write' } });
   }
+
   async addItems(
     manager: EntityManager,
     orderId: string,
@@ -89,6 +94,7 @@ export class OrderRepository {
       .getRepository(OrderItemEntity)
       .insert(items.map((item) => ({ ...item, orderId, id: randomUUID() })));
   }
+
   async update(
     manager: EntityManager,
     id: string,

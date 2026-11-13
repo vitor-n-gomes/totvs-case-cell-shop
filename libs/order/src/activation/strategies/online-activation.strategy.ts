@@ -23,6 +23,7 @@ export class OnlineActivationStrategy {
     private readonly spans: Spans,
     private readonly eventBus: EventBus,
   ) {}
+
   async execute(
     context: ActivationContext,
     runner: QueryRunner,
@@ -68,6 +69,7 @@ export class OnlineActivationStrategy {
     for (const name of this.stepNames.slice(2))
       await this.runStep(name, context);
   }
+
   private async runStep(
     name: StepName,
     context: ActivationContext,

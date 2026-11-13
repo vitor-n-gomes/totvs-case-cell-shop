@@ -17,6 +17,7 @@ export class IdempotencyLogRepository {
       .getRepository(IdempotencyLogEntity)
       .existsBy({ orderId, action: ACTIVATION_ACTION, step, success: true });
   }
+
   async record(
     manager: EntityManager,
     orderId: string,

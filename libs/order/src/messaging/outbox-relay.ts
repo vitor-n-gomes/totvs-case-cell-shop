@@ -22,6 +22,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
     private readonly logger: AppLogger,
     private readonly spans: Spans,
   ) {}
+
   @Interval(1000)
   async tick(): Promise<void> {
     if (this.stopped || this.flight) return;
@@ -34,6 +35,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
       this.flight = undefined;
     }
   }
+
   async execute(): Promise<void> {
     const before = await this.outbox.backlog();
     this.metrics.backlog.set(Number(before.count));
@@ -77,6 +79,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
     this.metrics.backlog.set(Number(backlog.count));
     this.metrics.oldest.set(Number(backlog.age));
   }
+
   async beforeApplicationShutdown(): Promise<void> {
     this.stopped = true;
     await this.flight?.catch(() => undefined);

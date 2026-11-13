@@ -10,6 +10,7 @@ export class ReservationRepository {
     @InjectRepository(ReservationEntity)
     private readonly reservations: Repository<ReservationEntity>,
   ) {}
+
   private lock(
     manager: EntityManager,
     orderId: string,
@@ -22,6 +23,7 @@ export class ReservationRepository {
       .setLock('pessimistic_write')
       .getMany();
   }
+
   async expiredOrderIds(): Promise<string[]> {
     const rows = await this.reservations
       .createQueryBuilder('reservation')
@@ -32,6 +34,7 @@ export class ReservationRepository {
       .getMany();
     return [...new Set(rows.map((row) => row.orderId))].sort();
   }
+
   hasExpired(manager: EntityManager, orderId: string): Promise<boolean> {
     return manager
       .getRepository(ReservationEntity)
@@ -41,6 +44,7 @@ export class ReservationRepository {
       .andWhere('reservation.expiresAt <= clock_timestamp()')
       .getExists();
   }
+
   async consume(manager: EntityManager, orderId: string): Promise<number> {
     const reservations = await this.lock(manager, orderId);
     if (

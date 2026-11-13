@@ -18,6 +18,7 @@ export class OrderConsumer {
     private readonly process: ProcessOrderEventUseCase,
     private readonly logger: AppLogger,
   ) {}
+
   @EventPattern(ORDER_EVENT_PATTERN, ORDER_KAFKA_TRANSPORT)
   async orderEvent(
     @Payload() payload: unknown,

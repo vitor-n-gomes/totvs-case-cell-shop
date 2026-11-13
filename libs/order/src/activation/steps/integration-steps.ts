@@ -15,6 +15,7 @@ export class IntegrationSimulator {
     private readonly config: ConfigService,
     private readonly logger: AppLogger,
   ) {}
+
   async execute(
     kind: 'erp' | 'email',
     context: ActivationContext,
@@ -45,6 +46,7 @@ export class IntegrationSimulator {
 @RegisteredStep(StepName.UpdateErpStep)
 export class UpdateErpStep implements ActivationStep {
   constructor(private readonly simulator: IntegrationSimulator) {}
+
   exec(context: ActivationContext): Promise<void> {
     return this.simulator.execute('erp', context);
   }
@@ -53,6 +55,7 @@ export class UpdateErpStep implements ActivationStep {
 @RegisteredStep(StepName.EmailNotificationStep)
 export class EmailNotificationStep implements ActivationStep {
   constructor(private readonly simulator: IntegrationSimulator) {}
+
   exec(context: ActivationContext): Promise<void> {
     return this.simulator.execute('email', context);
   }

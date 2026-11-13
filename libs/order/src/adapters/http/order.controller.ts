@@ -43,6 +43,7 @@ export class OrderController {
     private readonly checkout: CheckoutUseCase,
     private readonly orders: GetOrderStatusUseCase,
   ) {}
+
   @Post('checkout')
   @ApiOperation({ operationId: 'ShopController_create' })
   @HttpCode(202)
@@ -66,6 +67,7 @@ export class OrderController {
       String(response.locals.correlationId),
     );
   }
+
   @Get('orders/:orderId/status')
   @ApiOperation({ operationId: 'ShopController_status' })
   @ApiOkResponse({ type: OrderStatusDto })

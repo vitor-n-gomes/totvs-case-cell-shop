@@ -17,6 +17,7 @@ export class TopicKafkaServer extends ServerKafka {
     super(options);
     this.setTransportId(transportId);
   }
+
   override addHandler(
     pattern: string,
     callback: MessageHandler,
@@ -30,6 +31,7 @@ export class TopicKafkaServer extends ServerKafka {
       extras,
     );
   }
+
   protected override registerConsumerEventListeners(): void {
     super.registerConsumerEventListeners();
     const consumer = this.consumer!;
@@ -42,6 +44,7 @@ export class TopicKafkaServer extends ServerKafka {
     ])
       consumer.on(event, () => this.ready(false));
   }
+
   override async close(): Promise<void> {
     this.ready(false);
     await super.close();

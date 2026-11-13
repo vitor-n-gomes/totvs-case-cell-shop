@@ -27,6 +27,7 @@ export class ActiveOrderUseCase {
     private readonly logger: AppLogger,
     private readonly spans: Spans,
   ) {}
+
   async execute(event: CheckoutEvent): Promise<void> {
     return this.orders.withActivationLock(event.order_id, async (runner) => {
       const order = await this.orders.findById(event.order_id, runner.manager);

@@ -15,6 +15,7 @@ export class OutboxRepository {
     @InjectRepository(OutboxEventEntity)
     private readonly events: Repository<OutboxEventEntity>,
   ) {}
+
   async append(
     manager: EntityManager,
     orderId: string,
@@ -40,6 +41,7 @@ export class OutboxRepository {
       .orIgnore()
       .execute();
   }
+
   claim(): Promise<ClaimedEvent[]> {
     return this.database.transaction(async (manager) => {
       const repository = manager.getRepository(OutboxEventEntity);
@@ -70,12 +72,14 @@ export class OutboxRepository {
       return events.map((event) => ({ ...event, leaseToken }));
     });
   }
+
   async acknowledge(event: ClaimedEvent): Promise<void> {
     await this.events.update(
       { id: event.id, leaseToken: event.leaseToken },
       { status: 'PROCESSED', leaseToken: null, leaseUntil: null },
     );
   }
+
   async release(event: ClaimedEvent): Promise<void> {
     await this.events
       .createQueryBuilder()
@@ -91,6 +95,7 @@ export class OutboxRepository {
       })
       .execute();
   }
+
   async backlog(): Promise<{ count: string; age: string }> {
     const row = await this.events
       .createQueryBuilder('event')

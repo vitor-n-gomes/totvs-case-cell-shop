@@ -29,6 +29,7 @@ export class GetProducts {
     private readonly spans: Spans,
     private readonly logger: AppLogger,
   ) {}
+
   execute(): Promise<ProductView[]> {
     return this.spans.run('catalog.get', async () => {
       try {
@@ -45,6 +46,7 @@ export class GetProducts {
       return this.singleFlight(() => this.fill());
     });
   }
+
   private singleFlight(
     operation: () => Promise<ProductView[]>,
   ): Promise<ProductView[]> {
@@ -54,12 +56,14 @@ export class GetProducts {
       });
     return this.flight;
   }
+
   private client() {
     if (!this.redis.client.isReady) throw new Error('Cache unavailable');
     return this.redis.client.withCommandOptions({
       abortSignal: AbortSignal.timeout(1000),
     });
   }
+
   private async read(): Promise<ProductView[] | null> {
     const value = await this.client().get(CATALOG_KEY);
     if (!value) return null;
@@ -70,6 +74,7 @@ export class GetProducts {
       return null;
     }
   }
+
   private load(): Promise<ProductView[]> {
     return this.spans.run('catalog.repository', async () => {
       try {
@@ -81,6 +86,7 @@ export class GetProducts {
       }
     });
   }
+
   private async fill(): Promise<ProductView[]> {
     const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {

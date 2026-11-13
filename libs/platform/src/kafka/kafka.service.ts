@@ -21,6 +21,7 @@ export class KafkaService implements OnApplicationShutdown {
     @Inject(KAFKA_CLIENT) private readonly client: ClientKafka,
     private readonly config: ConfigService,
   ) {}
+
   ensureConnected(): Promise<void> {
     if (this.closing) return Promise.reject(new Error('Kafka shutting down'));
     if (!this.connecting) {
@@ -36,6 +37,7 @@ export class KafkaService implements OnApplicationShutdown {
     }
     return this.connecting;
   }
+
   async produce<T extends object>(
     topic: string,
     event: KafkaEvents<T>,
@@ -49,6 +51,7 @@ export class KafkaService implements OnApplicationShutdown {
       }),
     );
   }
+
   async checkTopic(): Promise<void> {
     await this.ensureConnected();
     if (!this.adminConnecting) {
@@ -72,6 +75,7 @@ export class KafkaService implements OnApplicationShutdown {
       ],
     });
   }
+
   async onApplicationShutdown(): Promise<void> {
     this.closing = true;
     await this.connecting?.catch(() => undefined);

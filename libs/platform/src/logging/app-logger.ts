@@ -14,21 +14,27 @@ export class AppLogger implements LoggerService {
   info(message: string, fields: Record<string, unknown> = {}): void {
     this.write('info', message, fields);
   }
+
   log(message: unknown, ...context: unknown[]): void {
     this.write('info', message, { context });
   }
+
   warn(message: unknown, ...context: unknown[]): void {
     this.write('warn', message, { context });
   }
+
   error(message: unknown, ...context: unknown[]): void {
     this.write('error', message, { context });
   }
+
   debug(message: unknown, ...context: unknown[]): void {
     this.write('debug', message, { context });
   }
+
   verbose(message: unknown, ...context: unknown[]): void {
     this.write('debug', message, { context });
   }
+
   fatal(message: unknown, ...context: unknown[]): void {
     this.write('fatal', message, { context });
   }

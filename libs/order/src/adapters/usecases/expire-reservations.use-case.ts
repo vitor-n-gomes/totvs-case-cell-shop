@@ -24,6 +24,7 @@ export class ExpireReservationsUseCase {
     private readonly logger: AppLogger,
     private readonly eventBus: EventBus,
   ) {}
+
   @Cron('*/5 * * * *')
   async tick(): Promise<void> {
     if (this.running) return;
@@ -36,6 +37,7 @@ export class ExpireReservationsUseCase {
       this.running = false;
     }
   }
+
   async execute(): Promise<void> {
     for (const id of await this.reservations.expiredOrderIds()) {
       const released = await this.database.transaction(async (manager) => {

@@ -34,6 +34,7 @@ export class HttpModule implements NestModule {
   constructor(health: HealthService) {
     health.requireKafka = false;
   }
+
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(CorrelationMiddleware).forRoutes('*');
   }

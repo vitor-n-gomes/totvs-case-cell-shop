@@ -50,6 +50,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
     private readonly metrics: Metrics,
     private readonly logger: AppLogger,
   ) {}
+
   enqueue(entry: AuditEntry): void {
     if (this.closing || this.queue.length >= 1000) {
       this.metrics.audit.inc({ result: 'dropped' });
@@ -58,6 +59,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
     this.queue.push(entry);
     this.startDrain();
   }
+
   private startDrain(): void {
     if (!this.draining) {
       this.draining = new Promise<void>((resolve) => setImmediate(resolve))
@@ -68,6 +70,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
         });
     }
   }
+
   private async drain(): Promise<void> {
     while (this.queue.length) {
       const entry = this.queue.shift()!;
@@ -89,6 +92,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
       }
     }
   }
+
   async beforeApplicationShutdown(): Promise<void> {
     this.closing = true;
     while (this.draining) await this.draining;
@@ -100,6 +104,7 @@ export class RequestAuditInterceptor implements NestInterceptor {
     private readonly audit: RequestAuditRepository,
     private readonly metrics: Metrics,
   ) {}
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
