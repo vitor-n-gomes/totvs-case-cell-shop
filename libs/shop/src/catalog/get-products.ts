@@ -85,7 +85,7 @@ export class GetProducts {
     const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {
       const token = randomUUID();
-      let locked: string | null;
+      let locked?: string;
       try {
         const cached = await this.read();
         if (cached) return cached;

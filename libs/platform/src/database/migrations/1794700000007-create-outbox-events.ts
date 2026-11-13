@@ -14,6 +14,7 @@ export class CreateOutboxEvents1794700000007 implements MigrationInterface {
         lease_until timestamptz,
         deduplication_key varchar(200) NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT pk_outbox_events PRIMARY KEY (id),
         CONSTRAINT uq_outbox_events_deduplication_key UNIQUE (deduplication_key),
         CONSTRAINT chk_outbox_events_status CHECK (status IN ('PENDING','PROCESSED'))

@@ -24,26 +24,26 @@ import {
 } from '@app/contracts';
 
 export class CheckoutItemDto {
-  @ApiProperty({ format: 'uuid' }) @IsUUID() productId!: string;
+  @ApiProperty({ format: 'uuid' }) @IsUUID() productId: string;
   @ApiProperty({ minimum: 1, maximum: 1000000 })
   @IsInt()
   @Min(1)
   @Max(1000000)
-  quantity!: number;
+  quantity: number;
 }
 export class CheckoutDto {
   @ApiProperty({ enum: PaymentType })
   @IsEnum(PaymentType)
-  paymentType!: PaymentType;
+  paymentType: PaymentType;
   @ApiProperty({ format: 'date', example: '2026-11-10' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsDateString({ strict: true })
-  dueDate!: string;
+  dueDate: string;
   @ApiProperty({ maxLength: 254 })
   @IsString()
   @Matches(/\S/)
   @MaxLength(254)
-  mainContact!: string;
+  mainContact: string;
   @ApiPropertyOptional({ maxLength: 254 })
   @IsOptional()
   @IsString()
@@ -54,21 +54,21 @@ export class CheckoutDto {
   @IsString()
   @Matches(/\S/)
   @MaxLength(100)
-  paymentMethod!: string;
+  paymentMethod: string;
   @ApiProperty({ enum: Environment })
   @IsEnum(Environment)
-  environment!: Environment;
+  environment: Environment;
   @ApiProperty({ type: [CheckoutItemDto], minItems: 1, maxItems: 100 })
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => CheckoutItemDto)
-  items!: CheckoutItemDto[];
+  items: CheckoutItemDto[];
 }
 export class CheckoutAcceptedDto {
-  @ApiProperty({ format: 'uuid' }) orderId!: string;
-  @ApiProperty({ enum: [OrderStatus.Pending] }) status!: OrderStatus.Pending;
+  @ApiProperty({ format: 'uuid' }) orderId: string;
+  @ApiProperty({ enum: [OrderStatus.Pending] }) status: OrderStatus.Pending;
 }
 
 export class OrderItemDto extends CheckoutItemDto {
@@ -87,13 +87,13 @@ export class OrderStatusDto {
   status: OrderStatus;
 
   @ApiProperty({ enum: ProcessingStatus })
-  processingStatus!: ProcessingStatus;
+  processingStatus: ProcessingStatus;
   @ApiProperty({ enum: PaymentType })
-  paymentType!: PaymentType;
-  @ApiProperty() paymentMethod!: string;
-  @ApiProperty({ format: 'date' }) dueDate!: string;
+  paymentType: PaymentType;
+  @ApiProperty() paymentMethod: string;
+  @ApiProperty({ format: 'date' }) dueDate: string;
   @ApiProperty({ enum: Environment })
-  environment!: Environment;
-  @ApiProperty({ format: 'date-time' }) createdAt!: string;
-  @ApiProperty({ type: [OrderItemDto] }) items!: OrderItemDto[];
+  environment: Environment;
+  @ApiProperty({ format: 'date-time' }) createdAt: string;
+  @ApiProperty({ type: [OrderItemDto] }) items: OrderItemDto[];
 }

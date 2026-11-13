@@ -18,6 +18,7 @@ export class CreateOrder1794700000001 implements MigrationInterface {
         last_attempt integer NOT NULL DEFAULT 0,
         correlation_id uuid NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT pk_order PRIMARY KEY (id),
         CONSTRAINT uq_order_idempotency_key UNIQUE (idempotency_key),
         CONSTRAINT chk_order_last_attempt CHECK (last_attempt BETWEEN 0 AND 5)

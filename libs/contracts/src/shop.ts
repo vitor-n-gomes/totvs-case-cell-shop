@@ -190,6 +190,6 @@ export interface ProductView {
   id: string;
   name: string;
   productKey: string;
-  netPrice: string;
-  listPrice: string;
+  netPrice: number;
+  listPrice: number;
 }

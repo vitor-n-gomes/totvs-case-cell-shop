@@ -8,13 +8,14 @@ import {
   OneToOne,
   PrimaryGeneratedColumn,
   type Relation,
+  UpdateDateColumn,
 } from 'typeorm';
 import { OrderEntity, OrderItemEntity } from '@app/order/domain/entities';
 
 @Entity('product')
 export class ProductEntity {
   @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  id: string;
 
   @Column('varchar')
   name: string;
@@ -27,6 +28,9 @@ export class ProductEntity {
 
   @Column('int', { name: 'list_price' })
   listPrice: number;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 
   @OneToOne(() => StockEntity, (stock) => stock.product)
   stock?: Relation<StockEntity>;
@@ -41,7 +45,7 @@ export class ProductEntity {
 @Entity('stock')
 export class StockEntity {
   @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  id: string;
 
   @Index('idx_stock_product_id', { unique: true })
   @Column('uuid', { name: 'product_id' })
@@ -59,12 +63,15 @@ export class StockEntity {
 
   @Column('integer', { name: 'reserved_quantity' })
   reservedQuantity: number;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }
 
 @Entity('stock_reservation')
 export class ReservationEntity {
   @PrimaryGeneratedColumn('uuid')
-  id!: string;
+  id: string;
 
   @Index('idx_stock_reservation_order_id')
   @Column('uuid', { name: 'order_id' })
@@ -96,6 +103,9 @@ export class ReservationEntity {
 
   @Column('timestamptz', { name: 'expires_at' })
   expiresAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }
 
 export const shopEntities = [ProductEntity, StockEntity, ReservationEntity];

@@ -9,8 +9,15 @@ export class ProductRepository {
     @InjectRepository(ProductEntity)
     private readonly products: Repository<ProductEntity>,
   ) {}
-  
+
   findAll(): Promise<ProductEntity[]> {
-    return this.products.find({ order: { productKey: 'ASC' } });
+    return this.products
+      .createQueryBuilder('product')
+      .innerJoin('product.stock', 'stock')
+      .where('stock.physical_quantity - stock.reserved_quantity >= :minimum', {
+        minimum: 1,
+      })
+      .orderBy('product.productKey', 'ASC')
+      .getMany();
   }
 }

@@ -6,6 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   type Relation,
+  UpdateDateColumn,
 } from 'typeorm';
 import { ProductEntity } from '@app/shop/entities';
 import { OrderEntity } from './order.entity';
@@ -45,4 +46,7 @@ export class OrderItemEntity {
 
   @Column('int', { name: 'list_price' })
   listPrice: number;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }

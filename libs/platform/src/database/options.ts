@@ -9,6 +9,7 @@ import { CreateStockReservation1794700000005 } from './migrations/1794700000005-
 import { CreateIdempotencyLog1794700000006 } from './migrations/1794700000006-create-idempotency-log';
 import { CreateOutboxEvents1794700000007 } from './migrations/1794700000007-create-outbox-events';
 import { CreateRequestLog1794700000008 } from './migrations/1794700000008-create-request-log';
+import { AddUpdatedAtToEntities1794700000009 } from './migrations/1794700000009-add-updated-at-to-entities';
 import { DataSourceOptions } from 'typeorm';
 
 const migrations = [
@@ -20,6 +21,7 @@ const migrations = [
   CreateIdempotencyLog1794700000006,
   CreateOutboxEvents1794700000007,
   CreateRequestLog1794700000008,
+  AddUpdatedAtToEntities1794700000009,
 ];
 
 export function databaseOptions(url: string): DataSourceOptions {

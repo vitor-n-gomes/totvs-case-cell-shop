@@ -10,6 +10,7 @@ export class CreateRequestLog1794700000008 implements MigrationInterface {
         payload jsonb NOT NULL,
         correlation_id uuid NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT pk_request_log PRIMARY KEY (id)
       );
       CREATE INDEX request_log_correlation_idx ON request_log (correlation_id);

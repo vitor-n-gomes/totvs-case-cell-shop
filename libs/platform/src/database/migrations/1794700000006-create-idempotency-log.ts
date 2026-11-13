@@ -12,6 +12,7 @@ export class CreateIdempotencyLog1794700000006 implements MigrationInterface {
         success boolean NOT NULL,
         description text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT pk_idempotency_log PRIMARY KEY (id)
       );
       CREATE INDEX idx_idempotency_log_order_id ON idempotency_log (order_id, created_at);
