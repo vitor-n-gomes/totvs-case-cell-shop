@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OrderStatus, ReservationExpiredEvent } from '@app/contracts';
+import { OrderStatus } from '@app/contracts';
 import { DataSource } from 'typeorm';
 import { Metrics } from '@app/platform/observability/metrics';
 import { OrderRepository } from '@app/order/repositories/order.repository';

@@ -1,5 +1,4 @@
 import { OrderEvent } from '@app/order/domain/events';
-import { Injectable } from '@nestjs/common';
 
 /**
  * Generic interface for event handlers in the EventBus system

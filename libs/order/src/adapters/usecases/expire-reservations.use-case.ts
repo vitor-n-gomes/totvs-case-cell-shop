@@ -8,7 +8,6 @@ import { AppLogger } from '@app/platform/logging/app-logger';
 import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
-import { OrderEvent } from '@app/order/domain/events';
 
 /**
  * 

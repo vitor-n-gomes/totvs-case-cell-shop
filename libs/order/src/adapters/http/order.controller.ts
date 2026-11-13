@@ -24,11 +24,8 @@ import type { Response } from 'express';
 import { CheckoutUseCase } from '../usecases/checkout.use-case';
 import { GetOrderStatusUseCase } from '../usecases/get-order-status.use-case';
 import { ErrorResponseDto } from '@app/platform/http/error-response.dto';
-import {
-  CheckoutAcceptedDto,
-  CheckoutDto,
-  OrderStatusDto,
-} from '../../domain/dto/create-order.dto';
+import { CheckoutAcceptedDto, CheckoutDto, OrderStatusDto } from '@app/order/domain/dto/create-order.dto';
+
 
 @ApiTags('storefront')
 @ApiHeader({
