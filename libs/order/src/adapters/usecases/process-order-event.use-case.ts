@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
-import { 
-  normalizeOrderEvent, 
+import {
+  normalizeOrderEvent,
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
   ORDER_CHECKOUT_FAILED,

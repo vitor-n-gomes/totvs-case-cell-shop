@@ -10,8 +10,8 @@ import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
 
 /**
- * 
- */ 
+ *
+ */
 @Injectable()
 export class ExpireReservationsUseCase {
   private running = false;
@@ -54,7 +54,7 @@ export class ExpireReservationsUseCase {
       });
       if (released) {
         this.metrics.reservations.inc({ result: 'expired' }, released);
-        
+
         await this.eventBus.dispatch({
           kind: 'ORDER_RESERVATION_EXPIRED',
           data: { data: { order_id: id }, kind: 'ORDER_RESERVATION_EXPIRED' },
@@ -62,7 +62,7 @@ export class ExpireReservationsUseCase {
             correlationId: randomUUID(),
             traceId: randomBytes(16).toString('hex'),
             timestamp: Date.now(),
-          }
+          },
         } as any);
       }
     }

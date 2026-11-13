@@ -6,8 +6,7 @@ import {
 } from '@app/platform/observability/context';
 
 export function createEventMeta(correlationId: string): EventMeta {
-  const context =
-    executionContext.getStore() ?? newTraceContext(correlationId);
+  const context = executionContext.getStore() ?? newTraceContext(correlationId);
   return {
     schema_version: 1,
     event_id: randomUUID(),

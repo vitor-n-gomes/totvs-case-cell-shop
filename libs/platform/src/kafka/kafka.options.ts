@@ -43,7 +43,7 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
           groupId?: string;
         };
         const entry = { msg: 'kafka.client.error', message, error, groupId };
-        
+
         if (error?.includes('rebalancing')) logger.warn(entry);
         else logger.error(entry);
       },

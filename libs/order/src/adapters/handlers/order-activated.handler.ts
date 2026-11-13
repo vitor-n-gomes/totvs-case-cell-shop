@@ -10,7 +10,9 @@ import { Metrics } from '@app/platform/observability/metrics';
  * Processes events when an order is activated and tracks metrics
  */
 @Injectable()
-export class OrderActivatedHandler implements EventHandler<{ orderId: string }> {
+export class OrderActivatedHandler implements EventHandler<{
+  orderId: string;
+}> {
   kind = 'order.activated';
 
   constructor(
@@ -19,9 +21,7 @@ export class OrderActivatedHandler implements EventHandler<{ orderId: string }> 
     private readonly metrics: Metrics,
   ) {}
 
-  async handle(
-    event: OrderEvent<{ orderId: string }>,
-  ): Promise<void> {
+  async handle(event: OrderEvent<{ orderId: string }>): Promise<void> {
     const { orderId } = event.data;
     const { correlationId } = event.meta;
 

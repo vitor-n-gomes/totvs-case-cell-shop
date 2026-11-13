@@ -14,7 +14,6 @@ import { LoggingModule } from '@app/platform/logging/logging.module';
 import { CorrelationMiddleware } from '@app/platform/logging/correlation.middleware';
 import { HealthModule } from '@app/platform/health/health.module';
 
-
 @Module({
   imports: [
     ConfigurationModule,

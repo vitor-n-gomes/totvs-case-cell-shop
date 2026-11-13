@@ -3,11 +3,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 @Injectable()
 export class GetOrderStatusUseCase {
-  
   constructor(private readonly orders: OrderRepository) {}
 
   async execute(orderId: string) {
-
     const order = await this.orders.findById(orderId);
 
     if (!order) throw new NotFoundException('Order not found');

@@ -24,4 +24,6 @@ export interface EventHandler<T = any> {
  * Type for EventHandler class constructor
  * Useful for handler registry and dependency injection
  */
-export type EventHandlerClass<T = any> = new (...args: any[]) => EventHandler<T>;
+export type EventHandlerClass<T = any> = new (
+  ...args: any[]
+) => EventHandler<T>;

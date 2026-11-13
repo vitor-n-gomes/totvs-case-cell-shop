@@ -14,7 +14,7 @@ import { OrderConsumerModule } from '@app/order/order-consumer.module';
     ObservabilityModule,
     HealthModule,
     ScheduleModule.forRoot(),
-    OrderConsumerModule
+    OrderConsumerModule,
   ],
 })
 export class ConsumerModule {}

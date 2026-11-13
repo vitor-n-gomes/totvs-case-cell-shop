@@ -8,8 +8,9 @@ import { EventHandler } from '@app/order/adapters/handlers/event.handler';
 import { OrderEvent } from '@app/order/domain/events';
 
 @Injectable()
-export class ReservationExpiredHandler
-  implements EventHandler<{ orderId: string }> {
+export class ReservationExpiredHandler implements EventHandler<{
+  orderId: string;
+}> {
   kind = 'ORDER_RESERVATION_EXPIRED';
 
   constructor(

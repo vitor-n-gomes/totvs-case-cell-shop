@@ -3,22 +3,27 @@
 ## 1. Visão Geral
 
 ### Problema
+
 A implementação anterior tinha lógica acoplada em `ProcessOrderEventUseCase`, donde todos os handlers de eventos estavam concentrados em um único lugar, dificultando:
+
 - Escalabilidade: adicionar novos tipos de eventos era complexo
 - Manutenibilidade: mudanças em um handler podiam afetar outros
 - Testabilidade: testes unitários precisavam mockar toda a lógica
 
 ### Solução
+
 Implementamos um **EventBus** com **handlers dedicados por tipo de evento**, seguindo o padrão pub/sub:
+
 - Cada tipo de evento tem seu próprio handler
 - Handlers são registrados no EventBus
 - Eventos são despachados para todos os handlers registrados de forma **desacoplada**
 
 ### Benefícios
+
 ✅ **Escalável**: Adicionar novos eventos é apenas criar um novo handler  
 ✅ **Desacoplado**: Handlers não dependem uns dos outros  
 ✅ **Fácil de testar**: Cada handler pode ser testado isoladamente  
-✅ **Rastreável**: Metadados de correlação em todos os eventos  
+✅ **Rastreável**: Metadados de correlação em todos os eventos
 
 ---
 
@@ -109,7 +114,7 @@ const orderActivatedEvent: OrderEvent<{ orderId: string }> = {
     traceId: 'a1b2c3d4e5f6g7h8',
     parentSpanId: 'p1q2r3s4',
     timestamp: 1699814822000,
-  }
+  },
 };
 ```
 
@@ -117,24 +122,27 @@ const orderActivatedEvent: OrderEvent<{ orderId: string }> = {
 
 ## 4. Tipos de Eventos Implementados
 
-| Evento | Kind | Emitido Por | Descrição |
-|--------|------|-------------|-----------|
-| **ORDER_CHECKOUT_INITIATED** | `ORDER_CHECKOUT_INITIATED` | `CheckoutUseCase` | Novo checkout iniciado (entrada do consumer) |
-| **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou |
-| **ORDER_ACTIVATED** | `order.activated` | `OnlineActivationStrategy` | Order foi ativada com sucesso |
-| *(future)* | `ORDER_CHECKOUT_FAILED` | - | Checkout falhou |
-| *(future)* | `ORDER_EVENT_INVALID` | - | Evento inválido recebido |
+| Evento                        | Kind                        | Emitido Por                             | Descrição                                    |
+| ----------------------------- | --------------------------- | --------------------------------------- | -------------------------------------------- |
+| **ORDER_CHECKOUT_INITIATED**  | `ORDER_CHECKOUT_INITIATED`  | `CheckoutUseCase`                       | Novo checkout iniciado (entrada do consumer) |
+| **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou                     |
+| **ORDER_ACTIVATED**           | `order.activated`           | `OnlineActivationStrategy`              | Order foi ativada com sucesso                |
+| _(future)_                    | `ORDER_CHECKOUT_FAILED`     | -                                       | Checkout falhou                              |
+| _(future)_                    | `ORDER_EVENT_INVALID`       | -                                       | Evento inválido recebido                     |
 
 ---
 
 ## 5. Handlers Implementados
 
 ### 1. OrderActivatedHandler
+
 **Localização**: `libs/order/src/adapters/handlers/order-activated.handler.ts`
 
 ```typescript
 @Injectable()
-export class OrderActivatedHandler implements EventHandler<{ orderId: string }> {
+export class OrderActivatedHandler implements EventHandler<{
+  orderId: string;
+}> {
   kind = 'order.activated';
 
   constructor(
@@ -146,7 +154,7 @@ export class OrderActivatedHandler implements EventHandler<{ orderId: string }> 
   async handle(event: OrderEvent<{ orderId: string }>): Promise<void> {
     const { orderId } = event.data;
     const order = await this.orderRepository.findById(orderId);
-    
+
     if (!order) {
       this.logger.error('order.activated.handler.order_not_found', { orderId });
       return;
@@ -159,6 +167,7 @@ export class OrderActivatedHandler implements EventHandler<{ orderId: string }> 
 ```
 
 ### 2. CheckoutInitiatedHandler
+
 **Localização**: `libs/order/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`
 
 ```typescript
@@ -174,12 +183,14 @@ export class CheckoutInitiatedHandler {
 ```
 
 ### 3. ReservationExpiredHandler
+
 **Localização**: `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts`
 
 ```typescript
 @Injectable()
-export class ReservationExpiredHandler
-  implements EventHandler<{ orderId: string }> {
+export class ReservationExpiredHandler implements EventHandler<{
+  orderId: string;
+}> {
   kind = 'ORDER_RESERVATION_EXPIRED';
 
   constructor(
@@ -192,11 +203,11 @@ export class ReservationExpiredHandler
   async handle(event: OrderEvent<{ orderId: string }>): Promise<void> {
     // Libera stock, cancela order, incrementa métrica
     const orderId = event.data.data.order_id;
-    
+
     const released = await this.database.transaction(async (manager) => {
       const order = await this.orders.lock(manager, orderId);
       if (order?.status !== OrderStatus.Pending) return 0;
-      
+
       const count = await this.reservations.release(manager, orderId);
       await this.orders.update(manager, orderId, {
         status: OrderStatus.Cancelled,
@@ -216,6 +227,7 @@ export class ReservationExpiredHandler
 ## 6. Componentes Principais
 
 ### EventBus - Orquestrador Central
+
 **Localização**: `libs/order/src/adapters/handlers/event.bus.ts`
 
 ```typescript
@@ -245,7 +257,7 @@ export class EventBus implements IEventBus {
     const handlerPromises = handlers.map((handler) =>
       handler.handle(event).catch((error) => {
         this.logger.error(`Handler failed for event: ${event.kind}`, { error });
-      })
+      }),
     );
 
     await Promise.all(handlerPromises);
@@ -261,6 +273,7 @@ export class EventBus implements IEventBus {
 ```
 
 ### HandlersRegistry - Registro de Handlers
+
 **Localização**: `libs/order/src/adapters/handlers/handlers.registry.ts`
 
 ```typescript
@@ -290,6 +303,7 @@ export class HandlersRegistry {
 ```
 
 ### EventHandler - Interface de Handlers
+
 **Localização**: `libs/order/src/adapters/handlers/event.handler.ts`
 
 ```typescript
@@ -529,7 +543,10 @@ describe('YourCustomHandler', () => {
 
     await handler.handle(event);
 
-    expect(logger.info).toHaveBeenCalledWith('your.event.processing', expect.any(Object));
+    expect(logger.info).toHaveBeenCalledWith(
+      'your.event.processing',
+      expect.any(Object),
+    );
   });
 });
 ```
@@ -539,6 +556,7 @@ describe('YourCustomHandler', () => {
 ## 9. Testing Strategy
 
 ### Unit Tests: Handlers
+
 Testa cada handler isoladamente
 
 ```bash
@@ -546,6 +564,7 @@ npm test -- libs/order/src/adapters/handlers/your-custom.handler.spec.ts
 ```
 
 ### Unit Tests: EventBus
+
 Testa registro e disparo de eventos
 
 ```bash
@@ -553,6 +572,7 @@ npm test -- libs/order/src/adapters/handlers/event.bus.spec.ts
 ```
 
 ### Integration Tests: Scheduler → Event → Handler
+
 Testa fluxo completo de expiração de reservas
 
 ```bash
@@ -560,6 +580,7 @@ npm test -- apps/scheduler/src/expire-reservations.integration.spec.ts
 ```
 
 ### Integration Tests: Checkout → Activation → Event
+
 Testa fluxo de ativação de order
 
 ```bash
@@ -567,6 +588,7 @@ npm test -- libs/order/src/activation/online-activation.integration.spec.ts
 ```
 
 ### E2E Tests: Full Flow
+
 Testa com apps rodando:
 
 ```bash
@@ -580,18 +602,18 @@ npm run test:e2e
 
 ### Arquivos Principais
 
-| Arquivo | Responsabilidade |
-|---------|-----------------|
-| `libs/order/src/domain/events/order.event.ts` | Definições de tipos de eventos |
-| `libs/order/src/adapters/handlers/event.bus.ts` | Orquestrador central pub/sub |
-| `libs/order/src/adapters/handlers/event.handler.ts` | Interface para handlers |
-| `libs/order/src/adapters/handlers/handlers.registry.ts` | Registro e inicialização |
-| `libs/order/src/adapters/handlers/order-activated.handler.ts` | Handler de ativação |
-| `libs/order/src/adapters/usecases/process-order-event.use-case.ts` | Consumidor Kafka |
-| `libs/order/src/adapters/usecases/expire-reservations.use-case.ts` | Scheduler cron |
-| `libs/order/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts` | Handler de checkout |
-| `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts` | Handler de expiração |
-| `libs/order/src/activation/strategies/online-activation.strategy.ts` | Estratégia de ativação |
+| Arquivo                                                                          | Responsabilidade               |
+| -------------------------------------------------------------------------------- | ------------------------------ |
+| `libs/order/src/domain/events/order.event.ts`                                    | Definições de tipos de eventos |
+| `libs/order/src/adapters/handlers/event.bus.ts`                                  | Orquestrador central pub/sub   |
+| `libs/order/src/adapters/handlers/event.handler.ts`                              | Interface para handlers        |
+| `libs/order/src/adapters/handlers/handlers.registry.ts`                          | Registro e inicialização       |
+| `libs/order/src/adapters/handlers/order-activated.handler.ts`                    | Handler de ativação            |
+| `libs/order/src/adapters/usecases/process-order-event.use-case.ts`               | Consumidor Kafka               |
+| `libs/order/src/adapters/usecases/expire-reservations.use-case.ts`               | Scheduler cron                 |
+| `libs/order/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`  | Handler de checkout            |
+| `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts` | Handler de expiração           |
+| `libs/order/src/activation/strategies/online-activation.strategy.ts`             | Estratégia de ativação         |
 
 ### Configuração Kafka
 
@@ -628,6 +650,7 @@ export class OrderModule {}
 ## 11. Boas Práticas
 
 ### ✅ Do's
+
 - **Use metadados de correlação** para rastreamento distribuído
 - **Implemente transações** para operações críticas (stock, status de order)
 - **Log e métricas** em cada handler para observabilidade
@@ -636,6 +659,7 @@ export class OrderModule {}
 - **Versione eventos** quando schema mudar (adicionar schema_version)
 
 ### ❌ Don'ts
+
 - **Não acople handlers** - cada handler é independente
 - **Não coloque lógica pesada** no dispatch - use workers se necessário
 - **Não ignore erros** - sempre log e capture em métrica
@@ -687,4 +711,3 @@ Use `randomUUID()` para gerar um novo `correlationId` para cada evento.
 - [ ] Event sourcing para auditoria completa
 - [ ] Schema registry para validação de eventos
 - [ ] Event replay para debugging
-

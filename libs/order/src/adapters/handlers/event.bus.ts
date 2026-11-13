@@ -118,10 +118,8 @@ export class EventBus implements IEventBus {
    * @param topic - Optional Kafka topic; uses default if not provided
    */
   async publish(event: OrderEvent, topic?: string): Promise<void> {
-    const kafkaTopic = topic || this.config.get<string>(
-      'KAFKA_ORDER_TOPIC',
-      'order.events',
-    );
+    const kafkaTopic =
+      topic || this.config.get<string>('KAFKA_ORDER_TOPIC', 'order.events');
     const key = event.meta.correlationId;
 
     this.logger.info(`Publishing event to Kafka`, {

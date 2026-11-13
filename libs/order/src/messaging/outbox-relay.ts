@@ -57,12 +57,9 @@ export class OutboxRelay implements BeforeApplicationShutdown {
         await executionContext.run(context, async () => {
           try {
             await this.spans.run('outbox.publish', () =>
-              this.messaging.publish(
-                event.topic,
-                event.orderId,
-                payload,
-                { 'x-correlation-id': correlationId },
-              ),
+              this.messaging.publish(event.topic, event.orderId, payload, {
+                'x-correlation-id': correlationId,
+              }),
             );
             await this.outbox.acknowledge(event);
             this.metrics.processing.inc({ result: 'published' });

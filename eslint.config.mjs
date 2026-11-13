@@ -146,7 +146,7 @@ export default defineConfig(
     rules: { 'localStyle/blank-line-between-methods': 'error' },
   },
   {
-    files: ['**/*entity.ts', '**/entities.ts'],
+    files: ['**/*entity.ts', '**/entities.ts', '**/*dto.ts', '**/dto.ts'],
     rules: {
       'localStyle/decorator-property-newline': 'error',
       'lines-between-class-members': ['error', 'always'],
