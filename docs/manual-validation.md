@@ -30,6 +30,8 @@ docker compose up -d --build --wait http consumer
 docker compose run --rm migrate npm run seed
 ```
 
+Com API e consumer em execução, `npm run test:overselling` recria o seed e dispara 5 checkouts simultâneos para a única unidade de `CASE-LIMITED-001`; o script termina com código `1` se houver overselling ou pedido preso em `Pending`.
+
 A API atende na porta 3000; o consumer expõe apenas health checks e métricas na 3001. `API_PORT` e `WORKER_PORT` continuam válidos. `API_HOST_PORT` / `WORKER_HOST_PORT` alteram apenas as portas publicadas pelo Compose.
 
 Confirme `GET /health/ready` nas duas portas, `GET /products`, `/api-docs` na API e `/metrics` nas duas aplicações. Confirme também que `POST /checkout` não existe na porta do consumer.

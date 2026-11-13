@@ -33,7 +33,9 @@ docker compose up -d --build --wait http consumer
 docker compose run --rm migrate npm run seed
 ```
 
-Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Both the API and the worker wait for PostgreSQL migrations, a healthy Redis and Kafka topic initialization. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed creates three products with 100 units each and **never resets existing stock**. Re-running it updates catalog descriptions/prices and invalidates the cache.
+Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Both the API and the worker wait for PostgreSQL migrations, a healthy Redis and Kafka topic initialization. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed (`src/database/seeds/seed.ts`) creates three products with 100 units each and **never resets existing stock** for them. Re-running it updates catalog descriptions/prices (integer cents) and invalidates the cache. The one exception is the flash-sale product `CASE-LIMITED-001`, whose stock is reset to 1 unit (0 reserved) and its reservations are cleared on every run.
+
+With the API and consumer running, `npm run test:overselling` re-seeds and fires 5 simultaneous checkouts for that single unit. It prints a summary and exits `1` if more than one order is activated, stock goes negative or an order stays `Pending` (override the target with `API_URL`).
 
 If ports 3000/3001 are already used by local development, set `API_HOST_PORT=3300 WORKER_HOST_PORT=3301` when running Compose. Run the smoke test with `API_URL=http://localhost:3300 WORKER_URL=http://localhost:3301` in that case.
 
