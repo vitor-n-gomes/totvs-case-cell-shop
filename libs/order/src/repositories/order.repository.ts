@@ -9,6 +9,10 @@ type OrderItemInput = Pick<
   OrderItemEntity,
   'productId' | 'quantity' | 'netPrice' | 'listPrice'
 >;
+type OrderColumns = Omit<
+  OrderEntity,
+  'items' | 'reservations' | 'idempotencyLogs' | 'outboxEvents'
+>;
 type OrderChanges = Partial<
   Pick<OrderEntity, 'status' | 'processingStatus' | 'lastAttempt'>
 >;
@@ -31,7 +35,9 @@ export class OrderRepository {
     requestHash: string,
     correlationId: string,
   ): Promise<boolean> {
-    const details = manager.getRepository(OrderEntity).create(input);
+    const details: OrderColumns = manager
+      .getRepository(OrderEntity)
+      .create(input);
     const result = await manager
       .getRepository(OrderEntity)
       .createQueryBuilder()

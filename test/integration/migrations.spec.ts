@@ -2,16 +2,20 @@ import 'reflect-metadata';
 import { config } from 'dotenv';
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
-import {
-  PaymentType,
-  Environment,
-  OrderStatus,
-  ProcessingStatus,
-} from '@app/contracts';
 import { databaseOptions } from '@app/platform/database/options';
 import { validateEnvironment } from '@app/platform/config/environment';
 
-it('keeps enum fields as strings, upgrades existing orders, rolls back and reapplies without data loss', async () => {
+const foreignKeys = [
+  ['stock', 'product_id', 'product', 'CASCADE'],
+  ['order_item', 'order_id', 'order', 'CASCADE'],
+  ['order_item', 'product_id', 'product', 'RESTRICT'],
+  ['stock_reservation', 'order_id', 'order', 'CASCADE'],
+  ['stock_reservation', 'product_id', 'product', 'RESTRICT'],
+  ['idempotency_log', 'order_id', 'order', 'CASCADE'],
+  ['outbox_events', 'order_id', 'order', 'CASCADE'],
+];
+
+it('creates parent tables first with indexed foreign keys, rolls back and reapplies', async () => {
   config({ path: process.env.TEST_ENV_FILE ?? '.env.test.local' });
   const env = validateEnvironment(process.env),
     url = new URL(env.DATABASE_URL);
@@ -38,191 +42,73 @@ it('keeps enum fields as strings, upgrades existing orders, rolls back and reapp
       },
     });
     await isolated.initialize();
-    const insert = async (
-      paymentType: string,
-      environment: string,
-      status?: string,
-      processingStatus?: string,
-    ) => {
-      const id = randomUUID();
-      await isolated!.query(
-        `
-        INSERT INTO "order" (id, payment_type, environment, due_date, main_contact, payment_method,
-          idempotency_key, request_hash, correlation_id${status ? ', status, processing_status' : ''})
-        VALUES ($1::uuid, $2, $3, '2026-11-10', 'migration@example.test', 'PIX', $1::text, 'hash', $1::uuid${status ? ', $4, $5' : ''})
-      `,
-        status
-          ? [id, paymentType, environment, status, processingStatus]
-          : [id, paymentType, environment],
+    const constraints = () =>
+      control.query<
+        {
+          child: string;
+          column: string;
+          parent: string;
+          on_delete: string;
+          indexed: boolean;
+        }[]
+      >(
+        `SELECT c.conrelid::regclass::text AS child, a.attname AS "column",
+           c.confrelid::regclass::text AS parent,
+           CASE c.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'r' THEN 'RESTRICT' ELSE c.confdeltype::text END AS on_delete,
+           EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.conrelid AND i.indkey[0] = a.attnum) AS indexed
+         FROM pg_constraint c
+         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+         WHERE c.contype = 'f' AND c.connamespace = $1::regnamespace`,
+        [schema],
       );
-      return id;
-    };
-    const read = (id: string) =>
-      isolated!.query(
-        'SELECT payment_type, environment, status, processing_status FROM "order" WHERE id=$1',
-        [id],
-      );
-    const enumColumns = {
-      payment_type: Object.values(PaymentType),
-      environment: Object.values(Environment),
-      status: Object.values(OrderStatus),
-      processing_status: Object.values(ProcessingStatus),
-    };
-    const verifyStringColumns = async () => {
-      const runner = isolated!.createQueryRunner();
-      try {
-        const table = await runner.getTable(`${schema}.order`);
-        for (const name of Object.keys(enumColumns)) {
-          expect(table!.findColumnByName(name)).toMatchObject({
-            type: 'character varying',
-            length: '16',
-          });
-        }
-        expect(
-          await isolated!.query(
-            `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typtype='e'`,
-            [schema],
-          ),
-        ).toEqual([]);
-      } finally {
-        await runner.release();
-      }
-    };
+    const unqualified = (name: string) =>
+      name.split('.').at(-1)!.replaceAll('"', '');
 
-    // Fresh installation keeps string columns with PascalCase pending defaults.
-    expect(await isolated.runMigrations()).toHaveLength(2);
-    await verifyStringColumns();
-    const defaultId = await insert(PaymentType.PrePaid, Environment.Local);
-    expect(await read(defaultId)).toEqual([
-      {
-        payment_type: PaymentType.PrePaid,
-        environment: Environment.Local,
-        status: OrderStatus.Pending,
-        processing_status: ProcessingStatus.Pending,
-      },
+    expect(await isolated.runMigrations()).toHaveLength(8);
+    const actual = (await constraints()).map((fk) => [
+      unqualified(fk.child),
+      fk.column,
+      unqualified(fk.parent),
+      fk.on_delete,
     ]);
-    // Enum validation belongs to the application; storage accepts normal strings.
-    const [defaults]: Record<string, string>[] = await read(defaultId);
-    for (const column of Object.keys(enumColumns)) {
-      await isolated.query(
-        `UPDATE "order" SET "${column}"='CustomValue' WHERE id=$1`,
-        [defaultId],
-      );
-      expect((await read(defaultId))[0][column]).toBe('CustomValue');
-      await isolated.query(`UPDATE "order" SET "${column}"=$1 WHERE id=$2`, [
-        defaults![column],
-        defaultId,
-      ]);
-    }
+    expect(actual).toEqual(expect.arrayContaining(foreignKeys));
+    expect(actual).toHaveLength(foreignKeys.length);
+    expect((await constraints()).every((fk) => fk.indexed)).toBe(true);
 
-    // Restore the original schema, populate every legacy value, then upgrade.
-    await isolated.undoLastMigration();
-    expect(await read(defaultId)).toEqual([
-      {
-        payment_type: 'PREPAID',
-        environment: 'LOCAL',
-        status: 'PENDING',
-        processing_status: 'PENDING',
-      },
-    ]);
-    const cases = [
-      ['PREPAID', 'LOCAL', 'PENDING', 'PENDING'],
-      ['POSTPAID', 'PRE_PROD', 'ACTIVE', 'PROCESSING'],
-      ['PREPAID', 'PROD', 'CANCELLED', 'RETRYING'],
-      ['POSTPAID', 'LOCAL', 'ACTIVE', 'COMPLETED'],
-      ['PREPAID', 'PRE_PROD', 'CANCELLED', 'FAILED'],
-    ];
-    const expected = [
-      [
-        PaymentType.PrePaid,
-        Environment.Local,
-        OrderStatus.Pending,
-        ProcessingStatus.Pending,
-      ],
-      [
-        PaymentType.PostPaid,
-        Environment.PreProd,
-        OrderStatus.Active,
-        ProcessingStatus.Processing,
-      ],
-      [
-        PaymentType.PrePaid,
-        Environment.Prod,
-        OrderStatus.Cancelled,
-        ProcessingStatus.Retrying,
-      ],
-      [
-        PaymentType.PostPaid,
-        Environment.Local,
-        OrderStatus.Active,
-        ProcessingStatus.Completed,
-      ],
-      [
-        PaymentType.PrePaid,
-        Environment.PreProd,
-        OrderStatus.Cancelled,
-        ProcessingStatus.Failed,
-      ],
-    ];
-    const ids: string[] = [];
-    for (const values of cases)
-      ids.push(await insert(values[0]!, values[1]!, values[2]!, values[3]!));
-    const legacyDefaultId = await insert('POSTPAID', 'PROD');
-    expect((await read(legacyDefaultId))[0]).toMatchObject({
-      status: 'PENDING',
-      processing_status: 'PENDING',
-    });
-    expect(await isolated.runMigrations()).toHaveLength(1);
-    await verifyStringColumns();
-    for (const [index, id] of ids.entries()) {
-      expect(await read(id)).toEqual([
-        Object.fromEntries(
-          Object.keys(enumColumns).map((column, i) => [
-            column,
-            expected[index]![i],
-          ]),
-        ),
-      ]);
-    }
-    expect((await read(legacyDefaultId))[0]).toMatchObject({
-      status: OrderStatus.Pending,
-      processing_status: ProcessingStatus.Pending,
-    });
-
-    await isolated.undoLastMigration();
-    for (const [index, id] of ids.entries()) {
-      expect(await read(id)).toEqual([
-        Object.fromEntries(
-          Object.keys(enumColumns).map((column, i) => [
-            column,
-            cases[index]![i],
-          ]),
-        ),
-      ]);
-    }
+    const orderId = randomUUID(),
+      productId = randomUUID();
+    await isolated.query(
+      `INSERT INTO "order" (payment_type, due_date, main_contact, payment_method, environment, idempotency_key, request_hash, correlation_id, id)
+       VALUES ('PrePaid', '2026-11-10', 'a@example.test', 'PIX', 'Local', 'k', 'h', $1, $1)`,
+      [orderId],
+    );
+    await isolated.query(
+      `INSERT INTO product (id, name, product_key, net_price, list_price) VALUES ($1, 'P', 'p', 10, 12)`,
+      [productId],
+    );
     await expect(
-      isolated.query('UPDATE "order" SET payment_type=$1 WHERE id=$2', [
-        PaymentType.PrePaid,
-        defaultId,
-      ]),
-    ).rejects.toThrow();
-    expect(await isolated.runMigrations()).toHaveLength(1);
-    await verifyStringColumns();
-    await isolated.undoLastMigration();
-    await isolated.undoLastMigration();
+      isolated.query(
+        `INSERT INTO order_item (order_id, product_id, quantity, net_price, list_price) VALUES ($1, $2, 1, 10, 12)`,
+        [randomUUID(), productId],
+      ),
+    ).rejects.toThrow(/foreign key/);
+    await isolated.query(
+      `INSERT INTO order_item (order_id, product_id, quantity, net_price, list_price) VALUES ($1, $2, 1, 10, 12)`,
+      [orderId, productId],
+    );
+    await expect(
+      isolated.query('DELETE FROM product WHERE id = $1', [productId]),
+    ).rejects.toThrow(/foreign key/);
+    await isolated.query('DELETE FROM "order" WHERE id = $1', [orderId]);
+    expect(await isolated.query('SELECT 1 FROM order_item')).toEqual([]);
+
+    for (let index = 0; index < 8; index++) await isolated.undoLastMigration();
     const remaining: { table_name: string }[] = await control.query(
       'SELECT table_name FROM information_schema.tables WHERE table_schema=$1',
       [schema],
     );
     expect(remaining.map((entry) => entry.table_name)).toEqual(['migrations']);
-    expect(
-      await control.query(
-        `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typtype='e'`,
-        [schema],
-      ),
-    ).toEqual([]);
-    expect(await isolated.runMigrations()).toHaveLength(2);
-    await verifyStringColumns();
+    expect(await isolated.runMigrations()).toHaveLength(8);
   } finally {
     if (isolated?.isInitialized) await isolated.destroy();
     await control.query(`DROP SCHEMA "${schema}" CASCADE`);

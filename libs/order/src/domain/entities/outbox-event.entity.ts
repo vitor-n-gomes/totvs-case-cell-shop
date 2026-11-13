@@ -1,9 +1,26 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  type Relation,
+} from 'typeorm';
+import { OrderEntity } from './order.entity';
 
 @Entity('outbox_events')
 export class OutboxEventEntity {
   @PrimaryGeneratedColumn('uuid') id!: string;
-  @Column('uuid', { name: 'order_id' }) orderId!: string;
+  @Index('idx_outbox_events_order_id')
+  @Column('uuid', { name: 'order_id' })
+  orderId!: string;
+  @ManyToOne(() => OrderEntity, (order) => order.outboxEvents, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
+  @JoinColumn({ name: 'order_id' })
+  order?: Relation<OrderEntity>;
   @Column('varchar') topic!: string;
   @Column('jsonb') payload!: Record<string, unknown>;
   @Column('varchar', { default: 'PENDING' }) status!: 'PENDING' | 'PROCESSED';

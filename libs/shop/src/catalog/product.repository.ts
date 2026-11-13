@@ -9,6 +9,7 @@ export class ProductRepository {
     @InjectRepository(ProductEntity)
     private readonly products: Repository<ProductEntity>,
   ) {}
+  
   findAll(): Promise<ProductEntity[]> {
     return this.products.find({ order: { productKey: 'ASC' } });
   }

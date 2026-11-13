@@ -1,4 +1,14 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  type Relation,
+} from 'typeorm';
+import { ReservationEntity } from '@app/shop/entities';
+import { OrderItemEntity } from './order-item.entity';
+import { IdempotencyLogEntity } from './idempotency-log.entity';
+import { OutboxEventEntity } from './outbox-event.entity';
 import {
   Environment,
   OrderStatus,
@@ -44,4 +54,13 @@ export class OrderEntity {
   @Column('uuid', { name: 'correlation_id' }) correlationId!: string;
   @Column('timestamptz', { name: 'created_at', default: () => 'now()' })
   createdAt!: Date;
+
+  @OneToMany(() => OrderItemEntity, (item) => item.order)
+  items?: Relation<OrderItemEntity>[];
+  @OneToMany(() => ReservationEntity, (reservation) => reservation.order)
+  reservations?: Relation<ReservationEntity>[];
+  @OneToMany(() => IdempotencyLogEntity, (log) => log.order)
+  idempotencyLogs?: Relation<IdempotencyLogEntity>[];
+  @OneToMany(() => OutboxEventEntity, (event) => event.order)
+  outboxEvents?: Relation<OutboxEventEntity>[];
 }
