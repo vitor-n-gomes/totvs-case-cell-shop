@@ -33,7 +33,20 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
     ssl: config.get<boolean>('KAFKA_SSL', false),
     sasl,
     logLevel: logLevel.ERROR,
-    logCreator: () => () => logger.error('kafka.client.error'),
+
+    logCreator:
+      () =>
+      ({ log }) => {
+        const { message, error, groupId } = log as {
+          message?: string;
+          error?: string;
+          groupId?: string;
+        };
+        const entry = { msg: 'kafka.client.error', message, error, groupId };
+        
+        if (error?.includes('rebalancing')) logger.warn(entry);
+        else logger.error(entry);
+      },
   };
 }
 export function kafkaConsumerOptions(

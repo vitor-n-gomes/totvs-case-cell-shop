@@ -1,6 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AppLogger } from '@app/platform/logging/app-logger';
-import { CheckoutInitiatedHandler } from '../usecases/event-handlers/checkout-initiated.handler';
 import { ReservationExpiredHandler } from '../usecases/event-handlers/reservation-expired.handler';
 import { OrderActivatedHandler } from './order-activated.handler';
 import { EventBus } from './event.bus';
@@ -13,7 +12,6 @@ import { EventBus } from './event.bus';
 export class HandlersRegistry implements OnModuleInit {
   constructor(
     private readonly logger: AppLogger,
-    private readonly checkoutInitiatedHandler: CheckoutInitiatedHandler,
     private readonly reservationExpiredHandler: ReservationExpiredHandler,
     private readonly orderActivatedHandler: OrderActivatedHandler,
     private readonly eventBus: EventBus,
@@ -32,8 +30,8 @@ export class HandlersRegistry implements OnModuleInit {
    * @param eventBus - The EventBus instance to register handlers with
    */
   registerAll(eventBus: EventBus): void {
+    // CheckoutInitiatedHandler is not an EventHandler; ProcessOrderEventUseCase invokes it directly.
     const handlers = [
-      this.checkoutInitiatedHandler,
       this.reservationExpiredHandler,
       this.orderActivatedHandler,
     ];
