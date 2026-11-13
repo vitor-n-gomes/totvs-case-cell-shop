@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
+import { faker } from '@faker-js/faker';
 import { config } from 'dotenv';
 import { DataSource, EntityManager } from 'typeorm';
 import { createClient } from 'redis';
@@ -18,25 +19,38 @@ interface SeedProduct {
 
 const LIMITED_PRODUCT_KEY = 'CASE-LIMITED-001';
 
+// Keep catalog names reproducible across runs with the pinned Faker version.
+faker.seed(42);
+
+function createProductName(style: string): string {
+  const model = faker.helpers.arrayElement([
+    'iPhone 16',
+    'Samsung Galaxy S25',
+    'Google Pixel 9',
+  ]);
+  const color = faker.helpers.arrayElement(['Black', 'Blue', 'Pink', 'Clear']);
+  return `${style} phone case for ${model} - ${color}`;
+}
+
 // Prices are integer cents.
 const catalog: SeedProduct[] = [
   {
     id: '11111111-1111-4111-8111-111111111111',
-    name: 'Clear phone case',
+    name: createProductName('Clear'),
     productKey: 'clear-case',
     netPrice: 2990,
     listPrice: 3990,
   },
   {
     id: '22222222-2222-4222-8222-222222222222',
-    name: 'Silicone phone case',
+    name: createProductName('Silicone'),
     productKey: 'silicone-case',
     netPrice: 3990,
     listPrice: 4990,
   },
   {
     id: '33333333-3333-4333-8333-333333333333',
-    name: 'Rugged phone case',
+    name: createProductName('Rugged'),
     productKey: 'rugged-case',
     netPrice: 5990,
     listPrice: 7990,
@@ -45,7 +59,7 @@ const catalog: SeedProduct[] = [
 
 const limitedProduct: SeedProduct = {
   id: '44444444-4444-4444-8444-444444444444',
-  name: 'Limited Edition Titanium MagSafe Case',
+  name: createProductName('Limited Edition Titanium MagSafe'),
   productKey: LIMITED_PRODUCT_KEY,
   netPrice: 14990,
   listPrice: 19990,

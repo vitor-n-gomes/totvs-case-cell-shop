@@ -85,7 +85,7 @@ Reinicie somente o consumer com `ERP_FAILURES=2` no ambiente do processo (no Com
 
 Com `SIMULATOR_PERMANENT_FAILURE=erp`, um novo pedido deve ficar `Active` / `Failed`, com evento na DLQ. O estoque já consumido não é reposto automaticamente. Com `ERP_FAILURES=5`, confira o esgotamento em cinco tentativas. Com falha transitória de email, o ERP já concluído não deve repetir a etapa.
 
-Na UI Kafka local (`http://localhost:8080`, serviço opcional `docker compose up -d kafka-ui`), copie um evento válido e republique no mesmo tópico. Mantenha a chave `order_id` e o payload original: a repetição não pode consumir estoque ou repetir etapas concluídas. Envie também um JSON inválido para o contrato: ele deve ir à DLQ com tópico/partição/offset e motivo, sem registrar o payload arbitrário.
+Na UI Kafka local (`http://localhost:8080`, iniciada automaticamente por `npm run infra:up` ou pelo Compose ao subir `http`/`consumer`), copie um evento válido e republique no mesmo tópico. Mantenha a chave `order_id` e o payload original: a repetição não pode consumir estoque ou repetir etapas concluídas. Envie também um JSON inválido para o contrato: ele deve ir à DLQ com tópico/partição/offset e motivo, sem registrar o payload arbitrário.
 
 ## Expiração
 
