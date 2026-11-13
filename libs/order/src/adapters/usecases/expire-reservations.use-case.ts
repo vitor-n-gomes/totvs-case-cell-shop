@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
-import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
+import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
 

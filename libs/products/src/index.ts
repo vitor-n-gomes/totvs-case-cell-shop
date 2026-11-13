@@ -1,2 +1,2 @@
-export { ShopApiModule } from './shop-api.module';
+export { ProductsModule } from './products.module';
 export { InventoryModule } from './inventory/inventory.module';

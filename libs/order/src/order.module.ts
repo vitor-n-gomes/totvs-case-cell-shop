@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { InventoryModule } from '@app/shop/inventory/inventory.module';
+import { InventoryModule } from '@app/products/inventory/inventory.module';
 import { LoggingModule } from '@app/platform/logging/logging.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import { OrderPersistenceModule } from './order-persistence.module';

@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist/libs/shop"
+    "outDir": "../../dist/libs/products"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.spec.ts"]

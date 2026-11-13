@@ -1,8 +1,8 @@
 import { StepName } from '../constants/step-names';
 import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Injectable } from '@nestjs/common';
-import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
-import { InventoryError } from '@app/shop/inventory/inventory-errors';
+import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
+import { InventoryError } from '@app/products/inventory/domain/errors/inventory-errors';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { PermanentActivationError } from '../guards/activation-errors';
 import { RegisteredStep } from '../decorators/activation-step';

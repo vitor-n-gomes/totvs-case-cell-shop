@@ -5,7 +5,7 @@ import { RedisConnection } from '@app/platform/cache/redis-connection';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { AppLogger } from '@app/platform/logging/app-logger';
-import { ProductRepository } from './product.repository';
+import { ProductRepository } from '../../repositories/product.repository';
 
 export const CATALOG_KEY = 'storefront:products';
 export const CATALOG_LOCK = `${CATALOG_KEY}:lock`;
@@ -20,7 +20,7 @@ const productSchema = z.array(
 );
 type ProductView = z.infer<typeof productSchema>[number];
 @Injectable()
-export class GetProducts {
+export class GetProductsUseCase {
   private flight?: Promise<ProductView[]>;
   constructor(
     private readonly products: ProductRepository,

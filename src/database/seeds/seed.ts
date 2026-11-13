@@ -7,7 +7,10 @@ import { DataSource, EntityManager } from 'typeorm';
 import { createClient } from 'redis';
 import { validateEnvironment } from '@app/platform/config/environment';
 import { databaseOptions } from '@app/platform/database/options';
-import { CATALOG_KEY, CATALOG_LOCK } from '@app/shop/catalog/get-products';
+import {
+  CATALOG_KEY,
+  CATALOG_LOCK,
+} from '@app/products/adapters/usecases/get-products.use-case';
 
 interface SeedProduct {
   id: string;

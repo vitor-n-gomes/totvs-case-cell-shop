@@ -12,7 +12,7 @@ import { AppLogger } from '@app/platform/logging/app-logger';
 import { Spans } from '@app/platform/observability/spans';
 import { OrderRepository } from '../repositories/order.repository';
 import { OutboxRepository } from '../repositories/outbox.repository';
-import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
+import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { PermanentActivationError } from './guards/activation-errors';
 import { IdempotencyLogRepository } from '../repositories/idempotency-log.repository';
 import { ActivationContext } from './steps/activation-step';

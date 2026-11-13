@@ -1,5 +1,5 @@
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ShopApiModule } from '@app/shop/shop-api.module';
+import { ProductsModule } from '@app/products/products.module';
 import { OrderModule } from '@app/order/order.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import {
@@ -17,7 +17,7 @@ import { HealthModule } from '@app/platform/health/health.module';
 @Module({
   imports: [
     ConfigurationModule,
-    ShopApiModule,
+    ProductsModule,
     OrderModule,
     ObservabilityModule,
     LoggingModule,

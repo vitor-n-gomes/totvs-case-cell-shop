@@ -1,6 +1,7 @@
 import { orderEntities } from '@app/order/domain/entities';
 import { RequestLogEntity } from './request-log.entity';
-import { shopEntities } from '@app/shop/entities';
+import { productEntities } from '@app/products/domain/entities';
+import { inventoryEntities } from '@app/products/inventory/domain/entities';
 import { CreateOrder1794700000001 } from './migrations/1794700000001-create-order';
 import { CreateProduct1794700000002 } from './migrations/1794700000002-create-product';
 import { CreateStock1794700000003 } from './migrations/1794700000003-create-stock';
@@ -30,7 +31,12 @@ export function databaseOptions(url: string): DataSourceOptions {
   return {
     type: 'postgres',
     url,
-    entities: [RequestLogEntity, ...shopEntities, ...orderEntities],
+    entities: [
+      RequestLogEntity,
+      ...productEntities,
+      ...inventoryEntities,
+      ...orderEntities,
+    ],
     migrations,
     synchronize: false,
     migrationsRun: false,

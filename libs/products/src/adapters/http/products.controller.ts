@@ -7,8 +7,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '@app/platform/http/error-response.dto';
-import { GetProducts } from '../../catalog/get-products';
-import { ProductDto } from './product.dto';
+import { GetProductsUseCase } from '../usecases/get-products.use-case';
+import { ProductDto } from '../../domain/dto/product.dto';
 @ApiTags('storefront')
 @ApiHeader({
   name: 'x-correlation-id',
@@ -17,8 +17,8 @@ import { ProductDto } from './product.dto';
 })
 @ApiServiceUnavailableResponse({ type: ErrorResponseDto })
 @Controller()
-export class CatalogController {
-  constructor(private readonly products: GetProducts) {}
+export class ProductsController {
+  constructor(private readonly products: GetProductsUseCase) {}
 
   @Get('products')
   @ApiOperation({ operationId: 'ShopController_getProducts' })

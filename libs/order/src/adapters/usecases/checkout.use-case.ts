@@ -16,7 +16,7 @@ import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
 import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
-import { StockRepository } from '@app/shop/inventory/stock.repository';
+import { StockRepository } from '@app/products/inventory/repositories/stock.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { OutboxRepository } from '../../repositories/outbox.repository';
 import { createEventMeta } from '../../messaging/order-event';

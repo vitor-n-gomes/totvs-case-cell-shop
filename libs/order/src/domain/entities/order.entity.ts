@@ -7,7 +7,7 @@ import {
   type Relation,
   UpdateDateColumn,
 } from 'typeorm';
-import { ReservationEntity } from '@app/shop/entities';
+import { ReservationEntity } from '@app/products/inventory/domain/entities';
 import { OrderItemEntity } from './order-item.entity';
 import { IdempotencyLogEntity } from './idempotency-log.entity';
 import { OutboxEventEntity } from './outbox-event.entity';

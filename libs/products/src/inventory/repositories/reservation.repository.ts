@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
-import { ReservationEntity, StockEntity } from '../entities';
-import { InventoryError, ReservationExpiredError } from './inventory-errors';
+import { ReservationEntity, StockEntity } from '../domain/entities';
+import {
+  InventoryError,
+  ReservationExpiredError,
+} from '../domain/errors/inventory-errors';
 
 @Injectable()
 export class ReservationRepository {

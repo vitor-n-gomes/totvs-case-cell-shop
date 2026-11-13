@@ -15,7 +15,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "paths": {
-      "@app/shop/*": ["./libs/shop/src/*"],
+      "@app/products/*": ["./libs/products/src/*"],
       "@app/platform/*": ["./libs/platform/src/*"],
       "@app/order/*": ["./libs/order/src/*"]
     },

@@ -5,7 +5,8 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
-import { ProductEntity, ReservationEntity, StockEntity } from '../entities';
+import { ProductEntity } from '@app/products/domain/entities';
+import { ReservationEntity, StockEntity } from '../domain/entities';
 
 export interface ReservedItem {
   productId: string;

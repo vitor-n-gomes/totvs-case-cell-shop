@@ -10,13 +10,13 @@
     "tsConfigPath": "apps/http/tsconfig.app.json"
   },
   "projects": {
-    "shop": {
+    "products": {
       "type": "library",
-      "root": "libs/shop",
+      "root": "libs/products",
       "entryFile": "index",
-      "sourceRoot": "libs/shop/src",
+      "sourceRoot": "libs/products/src",
       "compilerOptions": {
-        "tsConfigPath": "libs/shop/tsconfig.lib.json"
+        "tsConfigPath": "libs/products/tsconfig.lib.json"
       }
     },
     "platform": {

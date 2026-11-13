@@ -3,7 +3,7 @@ import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { DataSource } from 'typeorm';
 import { Metrics } from '@app/platform/observability/metrics';
 import { OrderRepository } from '@app/order/repositories/order.repository';
-import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
+import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { EventHandler } from '@app/order/adapters/handlers/event.handler';
 import { OrderEvent } from '@app/order/domain/events';
 
