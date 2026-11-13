@@ -4,6 +4,8 @@ import { QueryRunner } from 'typeorm';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { OrderRepository } from '@app/order/repositories/order.repository';
+import { EventBus } from '@app/order/adapters/handlers/event.bus';
+import { OrderEvent } from '@app/order/domain/events';
 import { StepName } from '../constants/step-names';
 import { OrderCancelledError } from '../guards/activation-errors';
 import { IdempotencyLogRepository } from '../../repositories/idempotency-log.repository';
@@ -19,6 +21,7 @@ export class OnlineActivationStrategy {
     private readonly journal: IdempotencyLogRepository,
     private readonly metrics: Metrics,
     private readonly spans: Spans,
+    private readonly eventBus: EventBus,
   ) {}
   async execute(
     context: ActivationContext,
@@ -48,6 +51,16 @@ export class OnlineActivationStrategy {
           { result: 'consumed' },
           context.consumedReservations ?? 0,
         );
+      await this.eventBus.dispatch({
+        kind: 'order.activated',
+        data: { orderId: context.order.id },
+        meta: {
+          correlationId: context.event.correlation_id,
+          traceId: context.event.trace_id,
+          parentSpanId: context.event.parent_span_id,
+          timestamp: Date.now(),
+        },
+      } as OrderEvent);
     } catch (error) {
       await runner.rollbackTransaction();
       throw error;

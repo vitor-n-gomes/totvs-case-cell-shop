@@ -24,6 +24,27 @@ export {
   OrderStatus,
   ProcessingStatus,
   CHECKOUT_TOPIC,
+  ORDER_CHECKOUT_INITIATED,
+  ORDER_RESERVATION_EXPIRED,
+  ORDER_CHECKOUT_FAILED,
+  ORDER_EVENT_INVALID,
   checkoutEventSchema,
+  reservationExpiredEventSchema,
+  checkoutFailedEventSchema,
+  invalidOrderEventSchema,
+  orderEventSchema,
+  legacyCheckoutEventSchema,
+  normalizeOrderEvent,
 } from './shop';
-export type { CheckoutEvent, CheckoutInput, ProductView } from './shop';
+export type {
+  CheckoutEvent,
+  CheckoutInitiatedEvent,
+  CheckoutEventMeta,
+  EventMeta,
+  ReservationExpiredEvent,
+  CheckoutFailedEvent,
+  InvalidOrderEvent,
+  OrderEvent,
+  CheckoutInput,
+  ProductView,
+} from './shop';

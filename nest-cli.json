@@ -63,6 +63,15 @@
       "compilerOptions": {
         "tsConfigPath": "apps/consumer/tsconfig.app.json"
       }
+    },
+    "scheduler": {
+      "type": "application",
+      "root": "apps/scheduler",
+      "entryFile": "main",
+      "sourceRoot": "apps/scheduler",
+      "compilerOptions": {
+        "tsConfigPath": "apps/scheduler/tsconfig.app.json"
+      }
     }
   }
 }

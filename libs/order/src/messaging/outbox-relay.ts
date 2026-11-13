@@ -9,6 +9,7 @@ import {
 } from '@app/platform/observability/context';
 import { Spans } from '@app/platform/observability/spans';
 import { OutboxRepository } from '../repositories/outbox.repository';
+import { normalizeOrderEvent } from '@app/contracts';
 
 @Injectable()
 export class OutboxRelay implements BeforeApplicationShutdown {
@@ -42,11 +43,13 @@ export class OutboxRelay implements BeforeApplicationShutdown {
     // The bounded batch publishes concurrently so later events do not wait out their leases.
     const results = await Promise.allSettled(
       events.map(async (event) => {
-        const correlationId = String(event.payload.correlation_id);
+        const payload = normalizeOrderEvent(event.payload);
+        if (!payload) throw new Error('Invalid order event in outbox');
+        const correlationId = payload.meta.correlation_id;
         const context = {
           ...newTraceContext(correlationId),
-          trace_id: String(event.payload.trace_id),
-          span_id: String(event.payload.parent_span_id),
+          trace_id: payload.meta.trace_id,
+          span_id: payload.meta.parent_span_id,
           order_id: event.orderId,
         };
         await executionContext.run(context, async () => {
@@ -55,7 +58,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
               this.messaging.publish(
                 event.topic,
                 event.orderId,
-                event.payload,
+                payload,
                 { 'x-correlation-id': correlationId },
               ),
             );

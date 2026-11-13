@@ -8,6 +8,7 @@ export class HealthService implements BeforeApplicationShutdown {
   requireKafka = true;
   checkoutConsumerReady: boolean | undefined;
   consumerReady: boolean | undefined;
+  schedulerReady: boolean | undefined;
   private shuttingDown = false;
 
   constructor(
@@ -33,6 +34,8 @@ export class HealthService implements BeforeApplicationShutdown {
     if (!this.requireKafka) delete checks.kafka;
     if (this.checkoutConsumerReady !== undefined)
       checks.checkoutConsumer = this.checkoutConsumerReady ? 'up' : 'down';
+    if (this.schedulerReady !== undefined)
+      checks.scheduler = this.schedulerReady ? 'up' : 'down';
     return {
       ready:
         !this.shuttingDown &&

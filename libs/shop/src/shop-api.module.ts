@@ -5,7 +5,11 @@ import { ObservabilityModule } from '@app/platform/observability/observability.m
 import { ShopPersistenceModule } from './shop-persistence.module';
 import { GetProducts } from './catalog/get-products';
 import { CatalogController } from './adapters/http/catalog.controller';
-
+/** TODO
+ * lets break down the shop-api module and create a clear structure for the products,
+ * ensuring that each part of the module has a well-defined responsibility.
+ * 
+ */
 @Module({
   imports: [
     ShopPersistenceModule,

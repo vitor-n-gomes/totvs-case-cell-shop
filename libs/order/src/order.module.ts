@@ -4,8 +4,11 @@ import { LoggingModule } from '@app/platform/logging/logging.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import { OrderPersistenceModule } from './order-persistence.module';
 import { OrderController } from './adapters/http/order.controller';
-import { Checkout } from './adapters/usecases/checkout';
+import { CheckoutUseCase } from './adapters/usecases/checkout.use-case';
 import { GetOrderStatusUseCase } from './adapters/usecases/get-order-status.use-case';
+import { EventBus } from './adapters/handlers/event.bus';
+import { HandlersRegistry } from './adapters/handlers/handlers.registry';
+
 @Module({
   imports: [
     OrderPersistenceModule,
@@ -14,7 +17,12 @@ import { GetOrderStatusUseCase } from './adapters/usecases/get-order-status.use-
     ObservabilityModule,
   ],
   controllers: [OrderController],
-  providers: [Checkout, GetOrderStatusUseCase],
-  exports: [Checkout, GetOrderStatusUseCase],
+  providers: [CheckoutUseCase, GetOrderStatusUseCase, EventBus, HandlersRegistry],
+  exports: [
+    CheckoutUseCase,
+    GetOrderStatusUseCase,
+    EventBus,
+    HandlersRegistry,
+  ],
 })
 export class OrderModule {}

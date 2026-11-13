@@ -1,7 +1,7 @@
 import { CatalogController } from '@app/shop/adapters/http/catalog.controller';
 import { OrderController } from '@app/order/adapters/http/order.controller';
 import { GetProducts } from '@app/shop/catalog/get-products';
-import { Checkout } from '@app/order/adapters/usecases/checkout';
+import { CheckoutUseCase } from '@app/order/adapters/usecases/checkout.use-case';
 import { GetOrderStatusUseCase } from '@app/order/adapters/usecases/get-order-status.use-case';
 import 'reflect-metadata';
 import { writeFile } from 'node:fs/promises';
@@ -15,7 +15,7 @@ async function exportDocument(): Promise<void> {
     controllers: [CatalogController, OrderController],
     providers: [
       { provide: GetProducts, useValue: {} },
-      { provide: Checkout, useValue: {} },
+      { provide: CheckoutUseCase, useValue: {} },
       { provide: GetOrderStatusUseCase, useValue: {} },
     ],
   }).compile();

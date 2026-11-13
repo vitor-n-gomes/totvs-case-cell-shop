@@ -2,16 +2,16 @@ import { OrderStatus } from '@app/contracts';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { ReservationRepository } from '@app/shop/inventory/reservation.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
+import { EventBus } from '@app/order/adapters/handlers/event.bus';
+import { OrderEvent } from '@app/order/domain/events';
 
 /**
  * 
- * TODO create a new app for handling scheduled tasks
- *  and this new app should create events that should be consumed by process-order-event.use-case 
- * the events should have the following structure: { kind: string, data: any, meta: any}
  */ 
 @Injectable()
 export class ExpireReservationsUseCase {
@@ -22,6 +22,7 @@ export class ExpireReservationsUseCase {
     private readonly orders: OrderRepository,
     private readonly metrics: Metrics,
     private readonly logger: AppLogger,
+    private readonly eventBus: EventBus,
   ) {}
   @Cron('*/5 * * * *')
   async tick(): Promise<void> {
@@ -50,8 +51,19 @@ export class ExpireReservationsUseCase {
         });
         return count;
       });
-      if (released)
+      if (released) {
         this.metrics.reservations.inc({ result: 'expired' }, released);
+        
+        await this.eventBus.dispatch({
+          kind: 'ORDER_RESERVATION_EXPIRED',
+          data: { data: { order_id: id }, kind: 'ORDER_RESERVATION_EXPIRED' },
+          meta: {
+            correlationId: randomUUID(),
+            traceId: randomBytes(16).toString('hex'),
+            timestamp: Date.now(),
+          }
+        } as any);
+      }
     }
   }
 }

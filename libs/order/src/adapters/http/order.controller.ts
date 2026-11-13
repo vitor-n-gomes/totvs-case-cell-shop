@@ -21,7 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { Checkout } from '../usecases/checkout';
+import { CheckoutUseCase } from '../usecases/checkout.use-case';
 import { GetOrderStatusUseCase } from '../usecases/get-order-status.use-case';
 import { ErrorResponseDto } from '@app/platform/http/error-response.dto';
 import {
@@ -40,7 +40,7 @@ import {
 @Controller()
 export class OrderController {
   constructor(
-    private readonly checkout: Checkout,
+    private readonly checkout: CheckoutUseCase,
     private readonly orders: GetOrderStatusUseCase,
   ) {}
   @Post('checkout')

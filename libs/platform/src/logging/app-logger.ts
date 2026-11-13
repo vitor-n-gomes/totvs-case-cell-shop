@@ -7,7 +7,7 @@ export class AppLogger implements LoggerService {
   private app = 'bootstrap';
   constructor(private readonly output: PinoLogger) {}
 
-  setApp(app: 'http' | 'consumer'): void {
+  setApp(app: 'http' | 'consumer' | 'scheduler'): void {
     this.app = app;
   }
 
@@ -33,7 +33,7 @@ export class AppLogger implements LoggerService {
     this.write('fatal', message, { context });
   }
 
-  startupFailure(app: 'http' | 'consumer', error: unknown): void {
+  startupFailure(app: 'http' | 'consumer' | 'scheduler', error: unknown): void {
     this.setApp(app);
     this.info(`${app}.startup.failed`, {
       error:
@@ -65,3 +65,4 @@ export class AppLogger implements LoggerService {
     );
   }
 }
+

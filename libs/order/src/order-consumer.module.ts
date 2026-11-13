@@ -21,6 +21,12 @@ import { ActivationStepRegistry } from './activation/registries/activation-step.
 import { OnlineActivationStrategy } from './activation/strategies/online-activation.strategy';
 import { OutboxRelay } from './messaging/outbox-relay';
 import { ExpireReservationsUseCase } from './adapters/usecases/expire-reservations.use-case';
+import { EventBus } from './adapters/handlers/event.bus';
+import { HandlersRegistry } from './adapters/handlers/handlers.registry';
+import { CheckoutInitiatedHandler } from './adapters/usecases/event-handlers/checkout-initiated.handler';
+import { ReservationExpiredHandler } from './adapters/usecases/event-handlers/reservation-expired.handler';
+import { OrderActivatedHandler } from './adapters/handlers/order-activated.handler';
+
 @Module({
   imports: [
     OrderPersistenceModule,
@@ -43,6 +49,18 @@ import { ExpireReservationsUseCase } from './adapters/usecases/expire-reservatio
     ActivationStepRegistry,
     OnlineActivationStrategy,
     OutboxRelay,
+    EventBus,
+    HandlersRegistry,
+    CheckoutInitiatedHandler,
+    ReservationExpiredHandler,
+    OrderActivatedHandler,
+  ],
+  exports: [
+    ProcessOrderEventUseCase,
+    EventBus,
+    HandlersRegistry,
+    ExpireReservationsUseCase,
+    OrderMessaging,
   ],
 })
 export class OrderConsumerModule {}

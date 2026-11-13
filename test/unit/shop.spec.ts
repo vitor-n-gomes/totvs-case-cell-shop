@@ -8,7 +8,10 @@ import {
   PaymentType,
   Environment,
 } from '@app/contracts';
-import { checkoutHash } from '@app/order/adapters/usecases/checkout';
+import {
+  CheckoutUseCase,
+  checkoutHash,
+} from '@app/order/adapters/usecases/checkout.use-case';
 import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import {
   sanitizePayload,
@@ -23,6 +26,11 @@ import {
   IntegrationTimeoutError,
 } from '@app/order/activation/guards/activation-errors';
 import { DataSource } from 'typeorm';
+import { StockRepository } from '@app/shop/inventory/stock.repository';
+import { OrderRepository } from '@app/order/repositories/order.repository';
+import { OutboxRepository } from '@app/order/repositories/outbox.repository';
+import { Spans } from '@app/platform/observability/spans';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 const input = (): CheckoutInput => ({
   paymentType: PaymentType.PrePaid,
@@ -98,6 +106,44 @@ describe('Checkout contracts', () => {
         parent_span_id: 'b'.repeat(16),
       }).success,
     ).toBe(false);
+  });
+});
+describe('Checkout failures', () => {
+  const createUseCase = (transaction: jest.Mock) => {
+    const metrics = new Metrics();
+    const useCase = new CheckoutUseCase(
+      { transaction } as unknown as DataSource,
+      {} as StockRepository,
+      {} as OrderRepository,
+      {} as OutboxRepository,
+      new ConfigService(),
+      metrics,
+      new Spans({ info: jest.fn() } as unknown as AppLogger),
+    );
+    return { useCase, metrics };
+  };
+  it('preserves unexpected database errors for the global handler', async () => {
+    const failure = Object.assign(new Error('invalid query'), {
+      code: '42601',
+    });
+    const { useCase, metrics } = createUseCase(
+      jest.fn().mockRejectedValue(failure),
+    );
+    await expect(
+      useCase.execute(input(), 'checkout-key', randomUUID()),
+    ).rejects.toBe(failure);
+    expect(await metrics.registry.metrics()).toContain(
+      'shop_checkout_total{result="rejected"} 1',
+    );
+  });
+  it('maps transient database failures to a retryable response', async () => {
+    const failure = Object.assign(new Error('database connection failed'), {
+      driverError: { code: '08006' },
+    });
+    const { useCase } = createUseCase(jest.fn().mockRejectedValue(failure));
+    await expect(
+      useCase.execute(input(), 'checkout-key', randomUUID()),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
 describe('Request audit', () => {
