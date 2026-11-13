@@ -15,8 +15,8 @@ const productSchema = z.array(
     id: z.uuid(),
     name: z.string(),
     productKey: z.string(),
-    netPrice: z.string().regex(/^\d+\.\d{2}$/),
-    listPrice: z.string().regex(/^\d+\.\d{2}$/),
+    netPrice: z.number(),
+    listPrice: z.number(),
   }),
 );
 @Injectable()
@@ -85,7 +85,7 @@ export class GetProducts {
     const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {
       const token = randomUUID();
-      let locked?: string;
+      let locked: string | null;
       try {
         const cached = await this.read();
         if (cached) return cached;

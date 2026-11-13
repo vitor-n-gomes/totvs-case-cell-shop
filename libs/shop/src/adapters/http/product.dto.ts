@@ -4,7 +4,7 @@ export class ProductDto {
   @ApiProperty() name: string;
   @ApiProperty() productKey: string;
   @ApiProperty({ example: '29.90', pattern: '^\\d+\\.\\d{2}$' })
-  netPrice: string;
+  netPrice: number;
   @ApiProperty({ example: '39.90', pattern: '^\\d+\\.\\d{2}$' })
-  listPrice: string;
+  listPrice: number;
 }
