@@ -19,6 +19,8 @@ import {
 } from './activation/steps/integration-steps';
 import { ActivationStepRegistry } from './activation/registries/activation-step.registry';
 import { OnlineActivationStrategy } from './activation/strategies/online-activation.strategy';
+import { OrderActivationGuard } from './activation/guards/order-activation.guard';
+import { ActivationFailureHandler } from './activation/handlers/activation-failure.handler';
 import { OutboxRelay } from './messaging/outbox-relay';
 import { ExpireReservationsUseCase } from './adapters/usecases/expire-reservations.use-case';
 import { EventBus } from './adapters/handlers/event.bus';
@@ -48,6 +50,8 @@ import { OrderActivatedHandler } from './adapters/handlers/order-activated.handl
     IntegrationSimulator,
     ActivationStepRegistry,
     OnlineActivationStrategy,
+    OrderActivationGuard,
+    ActivationFailureHandler,
     OutboxRelay,
     EventBus,
     HandlersRegistry,

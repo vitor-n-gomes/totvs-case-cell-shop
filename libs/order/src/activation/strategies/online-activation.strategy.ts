@@ -66,7 +66,8 @@ export class OnlineActivationStrategy {
       };
       await this.eventBus.dispatch(activated);
     } catch (error) {
-      await runner.rollbackTransaction();
+      // The transaction is already closed if the failure came after the commit.
+      if (runner.isTransactionActive) await runner.rollbackTransaction();
       throw error;
     }
     for (const name of this.stepNames.slice(2))
