@@ -14,7 +14,7 @@ import {
   ORDER_RESERVATION_EXPIRED,
   ReservationExpiredEvent,
 } from '@app/order/messaging/order-events';
-import { createEventMeta } from '@app/order/messaging/order-event';
+import { createEventMeta } from '@app/order/messaging/event.util';
 import { OrderMessaging } from '../order.messaging';
 
 export const EXPIRATION_BATCH_SIZE = 50;

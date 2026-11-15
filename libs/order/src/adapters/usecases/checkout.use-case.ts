@@ -19,7 +19,7 @@ import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { StockRepository } from '@app/products/inventory/repositories/stock.repository';
-import { createEventMeta } from '../../messaging/order-event';
+import { createEventMeta } from '../../messaging/event.util';
 import { OutboxRepository } from '../../repositories/outbox.repository';
 import { CheckoutGuard } from './guards/checkout.guard';
 

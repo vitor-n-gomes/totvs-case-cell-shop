@@ -6,14 +6,10 @@ import {
   OrderEvent,
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
-  ORDER_CHECKOUT_FAILED,
-  ORDER_EVENT_INVALID,
-  InvalidOrderEvent,
 } from '@app/order/messaging/order-events';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';
-import { createEventMeta } from '@app/order/messaging/order-event';
 import { OrderMessaging } from '../order.messaging';
 import { CheckoutInitiatedHandler } from './event-handlers/checkout-initiated.handler';
 import { ReservationExpiredHandler } from './event-handlers/reservation-expired.handler';
@@ -33,12 +29,12 @@ export class ProcessOrderEventUseCase {
     private readonly config: ConfigService,
     private readonly logger: AppLogger,
     private readonly metrics: Metrics,
-  ) {}
+  ) { }
 
   async handle(payload: unknown, source: EventSource): Promise<void> {
     const event = parseOrderEvent(payload);
     if (!event) {
-      await this.deadLetter(source, 'Invalid event');
+      await this.sendToDlq(payload, source, 'Invalid event payload', 'invalid_dlq');
       return;
     }
 
@@ -54,7 +50,7 @@ export class ProcessOrderEventUseCase {
         parent_span_id: event.meta?.parent_span_id,
       },
       async () => {
-        this.logger.info('checkout.event.received', {
+        this.logger.info('order.event.received', {
           event_id: event.meta?.event_id,
           kind: event.kind,
         });
@@ -62,9 +58,11 @@ export class ProcessOrderEventUseCase {
         try {
           await this.dispatchByKind(event);
         } catch (error) {
-          await this.deadLetter(
+          await this.sendToDlq(
+            event,
             source,
             error instanceof Error ? error.message : 'Unknown error',
+            'dlq',
             orderId,
           );
         }
@@ -81,49 +79,44 @@ export class ProcessOrderEventUseCase {
       case ORDER_RESERVATION_EXPIRED:
         await this.reservationExpired.handle(event);
         break;
-
-      case ORDER_CHECKOUT_FAILED:
-        this.logger.warn('checkout.failed.event.received', {
-          order_id: event.data.order_id,
-          failure: event.data.failure,
-          failed_step: event.data.failed_step,
-        });
-        break;
-
-      case ORDER_EVENT_INVALID:
-        this.logger.error('invalid.event.received', {
-          source_topic: event.data.source_topic,
-          reason: event.data.reason,
-          order_id: event.data.order_id,
-        });
-        break;
     }
   }
 
-  private async deadLetter(
+  private async sendToDlq(
+    payload: unknown,
     source: EventSource,
     reason: string,
+    metricResult: 'dlq' | 'invalid_dlq',
     orderId?: string,
   ): Promise<void> {
     const correlationId =
       executionContext.getStore()?.correlation_id ?? randomUUID();
-    const event: InvalidOrderEvent = {
-      kind: ORDER_EVENT_INVALID,
-      data: {
-        source_topic: source.topic,
-        partition: source.partition,
-        offset: source.offset,
-        reason,
-        order_id: orderId,
-      },
-      meta: createEventMeta(correlationId),
-    };
+
     await this.messaging.publish(
       `${this.config.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
       orderId ?? `${source.topic}:${source.partition}:${source.offset}`,
-      event,
-      { 'x-correlation-id': correlationId },
+      this.toDlqPayload(payload),
+      {
+        'x-correlation-id': correlationId,
+        'x-dlq-reason': reason,
+        'x-source-topic': source.topic,
+        'x-source-partition': String(source.partition),
+        'x-source-offset': source.offset,
+      },
     );
-    this.metrics.processing.inc({ result: 'invalid_dlq' });
+
+    this.metrics.processing.inc({ result: metricResult });
+  }
+
+  private toDlqPayload(payload: unknown): Record<string, unknown> {
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      !Array.isArray(payload)
+    ) {
+      return payload as Record<string, unknown>;
+    }
+
+    return { raw_payload: payload ?? null };
   }
 }

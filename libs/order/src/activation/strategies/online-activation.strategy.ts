@@ -12,7 +12,7 @@ import {
   ORDER_ACTIVATED,
   OrderActivatedEvent,
 } from '@app/order/messaging/order-events';
-import { createEventMeta } from '@app/order/messaging/order-event';
+import { createEventMeta } from '@app/order/messaging/event.util';
 import { StepName } from '../constants/step-names';
 import { OrderCancelledError } from '../guards/activation-errors';
 import { IdempotencyLogRepository } from '../../repositories/idempotency-log.repository';
