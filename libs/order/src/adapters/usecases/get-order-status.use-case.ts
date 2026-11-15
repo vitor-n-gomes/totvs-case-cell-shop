@@ -24,8 +24,8 @@ export class GetOrderStatusUseCase {
       items: items.map(({ productId, quantity, netPrice, listPrice }) => ({
         productId,
         quantity,
-        netPrice,
-        listPrice,
+        netPrice: Number(netPrice),
+        listPrice: Number(listPrice),
       })),
     };
   }
