@@ -39,6 +39,17 @@ services:
       timeout: 3s
       retries: 20
 
+  redis-insight:
+    image: redis/redisinsight:latest
+    ports: ['127.0.0.1:${REDIS_INSIGHT_HOST_PORT:-5540}:5540']
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: 6379
+      RI_REDIS_ALIAS: CaseCellShop
+    volumes: ['redis-insight-data:/data']
+    depends_on:
+      redis: { condition: service_healthy }
+
   kafka:
     image: apache/kafka:3.9.1
     ports: ['127.0.0.1:9092:9092']
@@ -107,6 +118,7 @@ services:
       redis: { condition: service_healthy }
       kafka-init: { condition: service_completed_successfully }
       kafka-ui: { condition: service_started }
+      redis-insight: { condition: service_started }
     healthcheck:
       test:
         [
@@ -130,6 +142,7 @@ services:
       redis: { condition: service_healthy }
       kafka-init: { condition: service_completed_successfully }
       kafka-ui: { condition: service_started }
+      redis-insight: { condition: service_started }
     healthcheck:
       test:
         [
@@ -146,4 +159,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  redis-insight-data:
   kafka-data:
