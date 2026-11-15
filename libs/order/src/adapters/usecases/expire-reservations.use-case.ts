@@ -2,16 +2,22 @@ import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
+import {
+  ORDER_RESERVATION_EXPIRED,
+  ReservationExpiredEvent,
+} from '@app/order/messaging/order-events';
+import { createEventMeta } from '@app/order/messaging/order-event';
+import {
+  executionContext,
+  newTraceContext,
+} from '@app/platform/observability/context';
 
-/**
- *
- */
 @Injectable()
 export class ExpireReservationsUseCase {
   private running = false;
@@ -55,15 +61,18 @@ export class ExpireReservationsUseCase {
       if (released) {
         this.metrics.reservations.inc({ result: 'expired' }, released);
 
-        await this.eventBus.dispatch({
-          kind: 'ORDER_RESERVATION_EXPIRED',
-          data: { data: { order_id: id }, kind: 'ORDER_RESERVATION_EXPIRED' },
-          meta: {
-            correlationId: randomUUID(),
-            traceId: randomBytes(16).toString('hex'),
-            timestamp: Date.now(),
-          },
-        } as any);
+        const context = {
+          ...newTraceContext(randomUUID()),
+          order_id: id,
+        };
+        await executionContext.run(context, () => {
+          const event: ReservationExpiredEvent = {
+            kind: ORDER_RESERVATION_EXPIRED,
+            data: { order_id: id },
+            meta: createEventMeta(context.correlation_id),
+          };
+          return this.eventBus.dispatch(event);
+        });
       }
     }
   }

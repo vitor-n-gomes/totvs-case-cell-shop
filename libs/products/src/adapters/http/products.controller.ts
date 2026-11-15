@@ -18,12 +18,12 @@ import { ProductDto } from '../../domain/dto/product.dto';
 @ApiServiceUnavailableResponse({ type: ErrorResponseDto })
 @Controller()
 export class ProductsController {
-  constructor(private readonly products: GetProductsUseCase) {}
+  constructor(private readonly getProductsUseCase: GetProductsUseCase) {}
 
   @Get('products')
   @ApiOperation({ operationId: 'ShopController_getProducts' })
   @ApiOkResponse({ type: [ProductDto] })
   getProducts(): Promise<ProductDto[]> {
-    return this.products.execute();
+    return this.getProductsUseCase.execute();
   }
 }

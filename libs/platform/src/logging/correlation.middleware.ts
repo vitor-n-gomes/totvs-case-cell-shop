@@ -15,15 +15,16 @@ export class CorrelationMiddleware implements NestMiddleware {
     response.locals.correlationId = correlationId;
     response.setHeader('x-correlation-id', correlationId);
     const started = performance.now();
+    const context = newTraceContext(correlationId);
     response.on('finish', () =>
       this.logger.info('http.request.completed', {
-        correlationId,
+        ...context,
         method: request.method,
         path: request.path,
-        statusCode: response.statusCode,
-        durationMs: Math.round(performance.now() - started),
+        status_code: response.statusCode,
+        duration_ms: Math.round(performance.now() - started),
       }),
     );
-    executionContext.run(newTraceContext(correlationId), next);
+    executionContext.run(context, next);
   }
 }

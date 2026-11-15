@@ -28,7 +28,7 @@ export class GetProductsUseCase {
     private readonly metrics: Metrics,
     private readonly spans: Spans,
     private readonly logger: AppLogger,
-  ) {}
+  ) { }
 
   execute(): Promise<ProductView[]> {
     return this.spans.run('catalog.get', async () => {
@@ -78,7 +78,15 @@ export class GetProductsUseCase {
   private load(): Promise<ProductView[]> {
     return this.spans.run('catalog.repository', async () => {
       try {
-        return await this.products.findAll();
+        const rows = await this.products.findAll();
+
+        return rows.map((product) => ({
+          id: product.id,
+          name: product.name,
+          productKey: product.productKey,
+          netPrice: Number(product.netPrice),
+          listPrice: Number(product.listPrice),
+        }));
       } catch {
         throw new ServiceUnavailableException(
           'Catalog temporarily unavailable',

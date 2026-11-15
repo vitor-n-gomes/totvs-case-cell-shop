@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppLogger } from '@app/platform/logging/app-logger';
-import { OrderEvent } from '@app/order/domain/events';
+import { DomainEvent, OrderEvent } from '@app/order/messaging/order-events';
 import { EventHandler } from './event.handler';
 import { OrderMessaging } from '../order.messaging';
 
@@ -20,7 +20,7 @@ export interface IEventBus {
    * Dispatch an event to all registered handlers
    * @param event - The event to dispatch
    */
-  dispatch(event: OrderEvent): Promise<void>;
+  dispatch(event: DomainEvent): Promise<void>;
 
   /**
    * Publish an event to Kafka
@@ -61,15 +61,15 @@ export class EventBus implements IEventBus {
     const existingHandlers = this.handlers.get(kind)!;
     if (existingHandlers.length > 0) {
       this.logger.warn(`Handler already registered for event kind: ${kind}`, {
-        eventKind: kind,
-        handlerCount: existingHandlers.length + 1,
+        event_kind: kind,
+        handler_count: existingHandlers.length + 1,
       });
     }
 
     existingHandlers.push(handler);
     this.logger.info(`Handler registered for event kind: ${kind}`, {
-      eventKind: kind,
-      handlerCount: existingHandlers.length,
+      event_kind: kind,
+      handler_count: existingHandlers.length,
     });
   }
 
@@ -78,21 +78,19 @@ export class EventBus implements IEventBus {
    * Executes handlers in parallel and handles failures gracefully
    * @param event - The event to dispatch
    */
-  async dispatch(event: OrderEvent): Promise<void> {
+  async dispatch(event: DomainEvent): Promise<void> {
     const handlers = this.handlers.get(event.kind);
 
     if (!handlers || handlers.length === 0) {
       this.logger.warn(`No handlers registered for event kind: ${event.kind}`, {
-        eventKind: event.kind,
-        correlationId: event.meta.correlationId,
+        event_kind: event.kind,
       });
       return;
     }
 
     this.logger.info(`Dispatching event to ${handlers.length} handler(s)`, {
-      eventKind: event.kind,
-      handlerCount: handlers.length,
-      correlationId: event.meta.correlationId,
+      event_kind: event.kind,
+      handler_count: handlers.length,
     });
 
     const handlerPromises = handlers.map((handler) => {
@@ -100,10 +98,9 @@ export class EventBus implements IEventBus {
         .then(() => handler.handle(event))
         .catch((error) => {
           this.logger.error(`Handler failed for event kind: ${event.kind}`, {
-            eventKind: event.kind,
-            correlationId: event.meta.correlationId,
+            event_kind: event.kind,
             error: error instanceof Error ? error.message : String(error),
-            handlerName: handler.constructor.name,
+            handler_name: handler.constructor.name,
           });
           // Do not propagate error - continue processing other handlers
         });
@@ -120,12 +117,11 @@ export class EventBus implements IEventBus {
   async publish(event: OrderEvent, topic?: string): Promise<void> {
     const kafkaTopic =
       topic || this.config.get<string>('KAFKA_ORDER_TOPIC', 'order.events');
-    const key = event.meta.correlationId;
+    const key = event.data.order_id ?? event.meta?.correlation_id ?? event.kind;
 
     this.logger.info(`Publishing event to Kafka`, {
       topic: kafkaTopic,
-      eventKind: event.kind,
-      correlationId: event.meta.correlationId,
+      event_kind: event.kind,
     });
 
     await this.messaging.publish(kafkaTopic, key, event);

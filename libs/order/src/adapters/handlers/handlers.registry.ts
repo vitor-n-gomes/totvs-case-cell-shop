@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { ReservationExpiredHandler } from '../usecases/event-handlers/reservation-expired.handler';
 import { OrderActivatedHandler } from './order-activated.handler';
+import { EventHandler } from './event.handler';
 import { EventBus } from './event.bus';
 
 /**
@@ -31,7 +32,7 @@ export class HandlersRegistry implements OnModuleInit {
    */
   registerAll(eventBus: EventBus): void {
     // CheckoutInitiatedHandler is not an EventHandler; ProcessOrderEventUseCase invokes it directly.
-    const handlers = [
+    const handlers: EventHandler[] = [
       this.reservationExpiredHandler,
       this.orderActivatedHandler,
     ];
@@ -40,26 +41,26 @@ export class HandlersRegistry implements OnModuleInit {
 
     handlers.forEach((handler) => {
       try {
-        eventBus.register(handler as any);
+        eventBus.register(handler);
         registeredCount++;
       } catch (error) {
         this.logger.warn('handlers.registry.registration_failed', {
-          handlerName: handler.constructor.name,
+          handler_name: handler.constructor.name,
           error: error instanceof Error ? error.message : String(error),
         });
       }
     });
 
     this.logger.info('handlers.registry.initialized', {
-      registeredHandlers: registeredCount,
-      totalHandlers: handlers.length,
+      registered_handlers: registeredCount,
+      total_handlers: handlers.length,
     });
 
     if (registeredCount !== handlers.length) {
       this.logger.warn('handlers.registry.incomplete_registration', {
-        registeredHandlers: registeredCount,
-        totalHandlers: handlers.length,
-        failedHandlers: handlers.length - registeredCount,
+        registered_handlers: registeredCount,
+        total_handlers: handlers.length,
+        failed_handlers: handlers.length - registeredCount,
       });
     }
   }

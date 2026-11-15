@@ -14,7 +14,7 @@ export class ProductRepository {
     return this.products
       .createQueryBuilder('product')
       .innerJoin('product.stock', 'stock')
-      .where('stock.physical_quantity - stock.reserved_quantity >= :minimum', {
+      .where('stock.physicalQuantity - stock.reservedQuantity >= :minimum', {
         minimum: 1,
       })
       .orderBy('product.productKey', 'ASC')

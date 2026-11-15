@@ -96,7 +96,7 @@ export class OutboxRepository {
       .execute();
   }
 
-  async backlog(): Promise<{ count: string; age: string }> {
+  async backlog(): Promise<{ count: number; ageSeconds: number }> {
     const row = await this.events
       .createQueryBuilder('event')
       .select('count(*)::text', 'count')
@@ -106,6 +106,6 @@ export class OutboxRepository {
       )
       .where('event.status = :status', { status: 'PENDING' })
       .getRawOne<{ count: string; age: string }>();
-    return row!;
+    return { count: Number(row?.count ?? 0), ageSeconds: Number(row?.age ?? 0) };
   }
 }

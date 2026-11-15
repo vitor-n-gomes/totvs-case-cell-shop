@@ -1,80 +1,31 @@
 import {
-  BadRequestException,
   ConflictException,
   HttpException,
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import { createHash, randomUUID } from 'node:crypto';
+import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import {
   CheckoutInitiatedEvent,
   ORDER_CHECKOUT_INITIATED,
 } from '@app/order/messaging/order-events';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
-import { OrderStatus } from '@app/order/domain/shared/types/order.type';
+import { OrderRepository } from '@app/order/repositories/order.repository';
+import { isTransientDatabaseFailure } from '@app/platform/database/transient-db-error';
+import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { StockRepository } from '@app/products/inventory/repositories/stock.repository';
-import { OrderRepository } from '@app/order/repositories/order.repository';
-import { OutboxRepository } from '../../repositories/outbox.repository';
 import { createEventMeta } from '../../messaging/order-event';
+import { OutboxRepository } from '../../repositories/outbox.repository';
+import { CheckoutGuard } from './guards/checkout.guard';
 
-const transientDatabaseCodes = new Set([
-  '40001',
-  '40P01',
-  '53300',
-  '55P03',
-  '57P01',
-  '57P02',
-  '57P03',
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'ETIMEDOUT',
-  'EPIPE',
-  'EHOSTUNREACH',
-  'ENETUNREACH',
-]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isTransientDatabaseFailure(error: unknown): boolean {
-  const seen = new Set<object>();
-  let current = error;
-  while (isRecord(current) && !seen.has(current)) {
-    seen.add(current);
-    const code = current.code;
-    if (
-      typeof code === 'string' &&
-      (code.startsWith('08') ||
-        code.startsWith('53') ||
-        transientDatabaseCodes.has(code))
-    )
-      return true;
-    current = current.driverError ?? current.cause;
-  }
-  return false;
-}
-
-export function checkoutHash(input: CheckoutInput): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        paymentType: input.paymentType,
-        dueDate: input.dueDate,
-        mainContact: input.mainContact,
-        altContact: input.altContact ?? null,
-        paymentMethod: input.paymentMethod,
-        environment: input.environment,
-        items: [...input.items]
-          .sort((a, b) => a.productId.localeCompare(b.productId))
-          .map(({ productId, quantity }) => ({ productId, quantity })),
-      }),
-    )
-    .digest('hex');
+export interface CheckoutResult {
+  orderId: string;
+  status: OrderStatus.Pending;
 }
 
 @Injectable()
@@ -84,6 +35,7 @@ export class CheckoutUseCase {
     private readonly stock: StockRepository,
     private readonly orders: OrderRepository,
     private readonly outbox: OutboxRepository,
+    private readonly guard: CheckoutGuard,
     private readonly config: ConfigService,
     private readonly metrics: Metrics,
     private readonly spans: Spans,
@@ -91,54 +43,35 @@ export class CheckoutUseCase {
 
   async execute(
     input: CheckoutInput,
-    key: string | undefined,
-    correlationId: string,
-  ): Promise<{ orderId: string; status: OrderStatus.Pending }> {
+    idempotencyKey: string | undefined,
+    correlationId = executionContext.getStore()?.correlation_id ?? randomUUID(),
+  ): Promise<CheckoutResult> {
     try {
-      this.validateRequest(input, key);
-      const requestHash = checkoutHash(input);
-      const result = await this.spans.run('checkout.transaction', () =>
-        this.createOrder(input, key, requestHash, correlationId),
+      this.guard.validate(input, idempotencyKey);
+      const requestHash = this.guard.hashPayload(input);
+
+      const { orderId, replay } = await this.spans.run(
+        'checkout.transaction',
+        () =>
+          this.persistCheckout(
+            input,
+            idempotencyKey,
+            requestHash,
+            correlationId,
+          ),
       );
-      this.metrics.checkout.inc({
-        result: result.replay ? 'replayed' : 'accepted',
-      });
-      if (!result.replay)
-        this.metrics.reservations.inc(
-          { result: 'reserved' },
-          input.items.length,
-        );
-      return { orderId: result.orderId, status: OrderStatus.Pending };
+
+      this.recordSuccessMetrics(replay, input.items.length);
+      return { orderId, status: OrderStatus.Pending };
     } catch (error) {
       this.metrics.checkout.inc({ result: 'rejected' });
-      if (error instanceof HttpException) throw error;
-      if (isTransientDatabaseFailure(error))
-        throw new ServiceUnavailableException(
-          'Checkout temporarily unavailable; retry with the same idempotency key',
-          { cause: error },
-        );
-      throw error;
+      throw this.mapExecutionError(error);
     }
   }
 
-  private validateRequest(
+  private persistCheckout(
     input: CheckoutInput,
-    key: string | undefined,
-  ): asserts key is string {
-    if (!key || !/^[\x21-\x7e]{1,128}$/.test(key))
-      throw new BadRequestException(
-        'Idempotency-Key must contain 1-128 visible ASCII characters',
-      );
-    if (
-      new Set(input.items.map((item) => item.productId)).size !==
-      input.items.length
-    )
-      throw new BadRequestException('Duplicate products are not allowed');
-  }
-
-  private createOrder(
-    input: CheckoutInput,
-    key: string,
+    idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<{ orderId: string; replay: boolean }> {
@@ -148,30 +81,51 @@ export class CheckoutUseCase {
         manager,
         orderId,
         input,
-        key,
+        idempotencyKey,
         requestHash,
         correlationId,
       );
+
       if (!inserted) {
-        const existing = await this.orders.findByKey(manager, key);
-        if (!existing) throw new Error('Order insert failed');
-        if (existing.requestHash !== requestHash)
-          throw new ConflictException(
-            'Idempotency key already used with different content',
-          );
-        return { orderId: existing.id, replay: true };
+        return this.resolveIdempotentReplay(
+          manager,
+          idempotencyKey,
+          requestHash,
+        );
       }
 
-      const items = await this.stock.reserve(
+      const ttlSeconds = this.config.getOrThrow<number>(
+        'RESERVATION_TTL_SECONDS',
+      );
+      const reservedItems = await this.stock.reserve(
         manager,
         orderId,
         input.items,
-        this.config.getOrThrow<number>('RESERVATION_TTL_SECONDS'),
+        ttlSeconds,
       );
-      await this.orders.addItems(manager, orderId, items);
+
+      await this.orders.addItems(manager, orderId, reservedItems);
       await this.appendCheckoutEvent(manager, orderId, correlationId);
+
       return { orderId, replay: false };
     });
+  }
+
+  private async resolveIdempotentReplay(
+    manager: EntityManager,
+    idempotencyKey: string,
+    requestHash: string,
+  ): Promise<{ orderId: string; replay: true }> {
+    const existing = await this.orders.findByKey(manager, idempotencyKey);
+    if (!existing) {
+      throw new Error('Order insert failed');
+    }
+    if (existing.requestHash !== requestHash) {
+      throw new ConflictException(
+        'Idempotency key already used with different content',
+      );
+    }
+    return { orderId: existing.id, replay: true };
   }
 
   private appendCheckoutEvent(
@@ -180,12 +134,11 @@ export class CheckoutUseCase {
     correlationId: string,
   ): Promise<void> {
     const event: CheckoutInitiatedEvent = {
-      data: {
-        kind: ORDER_CHECKOUT_INITIATED,
-        data: { order_id: orderId },
-      },
+      kind: ORDER_CHECKOUT_INITIATED,
+      data: { order_id: orderId },
       meta: { ...createEventMeta(correlationId), attempt: 1 },
     };
+
     return this.outbox.append(
       manager,
       orderId,
@@ -193,5 +146,23 @@ export class CheckoutUseCase {
       event,
       `${orderId}:attempt:1`,
     );
+  }
+
+  private recordSuccessMetrics(replay: boolean, itemCount: number): void {
+    this.metrics.checkout.inc({ result: replay ? 'replayed' : 'accepted' });
+    if (!replay) {
+      this.metrics.reservations.inc({ result: 'reserved' }, itemCount);
+    }
+  }
+
+  private mapExecutionError(error: unknown): unknown {
+    if (error instanceof HttpException) return error;
+    if (isTransientDatabaseFailure(error)) {
+      return new ServiceUnavailableException(
+        'Checkout temporarily unavailable; retry with the same idempotency key',
+        { cause: error },
+      );
+    }
+    return error;
   }
 }

@@ -9,7 +9,7 @@ import {
 } from '@app/platform/observability/context';
 import { Spans } from '@app/platform/observability/spans';
 import { OutboxRepository } from '../repositories/outbox.repository';
-import { normalizeOrderEvent } from '@app/order/messaging/order-events';
+import { parseOrderEvent } from '@app/order/messaging/order-events';
 
 @Injectable()
 export class OutboxRelay implements BeforeApplicationShutdown {
@@ -38,20 +38,21 @@ export class OutboxRelay implements BeforeApplicationShutdown {
 
   async execute(): Promise<void> {
     const before = await this.outbox.backlog();
-    this.metrics.backlog.set(Number(before.count));
-    this.metrics.oldest.set(Number(before.age));
+    this.metrics.backlog.set(before.count);
+    this.metrics.oldest.set(before.ageSeconds);
     await this.messaging.ensureConnected();
     const events = await this.outbox.claim();
     // The bounded batch publishes concurrently so later events do not wait out their leases.
     const results = await Promise.allSettled(
       events.map(async (event) => {
-        const payload = normalizeOrderEvent(event.payload);
+        const payload = parseOrderEvent(event.payload);
         if (!payload) throw new Error('Invalid order event in outbox');
-        const correlationId = payload.meta.correlation_id;
+        if (!payload.meta) throw new Error('Outbox event without meta');
+        const { correlation_id: correlationId, ...trace } = payload.meta;
         const context = {
           ...newTraceContext(correlationId),
-          trace_id: payload.meta.trace_id,
-          span_id: payload.meta.parent_span_id,
+          trace_id: trace.trace_id,
+          span_id: trace.parent_span_id,
           order_id: event.orderId,
         };
         await executionContext.run(context, async () => {
@@ -73,8 +74,8 @@ export class OutboxRelay implements BeforeApplicationShutdown {
     const failure = results.find((result) => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
     const backlog = await this.outbox.backlog();
-    this.metrics.backlog.set(Number(backlog.count));
-    this.metrics.oldest.set(Number(backlog.age));
+    this.metrics.backlog.set(backlog.count);
+    this.metrics.oldest.set(backlog.ageSeconds);
   }
 
   async beforeApplicationShutdown(): Promise<void> {
