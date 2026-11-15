@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { OrderController } from '@app/order/adapters/http/order.controller';
 import { CheckoutUseCase } from '@app/order/adapters/usecases/checkout.use-case';
+import { CheckoutGuard } from '@app/order/adapters/usecases/guards/checkout.guard';
 import { GetOrderStatusUseCase } from '@app/order/adapters/usecases/get-order-status.use-case';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { OutboxRepository } from '@app/order/repositories/outbox.repository';
@@ -66,6 +67,7 @@ export async function createTestApp(): Promise<TestApp> {
     providers: [
       GetProductsUseCase,
       CheckoutUseCase,
+      CheckoutGuard,
       GetOrderStatusUseCase,
       Metrics,
       Spans,

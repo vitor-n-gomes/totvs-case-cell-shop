@@ -356,6 +356,15 @@ Kafka Topic: order.events
 
 ### Fluxo: Checkout Iniciado → Ordem Ativada
 
+O [CheckoutGuard](../libs/order/src/adapters/usecases/guards/checkout.guard.ts)
+valida a chave de idempotência e os produtos duplicados e calcula o hash
+normalizado da requisição. O
+[CheckoutUseCase](../libs/order/src/adapters/usecases/checkout.use-case.ts)
+orquestra a transação, o replay idempotente, a reserva, a outbox e as métricas.
+O helper [isTransientDatabaseFailure](../libs/platform/src/database/transient-db-error.ts)
+identifica falhas transitórias de banco, que o caso de uso converte em HTTP 503,
+orientando uma nova tentativa com a mesma chave.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ HTTP APP                                                        │
