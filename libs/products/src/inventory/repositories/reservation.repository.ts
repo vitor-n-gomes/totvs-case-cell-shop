@@ -27,15 +27,25 @@ export class ReservationRepository {
       .getMany();
   }
 
-  async expiredOrderIds(): Promise<string[]> {
+  /** Oldest-first page of orders still in one of `orderStatuses` holding an expired active reservation. */
+  async expiredOrderIds(
+    orderStatuses: readonly string[],
+    limit: number,
+  ): Promise<string[]> {
     const rows = await this.reservations
       .createQueryBuilder('reservation')
+      .innerJoin('reservation.order', 'order')
+      .select('reservation.orderId', 'order_id')
       .where('reservation.status = :status', { status: 'ACTIVE' })
-      .andWhere('reservation.expiresAt <= clock_timestamp()')
-      .orderBy('reservation.expiresAt')
-      .take(1000)
-      .getMany();
-    return [...new Set(rows.map((row) => row.orderId))].sort();
+      .andWhere('reservation.expiresAt < NOW()')
+      .andWhere('order.status IN (:...orderStatuses)', {
+        orderStatuses: [...orderStatuses],
+      })
+      .groupBy('reservation.orderId')
+      .orderBy('MIN(reservation.expiresAt)', 'ASC')
+      .limit(limit)
+      .getRawMany<{ order_id: string }>();
+    return rows.map((row) => row.order_id);
   }
 
   hasExpired(manager: EntityManager, orderId: string): Promise<boolean> {

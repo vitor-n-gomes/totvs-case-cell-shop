@@ -105,7 +105,7 @@ npm run build
 npm run infra:up
 cp .env.test.example .env.test.local
 npm run test:integration
-docker compose up -d --build --wait http consumer
+docker compose up -d --build --wait http consumer scheduler
 docker compose run --rm migrate npm run seed
 npm run test:smoke
 ```

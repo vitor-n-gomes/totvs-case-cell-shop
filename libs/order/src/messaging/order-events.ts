@@ -78,7 +78,7 @@ const orderEventSchema = z.discriminatedUnion('kind', [
 export type OrderEvent = z.infer<typeof orderEventSchema>;
 
 // In-process only: dispatched through the EventBus after an activation commit.
-const orderActivatedEventSchema = z.strictObject({
+export const orderActivatedEventSchema = z.strictObject({
   kind: z.literal(ORDER_ACTIVATED),
   data: z.strictObject({ order_id: z.uuid() }),
   meta: eventMetaSchema.optional(),

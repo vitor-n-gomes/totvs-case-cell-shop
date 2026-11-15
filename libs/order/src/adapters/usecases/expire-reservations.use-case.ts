@@ -1,79 +1,133 @@
-import { OrderStatus } from '@app/order/domain/shared/types/order.type';
-import { Injectable } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
-import { DataSource } from 'typeorm';
-import { randomUUID } from 'node:crypto';
-import { Metrics } from '@app/platform/observability/metrics';
+import { BeforeApplicationShutdown, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { AppLogger } from '@app/platform/logging/app-logger';
+import {
+  executionContext,
+  TraceContext,
+} from '@app/platform/observability/context';
+import { Spans } from '@app/platform/observability/spans';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
-import { OrderRepository } from '@app/order/repositories/order.repository';
-import { EventBus } from '@app/order/adapters/handlers/event.bus';
+import { EXPIRABLE_ORDER_STATUSES } from '@app/order/domain/shared/types/order.type';
 import {
   ORDER_RESERVATION_EXPIRED,
   ReservationExpiredEvent,
 } from '@app/order/messaging/order-events';
 import { createEventMeta } from '@app/order/messaging/order-event';
-import {
-  executionContext,
-  newTraceContext,
-} from '@app/platform/observability/context';
+import { OrderMessaging } from '../order.messaging';
 
+export const EXPIRATION_BATCH_SIZE = 50;
+const INTERVAL_NAME = 'scheduler.reservation_expiration';
+
+/**
+ * Anemic producer: finds orders whose reservation expired and publishes
+ * ORDER_RESERVATION_EXPIRED. It never changes order status or stock; the
+ * consumer's ReservationExpiredHandler owns the idempotent release.
+ */
 @Injectable()
-export class ExpireReservationsUseCase {
-  private running = false;
-  constructor(
-    private readonly database: DataSource,
-    private readonly reservations: ReservationRepository,
-    private readonly orders: OrderRepository,
-    private readonly metrics: Metrics,
-    private readonly logger: AppLogger,
-    private readonly eventBus: EventBus,
-  ) {}
+export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
+  private isRunning = false;
+  private stopped = false;
+  private flight?: Promise<void>;
+  private readonly topic: string;
 
-  @Cron('*/5 * * * *')
-  async tick(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      await this.execute();
-    } catch {
-      this.logger.error('reservations.cleanup.failed');
-    } finally {
-      this.running = false;
-    }
+  constructor(
+    private readonly reservations: ReservationRepository,
+    private readonly messaging: OrderMessaging,
+    private readonly config: ConfigService,
+    private readonly registry: SchedulerRegistry,
+    private readonly spans: Spans,
+    private readonly logger: AppLogger,
+  ) {
+    this.topic = config.getOrThrow<string>('CHECKOUT_TOPIC');
   }
 
-  async execute(): Promise<void> {
-    for (const id of await this.reservations.expiredOrderIds()) {
-      const released = await this.database.transaction(async (manager) => {
-        const order = await this.orders.lock(manager, id);
-        if (
-          order?.status !== OrderStatus.Pending ||
-          !(await this.reservations.hasExpired(manager, id))
-        )
-          return 0;
-        const count = await this.reservations.release(manager, id);
-        await this.orders.update(manager, id, {
-          status: OrderStatus.Cancelled,
-        });
-        return count;
-      });
-      if (released) {
-        this.metrics.reservations.inc({ result: 'expired' }, released);
+  /** Called by the scheduler entrypoint once logging is bound to the app. */
+  start(): void {
+    if (this.registry.doesExist('interval', INTERVAL_NAME)) return;
+    const intervalMs = this.config.getOrThrow<number>('SCHEDULER_INTERVAL_MS');
+    this.registry.addInterval(
+      INTERVAL_NAME,
+      setInterval(() => void this.tick(), intervalMs),
+    );
+    this.logger.info('scheduler.expiration.started', {
+      interval_ms: intervalMs,
+    });
+    void this.tick();
+  }
 
-        const context = {
-          ...newTraceContext(randomUUID()),
-          order_id: id,
-        };
-        await executionContext.run(context, () => {
+  async tick(): Promise<void> {
+    // A slow cycle must not overlap the next interval.
+    if (this.stopped || this.isRunning) return;
+    this.isRunning = true;
+    this.flight = this.execute()
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        this.logger.error('scheduler.expiration.cycle_failed', {
+          error_type: error instanceof Error ? error.name : 'UnknownError',
+        });
+      })
+      .finally(() => {
+        this.isRunning = false;
+        this.flight = undefined;
+      });
+    await this.flight;
+  }
+
+  async execute(): Promise<number> {
+    const orderIds = await this.reservations.expiredOrderIds(
+      EXPIRABLE_ORDER_STATUSES,
+      EXPIRATION_BATCH_SIZE,
+    );
+    if (!orderIds.length) return 0;
+    await this.messaging.ensureConnected();
+
+    let published = 0;
+    for (const orderId of orderIds) {
+      if (this.stopped) break;
+      if (await this.publishExpiration(orderId)) published++;
+    }
+    this.logger.info('scheduler.expiration.cycle', {
+      found: orderIds.length,
+      published,
+    });
+    return published;
+  }
+
+  private publishExpiration(orderId: string): Promise<boolean> {
+    const context: TraceContext = {
+      correlation_id: randomUUID(),
+      order_id: orderId,
+      trace_id: randomBytes(16).toString('hex'),
+      span_id: randomBytes(8).toString('hex'),
+    };
+    return executionContext.run(context, async () => {
+      try {
+        await this.spans.run('scheduler.publish_expiration', () => {
           const event: ReservationExpiredEvent = {
             kind: ORDER_RESERVATION_EXPIRED,
-            data: { order_id: id },
+            data: { order_id: orderId },
             meta: createEventMeta(context.correlation_id),
           };
-          return this.eventBus.dispatch(event);
+          return this.messaging.publish(this.topic, orderId, event, {
+            'x-correlation-id': context.correlation_id,
+          });
         });
+        return true;
+      } catch (error) {
+        this.logger.warn('scheduler.expiration.publish_failed', {
+          error_type: error instanceof Error ? error.name : 'UnknownError',
+        });
+        return false;
       }
-    }
+    });
+  }
+
+  async beforeApplicationShutdown(): Promise<void> {
+    this.stopped = true;
+    if (this.registry.doesExist('interval', INTERVAL_NAME))
+      this.registry.deleteInterval(INTERVAL_NAME);
+    await this.flight;
   }
 }

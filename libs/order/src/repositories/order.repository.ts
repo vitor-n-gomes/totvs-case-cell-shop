@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, QueryRunner, Repository } from 'typeorm';
 import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
 import { OrderEntity, OrderItemEntity } from '../domain/entities';
+import { OrderStatus } from '../domain/shared/types/order.type';
 
 type OrderItemInput = Pick<
   OrderItemEntity,
@@ -101,6 +102,24 @@ export class OrderRepository {
     changes: OrderChanges,
   ): Promise<void> {
     await manager.getRepository(OrderEntity).update({ id }, changes);
+  }
+
+  /** Conditional status transition; returns the affected row count (0 when `from` no longer matches). */
+  async transitionStatus(
+    manager: EntityManager,
+    id: string,
+    from: readonly OrderStatus[],
+    to: OrderStatus,
+  ): Promise<number> {
+    const result = await manager
+      .getRepository(OrderEntity)
+      .createQueryBuilder()
+      .update()
+      .set({ status: to })
+      .where('id = :id', { id })
+      .andWhere('status IN (:...from)', { from: [...from] })
+      .execute();
+    return result.affected ?? 0;
   }
 
   // A session lock spans the local transaction and the external activation steps.

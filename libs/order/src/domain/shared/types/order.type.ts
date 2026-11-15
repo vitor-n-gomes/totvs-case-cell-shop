@@ -15,6 +15,11 @@ export enum OrderStatus {
   Cancelled = 'Cancelled',
 }
 
+/** Orders whose stock reservation may still be returned to inventory on expiry. */
+export const EXPIRABLE_ORDER_STATUSES: readonly OrderStatus[] = [
+  OrderStatus.Pending,
+];
+
 export enum ProcessingStatus {
   Pending = 'Pending',
   Processing = 'Processing',

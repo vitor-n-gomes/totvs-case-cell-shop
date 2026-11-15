@@ -106,6 +106,9 @@ export class OutboxRepository {
       )
       .where('event.status = :status', { status: 'PENDING' })
       .getRawOne<{ count: string; age: string }>();
-    return { count: Number(row?.count ?? 0), ageSeconds: Number(row?.age ?? 0) };
+    return {
+      count: Number(row?.count ?? 0),
+      ageSeconds: Number(row?.age ?? 0),
+    };
   }
 }

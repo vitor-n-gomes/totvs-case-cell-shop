@@ -15,6 +15,12 @@ const environmentSchema = z
       .min(1)
       .max(86400)
       .default(900),
+    SCHEDULER_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(3_600_000)
+      .default(10000),
     SIMULATOR_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(20),
     SIMULATOR_TIMEOUT_MS: z.coerce
       .number()

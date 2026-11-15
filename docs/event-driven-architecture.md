@@ -35,7 +35,7 @@ Implementamos um **EventBus** com **handlers dedicados por tipo de evento**, seg
 totvs-case-cell-shop/
 ├── apps/
 │   ├── scheduler
-│   │   └─ Cronos que emitem eventos genéricos para expirações de reserva
+│   │   └─ Produtor anêmico (sem HTTP): publica ORDER_RESERVATION_EXPIRED no Kafka
 │   ├── consumer
 │   │   └─ Consome eventos do Kafka e delega aos handlers via EventBus
 │   └── http (sem mudanças)
@@ -53,7 +53,7 @@ totvs-case-cell-shop/
 │   │
 │   ├── adapters/usecases/
 │   │  ├─ process-order-event.use-case.ts (consome events do Kafka)
-│   │  ├─ expire-reservations.use-case.ts (scheduler cron)
+│   │  ├─ expire-reservations.use-case.ts (job do scheduler, só publica)
 │   │  └─ event-handlers/ (handlers de domínio)
 │   │     ├─ checkout-initiated.handler.ts
 │   │     └─ reservation-expired.handler.ts
@@ -163,39 +163,21 @@ export class CheckoutInitiatedHandler {
 
 **Localização**: `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts`
 
-```typescript
-@Injectable()
-export class ReservationExpiredHandler implements EventHandler<ReservationExpiredEvent> {
-  readonly kind = ORDER_RESERVATION_EXPIRED;
+Acionado pelo `ProcessOrderEventUseCase` para `ORDER_RESERVATION_EXPIRED`
+(também registrado no `EventBus`). Dentro de `spans.run('reservation.expire')`
+e do mesmo advisory lock por pedido da ativação (`withActivationLock`), numa
+única transação:
 
-  constructor(
-    private readonly database: DataSource,
-    private readonly orders: OrderRepository,
-    private readonly reservations: ReservationRepository,
-    private readonly metrics: Metrics,
-  ) {}
+1. `processingStatus === Completed` → ignora.
+2. `UPDATE "order" SET status = 'Cancelled' WHERE id = $1 AND status IN ('Pending')`
+   (`OrderRepository.transitionStatus`).
+3. `affected === 0` → `reservation.expire.skipped` +
+   `shop_reservations_total{result="already_processed"}`, sem tocar no estoque.
+4. `affected === 1` → `reservations.release(...)` devolve as reservas ativas.
 
-  async handle(event: ReservationExpiredEvent): Promise<void> {
-    // Libera stock, cancela order, incrementa métrica
-    const orderId = event.data.order_id;
-
-    const released = await this.database.transaction(async (manager) => {
-      const order = await this.orders.lock(manager, orderId);
-      if (order?.status !== OrderStatus.Pending) return 0;
-
-      const count = await this.reservations.release(manager, orderId);
-      await this.orders.update(manager, orderId, {
-        status: OrderStatus.Cancelled,
-      });
-      return count;
-    });
-
-    if (released) {
-      this.metrics.reservations.inc({ result: 'expired' }, released);
-    }
-  }
-}
-```
+Após o commit, invalida `storefront:products` no Redis (falha só gera `warn`,
+sem retry no Kafka) e incrementa `reservations{result="expired"}` e
+`processing{result="expired"}`.
 
 ---
 
@@ -242,7 +224,11 @@ export class EventBus implements IEventBus {
    * Publica um evento no Kafka
    */
   async publish(event: OrderEvent, topic?: string): Promise<void> {
-    await this.messaging.publish(kafkaTopic, event.data.order_id ?? event.kind, event);
+    await this.messaging.publish(
+      kafkaTopic,
+      event.data.order_id ?? event.kind,
+      event,
+    );
   }
 }
 ```
@@ -302,56 +288,33 @@ export interface EventHandler<E extends DomainEvent = DomainEvent> {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ SCHEDULER APP                                                   │
+│ SCHEDULER APP (anêmico, sem HTTP)                               │
 └─────────────────────────────────────────────────────────────────┘
 
-ExpireReservationsUseCase.tick() [Cron: */5 * * * *]
+ExpireReservationsUseCase.tick() [a cada SCHEDULER_INTERVAL_MS, trava isRunning]
   │
-  ├─ Busca orders com reservas expiradas
+  ├─ ReservationRepository.expiredOrderIds(['Pending'], 50)
+  │    (reserva ACTIVE com expires_at < NOW(), ORDER BY expires_at ASC LIMIT 50)
   │
-  ├─ Para cada order expirada:
-  │  ├─ Libera stock (transaction)
-  │  ├─ Cancela order
-  │  └─ Incrementa métrica reservations.expired
-  │
-  └─ Despacha evento:
-      └─ eventBus.dispatch({
-          kind: 'ORDER_RESERVATION_EXPIRED',
-          data: { order_id: '123...' },
-          meta: createEventMeta(correlationId)
-        })
-         │
-         └─ ReservationExpiredHandler.handle(event)
-             ├─ Libera stock novamente (via handler)
-             ├─ Cancela order (redundante, mas safe)
-             └─ Incrementa métrica
-
-          ├─ Publica no Kafka: eventBus.publish(event)
-          │   └─ Topic: order.events (Kafka)
-          │
-          └─ Envia para DLQ se falhar
-              └─ Topic: order.events.dlq
-
+  └─ Para cada order (novo correlation_id/trace_id/span_id):
+      └─ executionContext.run → spans.run('scheduler.publish_expiration')
+          └─ Kafka CHECKOUT_TOPIC, key = order_id
+             { kind: ORDER_RESERVATION_EXPIRED, data: { order_id }, meta }
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ CONSUMER APP                                                    │
 └─────────────────────────────────────────────────────────────────┘
 
-Kafka Topic: order.events
-  │
+Kafka CHECKOUT_TOPIC
   └─ ProcessOrderEventUseCase.handle(payload, source)
-      │
-      ├─ Normaliza payload com normalizeOrderEvent()
-      │
-      ├─ Valida evento
-      │  └─ Se inválido: envia para DLQ
-      │
-      └─ Despacha no EventBus:
-          └─ eventBus.dispatch(event)
-              │
-              └─ ReservationExpiredHandler.handle(event)
-                  ├─ Processa reserva expirada
-                  └─ Libera stock + cancela order
+      ├─ parseOrderEvent (Zod) → inválido vai para a DLQ
+      └─ ReservationExpiredHandler.handle(event)
+          └─ withActivationLock + transação:
+              Completed → ignora
+              UPDATE condicional Pending → Cancelled
+                affected 0 → already_processed (idempotente)
+                affected 1 → reservations.release()
+          └─ pós-commit: DEL storefront:products (best effort) + métricas
 ```
 
 ### Fluxo: Checkout Iniciado → Ordem Ativada
@@ -555,12 +518,12 @@ Testa registro e disparo de eventos
 npm test -- libs/order/src/adapters/handlers/event.bus.spec.ts
 ```
 
-### Integration Tests: Scheduler → Event → Handler
+### Unit Tests: Scheduler → Event → Handler
 
-Testa fluxo completo de expiração de reservas
+Payload Zod, partition key, trava `isRunning`, idempotência (`affected = 0`) e falha do Redis
 
 ```bash
-npm test -- apps/scheduler/src/expire-reservations.integration.spec.ts
+npm test -- test/unit/reservation-expiration.spec.ts
 ```
 
 ### Integration Tests: Checkout → Activation → Event
@@ -594,7 +557,7 @@ npm run test:e2e
 | `libs/order/src/adapters/handlers/handlers.registry.ts`                          | Registro e inicialização       |
 | `libs/order/src/adapters/handlers/order-activated.handler.ts`                    | Handler de ativação            |
 | `libs/order/src/adapters/usecases/process-order-event.use-case.ts`               | Consumidor Kafka               |
-| `libs/order/src/adapters/usecases/expire-reservations.use-case.ts`               | Scheduler cron                 |
+| `libs/order/src/adapters/usecases/expire-reservations.use-case.ts`               | Job do scheduler (produtor)    |
 | `libs/order/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`  | Handler de checkout            |
 | `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts` | Handler de expiração           |
 | `libs/order/src/activation/strategies/online-activation.strategy.ts`             | Estratégia de ativação         |

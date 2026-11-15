@@ -24,12 +24,13 @@ Start the applications in separate terminals:
 ```bash
 npm run start:dev
 npm run consumer:debug
+npm run scheduler:debug
 ```
 
 Alternatively, start the containers and then seed their database:
 
 ```bash
-docker compose up -d --build --wait http consumer
+docker compose up -d --build --wait http consumer scheduler
 docker compose run --rm migrate npm run seed
 ```
 
@@ -134,7 +135,7 @@ The relay runs every second. It claims up to 20 rows with `SKIP LOCKED` and a 30
 
 Malformed events are sent to the DLQ before completing their handler. Their DLQ record contains source topic/partition/offset and a reason, not an arbitrary raw payload. Original Kafka records remain the source for investigation, subject to broker retention.
 
-Every five minutes, cleanup selects up to 1,000 expired active reservations, then handles all reservations for each selected order. It locks the order first, uses stable product order and releases each active reservation once. It never cancels an active order. Concurrent cleanup/activation cannot both consume and release the same stock.
+Reservation expiry is split between two apps. The anemic `scheduler` app (no HTTP server) polls every `SCHEDULER_INTERVAL_MS` (default 10 s, never overlapping cycles) for up to 50 `Pending` orders with an expired active reservation, oldest `expires_at` first, and publishes one `ORDER_RESERVATION_EXPIRED` event per order to `CHECKOUT_TOPIC` keyed by `order_id`; it never changes orders or stock. The consumer's `ReservationExpiredHandler` takes the same per-order advisory lock as activation, skips orders whose processing completed, and in one transaction runs a conditional `Pending → Cancelled` update; only when it affects a row does it release the active reservations. Duplicate events (the scheduler republishes until the order is handled) are counted as `already_processed`. After commit it invalidates `storefront:products`; a Redis failure is only logged. Concurrent expiry/activation cannot both consume and release the same stock.
 
 ERP/email calls are bounded local simulations with stable `orderId:integration` keys. Logs may repeat if a process crashes before recording success. A real remote system must honor idempotency keys or support lookup/reconciliation; this implementation makes no exactly-once remote-effect claim.
 
@@ -185,6 +186,8 @@ A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache
 See [docs/manual-validation.md](docs/manual-validation.md) for startup commands, expected responses and database checks. This refactor validates production types, builds, formatting and lint. Unit/integration tests have deliberately not been migrated or run; their old imports still need updating after manual validation.
 
 Kafka uses `@nestjs/microservices` (`ClientKafka` and `@EventPattern`) and logging uses `nestjs-pino`. Brokers and topics come from the shared validated configuration. Both applications start without SASL locally; optional `KAFKA_SSL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME` and `KAFKA_SASL_PASSWORD` configure authentication in one place for producer, consumers and metadata checks. Supported mechanisms are `plain`, `scram-sha-256` and `scram-sha-512`. All three SASL fields must be supplied together. Credentials are not logged. Existing `API_PORT` / `WORKER_PORT` and host-port variables remain supported.
+
+kafkajs 2.2.4 (the latest release) schedules a negative timeout in its request queue, which Node.js 24 reports once per connection as `TimeoutNegativeWarning` and clamps to 1 ms. The warning is harmless, so the `start:*:prod` scripts and Compose (`NODE_OPTIONS`) suppress only that warning with `--disable-warning=TimeoutNegativeWarning`.
 
 For the checks applicable to this stage:
 

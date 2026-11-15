@@ -28,7 +28,7 @@ export class GetProductsUseCase {
     private readonly metrics: Metrics,
     private readonly spans: Spans,
     private readonly logger: AppLogger,
-  ) { }
+  ) {}
 
   execute(): Promise<ProductView[]> {
     return this.spans.run('catalog.get', async () => {
