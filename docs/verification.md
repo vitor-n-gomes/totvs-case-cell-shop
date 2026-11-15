@@ -6,6 +6,56 @@ Updated on November 11, 2026. Verification used Node.js 24.22.2 and Docker Engin
 
 The verification record below describes the version before the Orders refactor. Its passing test and container results do not verify the refactored applications. Production TypeScript, the `http` / `consumer` builds, changed-file lint/formatting and OpenAPI generation passed on Node 24.22.2. An offline TypeORM metadata inspection found nine distinct tables, no duplicate order columns and resolved query bindings; no database connection was opened. Unit and integration suites are intentionally unchanged and were not run; their imports still point at the previous structure. Infrastructure behavior is awaiting the user's manual validation using [manual-validation.md](manual-validation.md).
 
+## Scheduler expiration integration suite
+
+`test/integration/scheduler.integration.spec.ts` covers two happy paths using
+real PostgreSQL, Kafka and Redis: an anemic scheduler cycle publishes only the
+expired order with the order ID as Kafka key and a strict Zod-validated payload;
+the real Kafka consumer then cancels an expired order, releases its reservation,
+invalidates `storefront:products` and increments
+`shop_reservations_total{result="expired"}`.
+
+Unlike the current storefront, checkout and order-status integration suites,
+which use in-memory infrastructure, this suite applies the official migrations
+in a unique schema of a dedicated database whose name must end in `_test`. It
+creates unique Kafka topics/groups and starts a disposable Redis container per
+test, because the catalog cache key is fixed. Docker must be available with the
+`redis:7.4.6-bookworm` image available locally or accessible for pulling.
+PostgreSQL and Kafka must already be running. Test configuration is loaded from
+`.env.test.example`, overridden by `.env.test.local`; explicit `DATABASE_URL`
+and `KAFKA_BROKERS` process variables take precedence. Application `.env` files
+are not loaded. `REDIS_URL` is replaced with the disposable container address.
+
+Run from the repository root:
+
+```bash
+npm run test:integration -- --runTestsByPath test/integration/scheduler.integration.spec.ts --detectOpenHandles
+```
+
+Checkout and catalog requests use the real HTTP controllers and repositories.
+Only reservation timestamps are adjusted directly, relative to PostgreSQL's
+clock. The outbox relay and automatic scheduler interval are deliberately not
+started: publishing the checkout event would race activation against expiration.
+Each test awaits one scheduler cycle; the second starts the real Kafka
+transport, dispatcher and expiration handler. Broker offsets prove that only one
+event was published, rather than relying on a delay to infer no extra messages.
+Readiness and asynchronous processing waits have explicit deadlines.
+
+Teardown drains Kafka consumption before closing Nest/database/Redis providers,
+disconnects auxiliary clients, deletes only owned topics/groups/schema and stops
+only the test's Redis container. Cleanup also runs after partial setup failure,
+attempts all remaining releases and reports errors. No shared Redis flush,
+database truncation or Jest `--forceExit` is used.
+
+The new two-test suite passed on repeated runs with `--detectOpenHandles` and
+natural Jest exit. A combined run with the existing storefront/checkout/status
+suites passed all eight tests. Changed TypeScript files passed ESLint and
+Prettier. A post-run check found no remaining scheduler test schemas, Kafka
+topics/groups or Redis containers. Repository-wide and test-project TypeScript
+checks remain blocked by pre-existing missing event exports and optional `meta` accesses in
+activation, plus stale `order-event` imports in unit tests; those unrelated
+contracts were not changed for this test-only addition.
+
 ## Earlier automated verification
 
 | Check                                                   | Result                                                        |

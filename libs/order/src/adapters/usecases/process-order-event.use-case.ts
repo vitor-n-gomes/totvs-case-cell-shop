@@ -29,12 +29,17 @@ export class ProcessOrderEventUseCase {
     private readonly config: ConfigService,
     private readonly logger: AppLogger,
     private readonly metrics: Metrics,
-  ) { }
+  ) {}
 
   async handle(payload: unknown, source: EventSource): Promise<void> {
     const event = parseOrderEvent(payload);
     if (!event) {
-      await this.sendToDlq(payload, source, 'Invalid event payload', 'invalid_dlq');
+      await this.sendToDlq(
+        payload,
+        source,
+        'Invalid event payload',
+        'invalid_dlq',
+      );
       return;
     }
 
