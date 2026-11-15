@@ -54,10 +54,9 @@ describe('POST /checkout (integration)', () => {
       topic: CHECKOUT_TOPIC,
       status: 'PENDING',
       payload: {
-        data: {
-          kind: ORDER_CHECKOUT_INITIATED,
-          data: { order_id: response.body.orderId },
-        },
+        kind: ORDER_CHECKOUT_INITIATED,
+        data: { order_id: response.body.orderId },
+        meta: { attempt: 1 },
       },
     });
   });

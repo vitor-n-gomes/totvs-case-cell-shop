@@ -5,13 +5,14 @@ import { Metrics } from '@app/platform/observability/metrics';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { EventHandler } from '@app/order/adapters/handlers/event.handler';
-import { OrderEvent } from '@app/order/domain/events';
+import {
+  ORDER_RESERVATION_EXPIRED,
+  ReservationExpiredEvent,
+} from '@app/order/messaging/order-events';
 
 @Injectable()
-export class ReservationExpiredHandler implements EventHandler<{
-  orderId: string;
-}> {
-  kind = 'ORDER_RESERVATION_EXPIRED';
+export class ReservationExpiredHandler implements EventHandler<ReservationExpiredEvent> {
+  readonly kind = ORDER_RESERVATION_EXPIRED;
 
   constructor(
     private readonly database: DataSource,
@@ -20,8 +21,8 @@ export class ReservationExpiredHandler implements EventHandler<{
     private readonly metrics: Metrics,
   ) {}
 
-  async handle(event: OrderEvent<{ orderId: string }>): Promise<void> {
-    const orderId = event.data.orderId;
+  async handle(event: ReservationExpiredEvent): Promise<void> {
+    const orderId = event.data.order_id;
     const released = await this.database.transaction(async (manager) => {
       const order = await this.orders.lock(manager, orderId);
       if (

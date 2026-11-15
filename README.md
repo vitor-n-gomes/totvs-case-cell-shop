@@ -148,7 +148,7 @@ Availability is checked exclusively in the checkout transaction. Storefront-owne
 
 ## Observability and operations
 
-Pino writes JSON to stdout with app, level, event message, correlation, order and trace context when applicable. Existing demo logs retain their original camelCase identifiers. Purchase/contact payloads and credentials are not included in operational logs. The audit interceptor redacts sensitive fields and asynchronously persists mutation requests through a bounded 1,000-entry queue. Audit persistence errors/overflow are counted and do not fail checkout. The queue drains on graceful shutdown, but abrupt termination can lose unflushed audit records; it is not a compliance ledger.
+Pino writes JSON to stdout with app, level, event message, correlation, order and trace context when applicable. Log and trace context keys are snake_case (`correlation_id`, `order_id`, `trace_id`, `span_id`, `parent_span_id`). Purchase/contact payloads and credentials are not included in operational logs. The audit interceptor redacts sensitive fields and asynchronously persists mutation requests through a bounded 1,000-entry queue. Audit persistence errors/overflow are counted and do not fail checkout. The queue drains on graceful shutdown, but abrupt termination can lose unflushed audit records; it is not a compliance ledger.
 
 Structured `trace.span` logs connect catalog loading, checkout transactions, relay publication and activation steps. They carry trace/span/parent identifiers and duration. **This is a local tracing simulation**, not an OpenTelemetry or Datadog exporter. Replace it with instrumented spans and W3C propagation before relying on distributed trace tooling.
 

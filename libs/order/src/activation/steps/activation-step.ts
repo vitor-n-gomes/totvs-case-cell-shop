@@ -1,11 +1,11 @@
 import { EntityManager } from 'typeorm';
-import { CheckoutEvent } from '@app/order/messaging/order-events';
+import { CheckoutInitiatedEvent } from '@app/order/messaging/order-events';
 import { OrderEntity } from '../../domain/entities';
 import { StepName } from '../constants/step-names';
 export interface ActivationContext {
   order: OrderEntity;
   correlationId: string;
-  event: CheckoutEvent;
+  event: CheckoutInitiatedEvent;
   manager: EntityManager;
   consumedReservations?: number;
   currentStep: StepName;

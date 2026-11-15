@@ -180,10 +180,8 @@ export class CheckoutUseCase {
     correlationId: string,
   ): Promise<void> {
     const event: CheckoutInitiatedEvent = {
-      data: {
-        kind: ORDER_CHECKOUT_INITIATED,
-        data: { order_id: orderId },
-      },
+      kind: ORDER_CHECKOUT_INITIATED,
+      data: { order_id: orderId },
       meta: { ...createEventMeta(correlationId), attempt: 1 },
     };
     return this.outbox.append(

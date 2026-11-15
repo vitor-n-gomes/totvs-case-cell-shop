@@ -30,7 +30,10 @@ export class Spans {
       }
     };
     return parent
-      ? executionContext.run({ ...parent, span_id: spanId }, invoke)
+      ? executionContext.run(
+          { ...parent, span_id: spanId, parent_span_id: parent.span_id },
+          invoke,
+        )
       : invoke();
   }
 }

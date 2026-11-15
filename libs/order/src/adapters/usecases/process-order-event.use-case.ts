@@ -1,16 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
-  normalizeOrderEvent,
+  parseOrderEvent,
+  OrderEvent,
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
   ORDER_CHECKOUT_FAILED,
   ORDER_EVENT_INVALID,
+  InvalidOrderEvent,
 } from '@app/order/messaging/order-events';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';
+import { createEventMeta } from '@app/order/messaging/order-event';
 import { OrderMessaging } from '../order.messaging';
 import { CheckoutInitiatedHandler } from './event-handlers/checkout-initiated.handler';
 import { ReservationExpiredHandler } from './event-handlers/reservation-expired.handler';
@@ -33,34 +36,30 @@ export class ProcessOrderEventUseCase {
   ) {}
 
   async handle(payload: unknown, source: EventSource): Promise<void> {
-    const event = normalizeOrderEvent(payload);
+    const event = parseOrderEvent(payload);
     if (!event) {
       await this.deadLetter(source, 'Invalid event');
       return;
     }
 
-    // Extract order_id from nested structure safely
-    const orderId = (event.data as any).data?.order_id;
-    if (!orderId) {
-      await this.deadLetter(source, 'Missing order_id in event');
-      return;
-    }
+    const orderId = event.data.order_id;
+    const correlationId = event.meta?.correlation_id ?? randomUUID();
 
     await executionContext.run(
       {
-        correlation_id: event.meta.correlation_id,
+        correlation_id: correlationId,
         order_id: orderId,
-        trace_id: event.meta.trace_id,
+        trace_id: event.meta?.trace_id ?? randomBytes(16).toString('hex'),
         span_id: randomBytes(8).toString('hex'),
+        parent_span_id: event.meta?.parent_span_id,
       },
       async () => {
         this.logger.info('checkout.event.received', {
-          event_id: event.meta.event_id,
-          parent_span_id: (event.meta as any).parent_span_id,
-          kind: (event.data as any).kind,
+          event_id: event.meta?.event_id,
+          kind: event.kind,
         });
+
         try {
-          // Dispatch to appropriate handler based on event kind
           await this.dispatchByKind(event);
         } catch (error) {
           await this.deadLetter(
@@ -73,14 +72,8 @@ export class ProcessOrderEventUseCase {
     );
   }
 
-  /**
-   * Dispatch event to appropriate handler based on kind
-   * This centralizes event routing logic in one place
-   */
-  private async dispatchByKind(event: any): Promise<void> {
-    const kind = (event.data as any).kind;
-
-    switch (kind) {
+  private async dispatchByKind(event: OrderEvent): Promise<void> {
+    switch (event.kind) {
       case ORDER_CHECKOUT_INITIATED:
         await this.checkoutInitiated.execute(event);
         break;
@@ -91,26 +84,19 @@ export class ProcessOrderEventUseCase {
 
       case ORDER_CHECKOUT_FAILED:
         this.logger.warn('checkout.failed.event.received', {
-          order_id: (event.data as any).data?.order_id,
-          failure: (event.data as any).data?.failure,
+          order_id: event.data.order_id,
+          failure: event.data.failure,
+          failed_step: event.data.failed_step,
         });
-        // TODO: Implement CheckoutFailedHandler for retry logic
         break;
 
       case ORDER_EVENT_INVALID:
         this.logger.error('invalid.event.received', {
-          source_topic: (event.data as any).data?.source_topic,
-          reason: (event.data as any).data?.reason,
+          source_topic: event.data.source_topic,
+          reason: event.data.reason,
+          order_id: event.data.order_id,
         });
-        // DLQ already handled by Kafka, just log
         break;
-
-      default:
-        this.logger.warn('unknown.event.kind.received', {
-          kind,
-          order_id: (event.data as any).data?.order_id,
-        });
-        throw new Error(`Unknown event kind: ${kind}`);
     }
   }
 
@@ -119,16 +105,24 @@ export class ProcessOrderEventUseCase {
     reason: string,
     orderId?: string,
   ): Promise<void> {
-    await this.messaging.publish(
-      `${this.config.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
-      orderId ?? `${source.topic}:${source.partition}:${source.offset}`,
-      {
+    const correlationId =
+      executionContext.getStore()?.correlation_id ?? randomUUID();
+    const event: InvalidOrderEvent = {
+      kind: ORDER_EVENT_INVALID,
+      data: {
         source_topic: source.topic,
         partition: source.partition,
         offset: source.offset,
         reason,
         order_id: orderId,
       },
+      meta: createEventMeta(correlationId),
+    };
+    await this.messaging.publish(
+      `${this.config.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
+      orderId ?? `${source.topic}:${source.partition}:${source.offset}`,
+      event,
+      { 'x-correlation-id': correlationId },
     );
     this.metrics.processing.inc({ result: 'invalid_dlq' });
   }

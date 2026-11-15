@@ -62,7 +62,7 @@ SELECT topic, status, deduplication_key FROM outbox_events WHERE order_id = 'ORD
 SELECT step, success, reference FROM idempotency_log WHERE order_id = 'ORDER_ID' ORDER BY created_at;
 ```
 
-Ao concluir, devem existir quatro etapas bem-sucedidas, sem duplicação de sucesso, e reserva `CONSUMED`. O payload da outbox continua com `schema_version`, `event_id`, `order_id`, `correlation_id`, `occurred_at`, `attempt`, `trace_id` e `parent_span_id`, sem envelope `kind/data/meta`.
+Ao concluir, devem existir quatro etapas bem-sucedidas, sem duplicação de sucesso, e reserva `CONSUMED`. O payload da outbox segue o envelope `{ kind, data: { order_id }, meta }`, com `meta` contendo `schema_version`, `event_id`, `occurred_at`, `correlation_id`, `trace_id`, `parent_span_id` e `attempt` (tudo em snake_case).
 
 ## Rejeições e rollback
 

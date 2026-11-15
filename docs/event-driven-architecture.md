@@ -41,9 +41,9 @@ totvs-case-cell-shop/
 │   └── http (sem mudanças)
 │
 ├── libs/order/src/
-│   ├── domain/events/
-│   │  ├─ order.event.ts (tipos genéricos)
-│   │  └─ index.ts (exports)
+│   ├── messaging/
+│   │  ├─ order-events.ts (schemas Zod snake_case e tipos dos eventos)
+│   │  └─ order-event.ts (createEventMeta)
 │   │
 │   ├── adapters/handlers/
 │   │  ├─ event.handler.ts (interface para handlers)
@@ -66,57 +66,34 @@ totvs-case-cell-shop/
 
 ## 3. Estrutura de Eventos
 
-### Interface Genérica
+### Envelope
+
+Todos os eventos seguem o envelope `{ kind, data, meta? }`, com **todas as chaves em `snake_case`**. Os schemas Zod (`z.strictObject`) vivem em `libs/order/src/messaging/order-events.ts` e os tipos TypeScript (`OrderEvent`, `DomainEvent`, `CheckoutInitiatedEvent`...) são derivados deles.
 
 ```typescript
-/**
- * Metadados associados com cada evento
- * Rastreia correlação e informações de trace para sistemas distribuídos
- */
-interface OrderEventMeta {
-  /** Identificador único para correlacionar eventos relacionados */
-  correlationId: string;
-
-  /** ID de trace para distributed tracing (ex: OpenTelemetry) */
-  traceId: string;
-
-  /** ID opcional do span pai para tracing hierárquico */
-  parentSpanId?: string;
-
-  /** Unix timestamp (milliseconds) quando o evento foi criado */
-  timestamp: number;
-}
-
-/**
- * Interface genérica base para todos os eventos de order
- */
-interface OrderEvent<T = any> {
-  /** Identificador do tipo de evento (ex: "order.activated", "ORDER_RESERVATION_EXPIRED") */
-  kind: string;
-
-  /** Payload específico do evento */
-  data: T;
-
-  /** Metadados de correlação e rastreamento */
-  meta: OrderEventMeta;
+// meta (criado por createEventMeta em libs/order/src/messaging/order-event.ts)
+{
+  schema_version: 1,
+  event_id: string,        // uuid
+  occurred_at: string,     // ISO-8601
+  correlation_id: string,  // uuid
+  trace_id: string,        // 32 hex
+  parent_span_id: string,  // 16 hex
+  attempt?: number,        // somente em checkout (1..5)
 }
 ```
 
 ### Exemplo Concreto
 
 ```typescript
-// Evento de order ativado
-const orderActivatedEvent: OrderEvent<{ orderId: string }> = {
-  kind: 'order.activated',
-  data: { orderId: '123e4567-e89b-12d3-a456-426614174000' },
-  meta: {
-    correlationId: '550e8400-e29b-41d4-a716-446655440000',
-    traceId: 'a1b2c3d4e5f6g7h8',
-    parentSpanId: 'p1q2r3s4',
-    timestamp: 1699814822000,
-  },
+const event: ReservationExpiredEvent = {
+  kind: 'ORDER_RESERVATION_EXPIRED',
+  data: { order_id: '123e4567-e89b-12d3-a456-426614174000' },
+  meta: createEventMeta(correlationId),
 };
 ```
+
+O contexto de observabilidade (`executionContext`, logs e spans) usa as mesmas chaves: `correlation_id`, `trace_id`, `span_id`, `parent_span_id`, `order_id`.
 
 ---
 
@@ -126,9 +103,9 @@ const orderActivatedEvent: OrderEvent<{ orderId: string }> = {
 | ----------------------------- | --------------------------- | --------------------------------------- | -------------------------------------------- |
 | **ORDER_CHECKOUT_INITIATED**  | `ORDER_CHECKOUT_INITIATED`  | `CheckoutUseCase`                       | Novo checkout iniciado (entrada do consumer) |
 | **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou                     |
-| **ORDER_ACTIVATED**           | `order.activated`           | `OnlineActivationStrategy`              | Order foi ativada com sucesso                |
-| _(future)_                    | `ORDER_CHECKOUT_FAILED`     | -                                       | Checkout falhou                              |
-| _(future)_                    | `ORDER_EVENT_INVALID`       | -                                       | Evento inválido recebido                     |
+| **ORDER_ACTIVATED**           | `ORDER_ACTIVATED`           | `OnlineActivationStrategy`              | Order ativada (somente in-process, EventBus) |
+| **ORDER_CHECKOUT_FAILED**     | `ORDER_CHECKOUT_FAILED`     | `ActiveOrderUseCase` (via outbox, DLQ)  | Checkout falhou definitivamente              |
+| **ORDER_EVENT_INVALID**       | `ORDER_EVENT_INVALID`       | `ProcessOrderEventUseCase` (DLQ)        | Evento inválido ou erro no processamento     |
 
 ---
 
@@ -140,10 +117,8 @@ const orderActivatedEvent: OrderEvent<{ orderId: string }> = {
 
 ```typescript
 @Injectable()
-export class OrderActivatedHandler implements EventHandler<{
-  orderId: string;
-}> {
-  kind = 'order.activated';
+export class OrderActivatedHandler implements EventHandler<OrderActivatedEvent> {
+  readonly kind = ORDER_ACTIVATED;
 
   constructor(
     private readonly logger: AppLogger,
@@ -151,12 +126,14 @@ export class OrderActivatedHandler implements EventHandler<{
     private readonly metrics: Metrics,
   ) {}
 
-  async handle(event: OrderEvent<{ orderId: string }>): Promise<void> {
-    const { orderId } = event.data;
+  async handle(event: OrderActivatedEvent): Promise<void> {
+    const orderId = event.data.order_id;
     const order = await this.orderRepository.findById(orderId);
 
     if (!order) {
-      this.logger.error('order.activated.handler.order_not_found', { orderId });
+      this.logger.error('order.activated.handler.order_not_found', {
+        order_id: orderId,
+      });
       return;
     }
 
@@ -188,10 +165,8 @@ export class CheckoutInitiatedHandler {
 
 ```typescript
 @Injectable()
-export class ReservationExpiredHandler implements EventHandler<{
-  orderId: string;
-}> {
-  kind = 'ORDER_RESERVATION_EXPIRED';
+export class ReservationExpiredHandler implements EventHandler<ReservationExpiredEvent> {
+  readonly kind = ORDER_RESERVATION_EXPIRED;
 
   constructor(
     private readonly database: DataSource,
@@ -200,9 +175,9 @@ export class ReservationExpiredHandler implements EventHandler<{
     private readonly metrics: Metrics,
   ) {}
 
-  async handle(event: OrderEvent<{ orderId: string }>): Promise<void> {
+  async handle(event: ReservationExpiredEvent): Promise<void> {
     // Libera stock, cancela order, incrementa métrica
-    const orderId = event.data.data.order_id;
+    const orderId = event.data.order_id;
 
     const released = await this.database.transaction(async (manager) => {
       const order = await this.orders.lock(manager, orderId);
@@ -267,7 +242,7 @@ export class EventBus implements IEventBus {
    * Publica um evento no Kafka
    */
   async publish(event: OrderEvent, topic?: string): Promise<void> {
-    await this.messaging.publish(kafkaTopic, event.meta.correlationId, event);
+    await this.messaging.publish(kafkaTopic, event.data.order_id ?? event.kind, event);
   }
 }
 ```
@@ -310,12 +285,12 @@ export class HandlersRegistry {
 /**
  * Interface genérica para handlers de eventos
  */
-export interface EventHandler<T = any> {
+export interface EventHandler<E extends DomainEvent = DomainEvent> {
   /** Identificador do tipo de evento que este handler processa */
-  kind: string;
+  kind: E['kind'];
 
   /** Processa o evento recebido */
-  handle(event: OrderEvent<T>): Promise<void>;
+  handle(event: E): Promise<void>;
 }
 ```
 
@@ -342,8 +317,8 @@ ExpireReservationsUseCase.tick() [Cron: */5 * * * *]
   └─ Despacha evento:
       └─ eventBus.dispatch({
           kind: 'ORDER_RESERVATION_EXPIRED',
-          data: { orderId: '123...' },
-          meta: { correlationId, traceId, timestamp }
+          data: { order_id: '123...' },
+          meta: createEventMeta(correlationId)
         })
          │
          └─ ReservationExpiredHandler.handle(event)
@@ -388,14 +363,14 @@ Kafka Topic: order.events
 
 CheckoutUseCase.execute()
   │
-  └─ Emite evento:
-      └─ eventBus.dispatch({
+  └─ Grava no outbox (OutboxRelay publica no Kafka):
+      └─ {
           kind: 'ORDER_CHECKOUT_INITIATED',
-          data: { order_id, ... },
-          meta: { correlationId, traceId, ... }
-        })
+          data: { order_id },
+          meta: { ...createEventMeta(correlationId), attempt: 1 }
+        }
        │
-       └─ CheckoutInitiatedHandler.execute(event)
+       └─ ProcessOrderEventUseCase → CheckoutInitiatedHandler.execute(event)
            └─ ActiveOrderUseCase.execute(event)
 
 
@@ -408,9 +383,9 @@ OnlineActivationStrategy.execute()
   │
   └─ Emite evento ao final:
       └─ eventBus.dispatch({
-          kind: 'order.activated',
-          data: { orderId },
-          meta: { correlationId, traceId, parentSpanId, timestamp }
+          kind: 'ORDER_ACTIVATED',
+          data: { order_id },
+          meta: createEventMeta(correlationId)
         })
          │
          └─ OrderActivatedHandler.handle(event)
@@ -477,13 +452,13 @@ export class HandlersRegistry {
   ) {}
 
   registerAll(eventBus: EventBus): void {
-    const handlers = [
+    const handlers: EventHandler[] = [
       // ... existing handlers
       this.yourCustomHandler, // Adicionar aqui
     ];
 
     handlers.forEach((handler) => {
-      eventBus.register(handler as any);
+      eventBus.register(handler);
     });
   }
 }
@@ -687,7 +662,7 @@ O EventBus suporta múltiplos handlers para o mesmo `kind` e os executa em paral
 
 ```typescript
 // Ambos vão ser chamados
-const event = { kind: 'order.activated', ... };
+const event = { kind: 'ORDER_ACTIVATED', ... };
 await eventBus.dispatch(event); // Chama ambos handlers em paralelo
 ```
 

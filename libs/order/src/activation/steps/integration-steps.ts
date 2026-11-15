@@ -30,7 +30,7 @@ export class IntegrationSimulator {
     if (this.config.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') === kind)
       throw new PermanentActivationError('Integration rejected request');
     if (
-      context.event.attempt <=
+      context.event.meta.attempt <=
       this.config.getOrThrow<number>(
         kind === 'erp' ? 'ERP_FAILURES' : 'EMAIL_FAILURES',
       )

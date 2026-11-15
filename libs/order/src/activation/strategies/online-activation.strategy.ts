@@ -8,7 +8,11 @@ import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
-import { OrderEvent } from '@app/order/domain/events';
+import {
+  ORDER_ACTIVATED,
+  OrderActivatedEvent,
+} from '@app/order/messaging/order-events';
+import { createEventMeta } from '@app/order/messaging/order-event';
 import { StepName } from '../constants/step-names';
 import { OrderCancelledError } from '../guards/activation-errors';
 import { IdempotencyLogRepository } from '../../repositories/idempotency-log.repository';
@@ -55,16 +59,12 @@ export class OnlineActivationStrategy {
           { result: 'consumed' },
           context.consumedReservations ?? 0,
         );
-      await this.eventBus.dispatch({
-        kind: 'order.activated',
-        data: { orderId: context.order.id },
-        meta: {
-          correlationId: context.event.correlation_id,
-          traceId: context.event.trace_id,
-          parentSpanId: context.event.parent_span_id,
-          timestamp: Date.now(),
-        },
-      } as OrderEvent);
+      const activated: OrderActivatedEvent = {
+        kind: ORDER_ACTIVATED,
+        data: { order_id: context.order.id },
+        meta: createEventMeta(context.correlationId),
+      };
+      await this.eventBus.dispatch(activated);
     } catch (error) {
       await runner.rollbackTransaction();
       throw error;
@@ -90,7 +90,7 @@ export class OnlineActivationStrategy {
         context.order.id,
         name,
         true,
-        { attempt: context.event.attempt },
+        { attempt: context.event.meta.attempt },
         'Step completed',
       );
       end({ result: 'success' });

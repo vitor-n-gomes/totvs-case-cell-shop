@@ -2,13 +2,21 @@ import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { OrderRepository } from '@app/order/repositories/order.repository';
 import { EventBus } from '@app/order/adapters/handlers/event.bus';
-import { ReservationExpiredEvent } from '@app/order/domain/events';
+import {
+  ORDER_RESERVATION_EXPIRED,
+  ReservationExpiredEvent,
+} from '@app/order/messaging/order-events';
+import { createEventMeta } from '@app/order/messaging/order-event';
+import {
+  executionContext,
+  newTraceContext,
+} from '@app/platform/observability/context';
 
 @Injectable()
 export class ExpireReservationsUseCase {
@@ -53,19 +61,18 @@ export class ExpireReservationsUseCase {
       if (released) {
         this.metrics.reservations.inc({ result: 'expired' }, released);
 
-        const event: ReservationExpiredEvent = {
-          kind: 'ORDER_RESERVATION_EXPIRED',
-          data: {
-            orderId: id,
-          },
-          meta: {
-            correlationId: randomUUID(),
-            traceId: randomBytes(16).toString('hex'),
-            timestamp: Date.now(),
-          },
+        const context = {
+          ...newTraceContext(randomUUID()),
+          order_id: id,
         };
-
-        await this.eventBus.dispatch(event);
+        await executionContext.run(context, () => {
+          const event: ReservationExpiredEvent = {
+            kind: ORDER_RESERVATION_EXPIRED,
+            data: { order_id: id },
+            meta: createEventMeta(context.correlation_id),
+          };
+          return this.eventBus.dispatch(event);
+        });
       }
     }
   }
