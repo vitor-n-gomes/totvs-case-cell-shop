@@ -14,15 +14,17 @@ import { parseOrderEvent } from '@app/order/messaging/order-events';
 import { ProcessOrderEventUseCase } from '../usecases/process-order-event.use-case';
 @Controller()
 export class OrderConsumer {
-  constructor(private readonly process: ProcessOrderEventUseCase) {}
+  constructor(
+    private readonly processOrderEventUseCase: ProcessOrderEventUseCase,
+  ) {}
 
   @EventPattern(ORDER_EVENT_PATTERN, ORDER_KAFKA_TRANSPORT)
   async orderEvent(
     @Payload() payload: unknown,
-    @Ctx() context: KafkaContext,
+    @Ctx() kafkaContext: KafkaContext,
   ): Promise<void> {
-    const timer = setInterval(() => {
-      void context
+    const heartbeatInterval = setInterval(() => {
+      void kafkaContext
         .getHeartbeat()()
         .catch(() => undefined);
     }, 1000);
@@ -37,11 +39,11 @@ export class OrderConsumer {
 
       }
 
-      await this.process.handle(event);
+      await this.processOrderEventUseCase.handle(event);
 
     } finally {
 
-      clearInterval(timer);
+      clearInterval(heartbeatInterval);
 
     }
   }

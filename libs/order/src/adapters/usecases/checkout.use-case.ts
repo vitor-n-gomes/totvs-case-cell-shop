@@ -31,44 +31,43 @@ export interface CheckoutResult {
 @Injectable()
 export class CheckoutUseCase {
   constructor(
-    private readonly database: DataSource,
-    private readonly stock: StockRepository,
-    private readonly orders: OrderRepository,
-    private readonly outbox: OutboxRepository,
-    private readonly guard: CheckoutGuard,
-    private readonly config: ConfigService,
-    private readonly metrics: Metrics,
-    private readonly spans: Spans,
+    private readonly dataSource: DataSource,
+    private readonly stockRepository: StockRepository,
+    private readonly orderRepository: OrderRepository,
+    private readonly outboxRepository: OutboxRepository,
+    private readonly checkoutGuard: CheckoutGuard,
+    private readonly configService: ConfigService,
+    private readonly metricsService: Metrics,
+    private readonly spansService: Spans,
   ) {}
 
   async execute(
-    input: CheckoutInput,
+    checkoutInput: CheckoutInput,
     idempotencyKey: string | undefined,
     correlationId = executionContext.getStore()?.correlation_id ?? randomUUID(),
   ): Promise<CheckoutResult> {
     try {
 
-      this.guard.validate(input, idempotencyKey);
-      const requestHash = this.guard.hashPayload(input);
+      this.checkoutGuard.validate(checkoutInput, idempotencyKey);
+      const requestHash = this.checkoutGuard.hashPayload(checkoutInput);
 
-      const { orderId, replay } = await this.spans.run(
-        'checkout.transaction',
-        () =>
+      const { orderId, replay: isIdempotentReplay } =
+        await this.spansService.run('checkout.transaction', () =>
           this.persistCheckout(
-            input,
+            checkoutInput,
             idempotencyKey,
             requestHash,
             correlationId,
           ),
-      );
+        );
 
-      this.recordSuccessMetrics(replay, input.items.length);
+      this.recordSuccessMetrics(isIdempotentReplay, checkoutInput.items.length);
 
       return { orderId, status: OrderStatus.Pending };
 
     } catch (error) {
 
-      this.metrics.checkout.inc({ result: 'rejected' });
+      this.metricsService.checkoutCounter.inc({ result: 'rejected' });
 
       throw this.mapExecutionError(error);
 
@@ -76,65 +75,73 @@ export class CheckoutUseCase {
   }
 
   private persistCheckout(
-    input: CheckoutInput,
+    checkoutInput: CheckoutInput,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<{ orderId: string; replay: boolean }> {
-    return this.database.transaction(async (manager) => {
+    return this.dataSource.transaction(async (entityManager) => {
       const orderId = randomUUID();
 
-      const inserted = await this.orders.insertPending(
-        manager,
+      const wasOrderInserted = await this.orderRepository.insertPending(
+        entityManager,
         orderId,
-        input,
+        checkoutInput,
         idempotencyKey,
         requestHash,
         correlationId,
       );
 
-      if (!inserted) {
+      if (!wasOrderInserted) {
 
         return this.resolveIdempotentReplay(
-          manager,
+          entityManager,
           idempotencyKey,
           requestHash,
         );
 
       }
 
-      const ttlSeconds = this.config.getOrThrow<number>(
+      const reservationTtlSeconds = this.configService.getOrThrow<number>(
         'RESERVATION_TTL_SECONDS',
       );
 
-      const reservedItems = await this.stock.reserve(
-        manager,
+      const reservedItems = await this.stockRepository.reserve(
+        entityManager,
         orderId,
-        input.items,
-        ttlSeconds,
+        checkoutInput.items,
+        reservationTtlSeconds,
       );
 
-      await this.orders.addItems(manager, orderId, reservedItems);
-      await this.appendCheckoutEvent(manager, orderId, correlationId);
+      await this.orderRepository.addItems(
+        entityManager,
+        orderId,
+        reservedItems,
+      );
+
+      await this.appendCheckoutEvent(entityManager, orderId, correlationId);
 
       return { orderId, replay: false };
     });
   }
 
   private async resolveIdempotentReplay(
-    manager: EntityManager,
+    entityManager: EntityManager,
     idempotencyKey: string,
     requestHash: string,
   ): Promise<{ orderId: string; replay: true }> {
-    const existing = await this.orders.findByKey(manager, idempotencyKey);
+    const existingOrder = await this.orderRepository.findByKey(
+      entityManager,
+      idempotencyKey,
+    );
 
-    if (!existing) {
+    if (!existingOrder) {
 
       throw new Error('Order insert failed');
 
     }
 
-    if (existing.requestHash !== requestHash) {
+    if (existingOrder.requestHash !== requestHash) {
 
       throw new ConflictException(
         'Idempotency key already used with different content',
@@ -142,35 +149,43 @@ export class CheckoutUseCase {
 
     }
 
-    return { orderId: existing.id, replay: true };
+    return { orderId: existingOrder.id, replay: true };
   }
 
   private appendCheckoutEvent(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
     correlationId: string,
   ): Promise<void> {
-    const event: CheckoutInitiatedEvent = {
+    const checkoutInitiatedEvent: CheckoutInitiatedEvent = {
       kind: ORDER_CHECKOUT_INITIATED,
       data: { order_id: orderId },
       meta: { ...createEventMeta(correlationId), attempt: 1 },
     };
 
-    return this.outbox.append(
-      manager,
+    return this.outboxRepository.append(
+      entityManager,
       orderId,
-      this.config.getOrThrow<string>('CHECKOUT_TOPIC'),
-      event,
+      this.configService.getOrThrow<string>('CHECKOUT_TOPIC'),
+      checkoutInitiatedEvent,
       `${orderId}:attempt:1`,
     );
   }
 
-  private recordSuccessMetrics(replay: boolean, itemCount: number): void {
-    this.metrics.checkout.inc({ result: replay ? 'replayed' : 'accepted' });
+  private recordSuccessMetrics(
+    isIdempotentReplay: boolean,
+    itemCount: number,
+  ): void {
+    this.metricsService.checkoutCounter.inc({
+      result: isIdempotentReplay ? 'replayed' : 'accepted',
+    });
 
-    if (!replay) {
+    if (!isIdempotentReplay) {
 
-      this.metrics.reservations.inc({ result: 'reserved' }, itemCount);
+      this.metricsService.reservationTransitionsCounter.inc(
+        { result: 'reserved' },
+        itemCount,
+      );
 
     }
   }

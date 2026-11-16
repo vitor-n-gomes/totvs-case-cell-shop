@@ -21,33 +21,33 @@ type OrderChanges = Partial<
 @Injectable()
 export class OrderRepository {
   constructor(
-    private readonly database: DataSource,
+    private readonly dataSource: DataSource,
     @InjectRepository(OrderEntity)
-    private readonly orders: Repository<OrderEntity>,
+    private readonly orderTypeOrmRepository: Repository<OrderEntity>,
     @InjectRepository(OrderItemEntity)
-    private readonly items: Repository<OrderItemEntity>,
+    private readonly orderItemTypeOrmRepository: Repository<OrderItemEntity>,
   ) {}
 
   async insertPending(
-    manager: EntityManager,
-    id: string,
-    input: CheckoutInput,
+    entityManager: EntityManager,
+    orderId: string,
+    checkoutInput: CheckoutInput,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<boolean> {
-    const details: OrderColumns = manager
+    const orderColumns: OrderColumns = entityManager
       .getRepository(OrderEntity)
-      .create(input);
+      .create(checkoutInput);
 
-    const result = await manager
+    const orderInsertResult = await entityManager
       .getRepository(OrderEntity)
       .createQueryBuilder()
       .insert()
       .values({
-        ...details,
-        altContact: input.altContact,
-        id,
+        ...orderColumns,
+        altContact: checkoutInput.altContact,
+        id: orderId,
         idempotencyKey,
         requestHash,
         correlationId,
@@ -56,117 +56,141 @@ export class OrderRepository {
       .returning(['id'])
       .execute();
 
-    return (result.raw as { id: string }[]).length > 0;
+    return (orderInsertResult.raw as { id: string }[]).length > 0;
   }
 
   findByKey(
-    manager: EntityManager,
+    entityManager: EntityManager,
     idempotencyKey: string,
   ): Promise<OrderEntity | null> {
-    return manager.getRepository(OrderEntity).findOneBy({ idempotencyKey });
+    return entityManager
+      .getRepository(OrderEntity)
+      .findOneBy({ idempotencyKey });
   }
 
-  findById(id: string, manager?: EntityManager): Promise<OrderEntity | null> {
-    return (manager?.getRepository(OrderEntity) ?? this.orders).findOneBy({
-      id,
+  findById(
+    orderId: string,
+    entityManager?: EntityManager,
+  ): Promise<OrderEntity | null> {
+    return (
+      entityManager?.getRepository(OrderEntity) ?? this.orderTypeOrmRepository
+    ).findOneBy({
+      id: orderId,
     });
   }
 
   findItems(orderId: string): Promise<OrderItemEntity[]> {
-    return this.items.find({ where: { orderId }, order: { productId: 'ASC' } });
+    return this.orderItemTypeOrmRepository.find({
+      where: { orderId },
+      order: { productId: 'ASC' },
+    });
   }
 
-  lock(manager: EntityManager, id: string): Promise<OrderEntity | null> {
-    return manager
+  lock(
+    entityManager: EntityManager,
+    orderId: string,
+  ): Promise<OrderEntity | null> {
+    return entityManager
       .getRepository(OrderEntity)
-      .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      .findOne({ where: { id: orderId }, lock: { mode: 'pessimistic_write' } });
   }
 
-  async lockOrFail(manager: EntityManager, id: string): Promise<OrderEntity> {
-    return manager
-      .getRepository(OrderEntity)
-      .findOneOrFail({ where: { id }, lock: { mode: 'pessimistic_write' } });
+  async lockOrFail(
+    entityManager: EntityManager,
+    orderId: string,
+  ): Promise<OrderEntity> {
+    return entityManager.getRepository(OrderEntity).findOneOrFail({
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
+    });
   }
 
   async addItems(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
-    items: OrderItemInput[],
+    orderItems: OrderItemInput[],
   ): Promise<void> {
-    await manager
-      .getRepository(OrderItemEntity)
-      .insert(items.map((item) => ({ ...item, orderId, id: randomUUID() })));
+    await entityManager.getRepository(OrderItemEntity).insert(
+      orderItems.map((orderItem) => ({
+        ...orderItem,
+        orderId,
+        id: randomUUID(),
+      })),
+    );
   }
 
   async update(
-    manager: EntityManager,
-    id: string,
-    changes: OrderChanges,
+    entityManager: EntityManager,
+    orderId: string,
+    orderChanges: OrderChanges,
   ): Promise<void> {
-    await manager.getRepository(OrderEntity).update({ id }, changes);
+    await entityManager
+      .getRepository(OrderEntity)
+      .update({ id: orderId }, orderChanges);
   }
 
-  /** Conditional status transition; returns the affected row count (0 when `from` no longer matches). */
+  /** Conditional status transition; returns the affected row count (0 when `allowedStatuses` no longer matches). */
   async transitionStatus(
-    manager: EntityManager,
-    id: string,
-    from: readonly OrderStatus[],
-    to: OrderStatus,
+    entityManager: EntityManager,
+    orderId: string,
+    allowedStatuses: readonly OrderStatus[],
+    targetStatus: OrderStatus,
   ): Promise<number> {
-    const result = await manager
+    const statusUpdateResult = await entityManager
       .getRepository(OrderEntity)
       .createQueryBuilder()
       .update()
-      .set({ status: to })
-      .where('id = :id', { id })
-      .andWhere('status IN (:...from)', { from: [...from] })
+      .set({ status: targetStatus })
+      .where('id = :id', { id: orderId })
+      .andWhere('status IN (:...from)', { from: [...allowedStatuses] })
       .execute();
 
-    return result.affected ?? 0;
+    return statusUpdateResult.affected ?? 0;
   }
 
   // A session lock spans the local transaction and the external activation steps.
   async withActivationLock<T>(
-    id: string,
-    work: (runner: QueryRunner) => Promise<T>,
+    orderId: string,
+    activationOperation: (queryRunner: QueryRunner) => Promise<T>,
   ): Promise<T> {
-    const runner = this.database.createQueryRunner();
-    let locked = false;
+    const queryRunner = this.dataSource.createQueryRunner();
+    let isActivationLockHeld = false;
 
     try {
 
-      await runner.connect();
+      await queryRunner.connect();
 
-      await runner.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [
-        id,
-      ]);
+      await queryRunner.query(
+        'SELECT pg_advisory_lock(hashtextextended($1,0))',
+        [orderId],
+      );
 
-      locked = true;
+      isActivationLockHeld = true;
 
-      return await work(runner);
+      return await activationOperation(queryRunner);
 
     } finally {
 
       try {
 
-        if (runner.isTransactionActive) {
+        if (queryRunner.isTransactionActive) {
 
-          await runner.rollbackTransaction();
+          await queryRunner.rollbackTransaction();
 
         }
 
-        if (locked) {
+        if (isActivationLockHeld) {
 
-          await runner.query(
+          await queryRunner.query(
             'SELECT pg_advisory_unlock(hashtextextended($1,0))',
-            [id],
+            [orderId],
           );
 
         }
 
       } finally {
 
-        await runner.release();
+        await queryRunner.release();
 
       }
 

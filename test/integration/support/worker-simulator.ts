@@ -13,10 +13,10 @@ import { InMemoryStore } from './in-memory-store';
  * relay against a Kafka testcontainer, then poll GET /orders/:id/status.
  */
 export function simulateWorkerProcessing(
-  store: InMemoryStore,
+  inMemoryStore: InMemoryStore,
   orderId: string,
 ): void {
-  const order = store.orders.get(orderId);
+  const order = inMemoryStore.orders.get(orderId);
 
   if (!order) {
 
@@ -24,7 +24,7 @@ export function simulateWorkerProcessing(
 
   }
 
-  for (const reservation of store.reservations) {
+  for (const reservation of inMemoryStore.reservations) {
 
     if (reservation.orderId !== orderId || reservation.status !== 'ACTIVE') {
 
@@ -32,7 +32,7 @@ export function simulateWorkerProcessing(
 
     }
 
-    const product = store.products.get(reservation.productId);
+    const product = inMemoryStore.products.get(reservation.productId);
 
     if (product) {
 
@@ -45,7 +45,7 @@ export function simulateWorkerProcessing(
 
   }
 
-  for (const event of store.outbox) {
+  for (const event of inMemoryStore.outbox) {
 
     if (event.orderId === orderId) {
 

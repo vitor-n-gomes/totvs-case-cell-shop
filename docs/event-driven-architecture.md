@@ -124,9 +124,9 @@ export class OrderActivatedHandler implements EventHandler<OrderActivatedEvent> 
   readonly kind = ORDER_ACTIVATED;
 
   constructor(
-    private readonly logger: AppLogger,
+    private readonly appLogger: AppLogger,
     private readonly orderRepository: OrderRepository,
-    private readonly metrics: Metrics,
+    private readonly metricsService: Metrics,
   ) {}
 
   async handle(event: OrderActivatedEvent): Promise<void> {
@@ -134,14 +134,16 @@ export class OrderActivatedHandler implements EventHandler<OrderActivatedEvent> 
     const order = await this.orderRepository.findById(orderId);
 
     if (!order) {
-      this.logger.error('order.activated.handler.order_not_found', {
+      this.appLogger.error('order.activated.handler.order_not_found', {
         order_id: orderId,
       });
       return;
     }
 
     // Lógica pós-ativação
-    this.metrics.reservations.inc({ result: 'activated' });
+    this.metricsService.reservationTransitionsCounter.inc({
+      result: 'activated',
+    });
   }
 }
 ```
@@ -153,11 +155,11 @@ export class OrderActivatedHandler implements EventHandler<OrderActivatedEvent> 
 ```typescript
 @Injectable()
 export class CheckoutInitiatedHandler {
-  constructor(private readonly activation: ActiveOrderUseCase) {}
+  constructor(private readonly activeOrderUseCase: ActiveOrderUseCase) {}
 
   async execute(event: CheckoutInitiatedEvent): Promise<void> {
     // Ativa a order quando checkout é iniciado
-    return this.activation.execute(event);
+    return this.activeOrderUseCase.execute(event);
   }
 }
 ```
@@ -167,16 +169,16 @@ export class CheckoutInitiatedHandler {
 **Localização**: `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts`
 
 Acionado pelo `ProcessOrderEventUseCase` para `ORDER_RESERVATION_EXPIRED`
-(também registrado no `EventBus`). Dentro de `spans.run('reservation.expire')`
+(também registrado no `EventBus`). Dentro de `spansService.run('reservation.expire')`
 e do mesmo advisory lock por pedido da ativação (`withActivationLock`), numa
 única transação:
 
 1. `processingStatus === Completed` → ignora.
 2. `UPDATE "order" SET status = 'Cancelled' WHERE id = $1 AND status IN ('Pending')`
    (`OrderRepository.transitionStatus`).
-3. `affected === 0` → `reservation.expire.skipped` +
+3. `affectedOrderCount === 0` → `reservation.expire.skipped` +
    `shop_reservations_total{result="already_processed"}`, sem tocar no estoque.
-4. `affected === 1` → confirma que há uma reserva vencida; se não houver, reverte a transação. Caso contrário, `reservations.release(...)` devolve as reservas ativas.
+4. `affectedOrderCount === 1` → confirma que há uma reserva vencida; se não houver, reverte a transação. Caso contrário, `reservationRepository.release(...)` devolve as reservas ativas.
 
 Após o commit, invalida `storefront:products` no Redis (falha só gera `warn`,
 sem retry no Kafka) e incrementa `reservations{result="expired"}` e
@@ -193,17 +195,17 @@ sem retry no Kafka) e incrementa `reservations{result="expired"}` e
 ```typescript
 @Injectable()
 export class EventBus implements IEventBus {
-  private handlers: Map<string, EventHandler[]> = new Map();
+  private eventHandlers: Map<string, EventHandler[]> = new Map();
 
   /**
    * Registra um handler para um tipo de evento
    */
   register(handler: EventHandler): void {
-    const kind = handler.kind;
-    if (!this.handlers.has(kind)) {
-      this.handlers.set(kind, []);
+    const eventKind = handler.kind;
+    if (!this.eventHandlers.has(eventKind)) {
+      this.eventHandlers.set(eventKind, []);
     }
-    this.handlers.get(kind)!.push(handler);
+    this.eventHandlers.get(eventKind)!.push(handler);
   }
 
   /**
@@ -211,12 +213,14 @@ export class EventBus implements IEventBus {
    * Executa handlers em paralelo com tratamento de erros
    */
   async dispatch(event: OrderEvent): Promise<void> {
-    const handlers = this.handlers.get(event.kind);
-    if (!handlers) return;
+    const eventHandlers = this.eventHandlers.get(event.kind);
+    if (!eventHandlers) return;
 
-    const handlerPromises = handlers.map((handler) =>
+    const handlerPromises = eventHandlers.map((handler) =>
       handler.handle(event).catch((error) => {
-        this.logger.error(`Handler failed for event: ${event.kind}`, { error });
+        this.appLogger.error(`Handler failed for event: ${event.kind}`, {
+          error,
+        });
       }),
     );
 
@@ -227,7 +231,7 @@ export class EventBus implements IEventBus {
    * Publica um evento no Kafka
    */
   async publish(event: OrderEvent, topic?: string): Promise<void> {
-    await this.messaging.publish(
+    await this.orderMessaging.publish(
       kafkaTopic,
       event.data.order_id ?? event.kind,
       event,
@@ -253,13 +257,13 @@ export class HandlersRegistry {
    * Registra todos os handlers no EventBus
    */
   registerAll(eventBus: EventBus): void {
-    const handlers = [
+    const eventHandlers = [
       this.checkoutInitiatedHandler,
       this.reservationExpiredHandler,
       this.orderActivatedHandler,
     ];
 
-    handlers.forEach((handler) => {
+    eventHandlers.forEach((handler) => {
       eventBus.register(handler as any);
     });
   }
@@ -398,7 +402,7 @@ export class YourCustomHandler implements EventHandler<{ yourField: string }> {
   kind = 'your.event.kind'; // Use um identificador único
 
   constructor(
-    private readonly logger: AppLogger,
+    private readonly appLogger: AppLogger,
     // Injete dependências necessárias
   ) {}
 
@@ -406,7 +410,7 @@ export class YourCustomHandler implements EventHandler<{ yourField: string }> {
     const { yourField } = event.data;
     const { correlationId } = event.meta;
 
-    this.logger.info('your.event.processing', { yourField, correlationId });
+    this.appLogger.info('your.event.processing', { yourField, correlationId });
 
     // Implemente sua lógica aqui
     // Use transações quando necessário

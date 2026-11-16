@@ -10,7 +10,7 @@ import { createOpenApiDocument } from '../apps/http/src/configure-api';
 import { LoggingModule } from '@app/platform/logging/logging.module';
 
 async function exportDocument(): Promise<void> {
-  const module = await Test.createTestingModule({
+  const testingModule = await Test.createTestingModule({
     imports: [LoggingModule],
     controllers: [ProductsController, OrderController],
     providers: [
@@ -20,7 +20,7 @@ async function exportDocument(): Promise<void> {
     ],
   }).compile();
 
-  const app = module.createNestApplication();
+  const app = testingModule.createNestApplication();
 
   try {
 

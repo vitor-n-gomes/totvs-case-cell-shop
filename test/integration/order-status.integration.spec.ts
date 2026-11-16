@@ -9,11 +9,11 @@ import { createTestApp, TestApp } from './support/test-app';
 import { simulateWorkerProcessing } from './support/worker-simulator';
 
 describe('GET /orders/:orderId/status (integration)', () => {
-  let context: TestApp;
+  let testContext: TestApp;
   let product: ProductRecord;
 
   async function createOrder(): Promise<string> {
-    const response = await request(context.app.getHttpServer())
+    const response = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
       .send(buildCheckoutPayload(product.id, 1))
@@ -23,19 +23,19 @@ describe('GET /orders/:orderId/status (integration)', () => {
   }
 
   beforeEach(async () => {
-    context = await createTestApp();
+    testContext = await createTestApp();
     product = newProduct({ physicalQuantity: 3, netPrice: 2990 });
-    context.store.seedProducts([product]);
+    testContext.inMemoryStore.seedProducts([product]);
   });
 
   afterEach(async () => {
-    await context.app.close();
+    await testContext.app.close();
   });
 
   it('returns the status of a freshly created order', async () => {
     const orderId = await createOrder();
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(testContext.app.getHttpServer())
       .get(`/orders/${orderId}/status`)
       .expect(200);
 
@@ -59,9 +59,9 @@ describe('GET /orders/:orderId/status (integration)', () => {
     const orderId = await createOrder();
 
     // The real Kafka consumer is covered in real-messaging.integration.spec.ts.
-    simulateWorkerProcessing(context.store, orderId);
+    simulateWorkerProcessing(testContext.inMemoryStore, orderId);
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(testContext.app.getHttpServer())
       .get(`/orders/${orderId}/status`)
       .expect(200);
 

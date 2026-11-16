@@ -16,107 +16,146 @@ import {
 import { ProductRepository } from '@app/products/repositories/product.repository';
 import { InMemoryRedisConnection } from '../integration/support/in-memory-redis';
 
-const logger = {
+const appLogger = {
   info: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
 } as unknown as AppLogger;
 
-const productId = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+const productId = (productNumber: number) =>
+  `00000000-0000-4000-8000-00000000000${productNumber}`;
 
-function catalogRow(n: number) {
+function catalogRow(productNumber: number) {
   return {
-    id: productId(n),
-    name: `Case ${n}`,
-    productKey: `CASE-${n}`,
+    id: productId(productNumber),
+    name: `Case ${productNumber}`,
+    productKey: `CASE-${productNumber}`,
     netPrice: '1000',
     listPrice: '1500',
   };
 }
 
-async function cacheCounts(metrics: Metrics) {
-  const { values } = await metrics.cache.get();
+async function cacheCounts(metricsService: Metrics) {
+  const { values } = await metricsService.cacheRequestsCounter.get();
 
-  return Object.fromEntries(values.map((v) => [v.labels.result, v.value]));
+  return Object.fromEntries(
+    values.map((metricSample) => [
+      metricSample.labels.result,
+      metricSample.value,
+    ]),
+  );
 }
 
 describe('GetProductsUseCase', () => {
-  function build(findAll: jest.Mock, redis = new InMemoryRedisConnection()) {
-    const metrics = new Metrics();
+  function build(
+    findAllProductsMock: jest.Mock,
+    redisConnection = new InMemoryRedisConnection(),
+  ) {
+    const metricsService = new Metrics();
 
-    const useCase = new GetProductsUseCase(
-      { findAll } as unknown as ProductRepository,
-      redis as unknown as RedisConnection,
-      metrics,
-      new Spans(logger),
-      logger,
+    const getProductsUseCase = new GetProductsUseCase(
+      { findAll: findAllProductsMock } as unknown as ProductRepository,
+      redisConnection as unknown as RedisConnection,
+      metricsService,
+      new Spans(appLogger),
+      appLogger,
     );
 
-    return { useCase, metrics, redis };
+    return { getProductsUseCase, metricsService, redisConnection };
   }
 
   it('loads once for concurrent misses and serves later reads from cache', async () => {
-    const findAll = jest.fn().mockResolvedValue([catalogRow(1)]);
-    const { useCase, metrics, redis } = build(findAll);
+    const findAllProductsMock = jest.fn().mockResolvedValue([catalogRow(1)]);
+
+    const { getProductsUseCase, metricsService, redisConnection } =
+      build(findAllProductsMock);
 
     const results = await Promise.all(
-      Array.from({ length: 20 }, () => useCase.execute()),
+      Array.from({ length: 20 }, () => getProductsUseCase.execute()),
     );
 
-    expect(findAll).toHaveBeenCalledTimes(1);
+    expect(findAllProductsMock).toHaveBeenCalledTimes(1);
 
     expect(
-      results.every((r) => r.length === 1 && r[0]?.netPrice === 1000),
+      results.every(
+        (catalogProducts) =>
+          catalogProducts.length === 1 && catalogProducts[0]?.netPrice === 1000,
+      ),
     ).toBe(true);
 
-    expect(redis.client.ttlSeconds(CATALOG_KEY)).toBeGreaterThan(290);
+    expect(redisConnection.redisClient.ttlSeconds(CATALOG_KEY)).toBeGreaterThan(
+      290,
+    );
 
-    await useCase.execute();
+    await getProductsUseCase.execute();
 
-    expect(findAll).toHaveBeenCalledTimes(1);
-    expect(await cacheCounts(metrics)).toMatchObject({ hit: 1, miss: 20 });
+    expect(findAllProductsMock).toHaveBeenCalledTimes(1);
+
+    expect(await cacheCounts(metricsService)).toMatchObject({
+      hit: 1,
+      miss: 20,
+    });
   });
 
   it('treats a malformed cache entry as a miss and rewrites it', async () => {
-    const findAll = jest.fn().mockResolvedValue([catalogRow(2)]);
-    const { useCase, metrics, redis } = build(findAll);
+    const findAllProductsMock = jest.fn().mockResolvedValue([catalogRow(2)]);
 
-    await redis.client.set(CATALOG_KEY, '{not json');
+    const { getProductsUseCase, metricsService, redisConnection } =
+      build(findAllProductsMock);
 
-    const [product] = await useCase.execute();
+    await redisConnection.redisClient.set(CATALOG_KEY, '{not json');
+
+    const [product] = await getProductsUseCase.execute();
 
     expect(product?.productKey).toBe('CASE-2');
-    expect(findAll).toHaveBeenCalledTimes(1);
-    expect((await cacheCounts(metrics)).invalid).toBeGreaterThanOrEqual(1);
+    expect(findAllProductsMock).toHaveBeenCalledTimes(1);
+
+    expect((await cacheCounts(metricsService)).invalid).toBeGreaterThanOrEqual(
+      1,
+    );
   });
 
   it('falls back to the database when Redis is unavailable', async () => {
-    const findAll = jest.fn().mockResolvedValue([catalogRow(3)]);
-    const redis = new InMemoryRedisConnection();
+    const findAllProductsMock = jest.fn().mockResolvedValue([catalogRow(3)]);
+    const redisConnection = new InMemoryRedisConnection();
 
-    jest.spyOn(redis.client, 'get').mockRejectedValue(new Error('down'));
+    jest
+      .spyOn(redisConnection.redisClient, 'get')
+      .mockRejectedValue(new Error('down'));
 
-    const { useCase, metrics } = build(findAll, redis);
+    const { getProductsUseCase, metricsService } = build(
+      findAllProductsMock,
+      redisConnection,
+    );
 
-    await Promise.all([useCase.execute(), useCase.execute()]);
+    await Promise.all([
+      getProductsUseCase.execute(),
+      getProductsUseCase.execute(),
+    ]);
 
-    expect(findAll).toHaveBeenCalledTimes(1);
-    expect((await cacheCounts(metrics)).unavailable).toBe(2);
+    expect(findAllProductsMock).toHaveBeenCalledTimes(1);
+    expect((await cacheCounts(metricsService)).unavailable).toBe(2);
   });
 
   it('maps repository failures to 503 without caching anything', async () => {
-    const findAll = jest.fn().mockRejectedValue(new Error('db down'));
-    const { useCase, redis } = build(findAll);
+    const findAllProductsMock = jest
+      .fn()
+      .mockRejectedValue(new Error('db down'));
 
-    await expect(useCase.execute()).rejects.toMatchObject({ status: 503 });
-    expect(redis.client.has(CATALOG_KEY)).toBe(false);
+    const { getProductsUseCase, redisConnection } = build(findAllProductsMock);
+
+    await expect(getProductsUseCase.execute()).rejects.toMatchObject({
+      status: 503,
+    });
+
+    expect(redisConnection.redisClient.has(CATALOG_KEY)).toBe(false);
   });
 });
 
 describe('CheckoutGuard', () => {
-  const guard = new CheckoutGuard();
+  const checkoutGuard = new CheckoutGuard();
 
-  const base: CheckoutInput = {
+  const checkoutInput: CheckoutInput = {
     paymentType: PaymentType.PrePaid,
     dueDate: '2026-11-10',
     mainContact: 'customer@example.test',
@@ -130,42 +169,51 @@ describe('CheckoutGuard', () => {
 
   it.each([undefined, '', 'has space', 'x'.repeat(129)])(
     'rejects invalid idempotency key %p',
-    (key) => {
-      expect(() => guard.validate(base, key)).toThrow(BadRequestException);
+    (idempotencyKey) => {
+      expect(() =>
+        checkoutGuard.validate(checkoutInput, idempotencyKey),
+      ).toThrow(BadRequestException);
     },
   );
 
   it('rejects duplicate products in a cart', () => {
-    const duplicated = {
-      ...base,
-      items: [base.items[0]!, base.items[0]!],
+    const duplicateProductInput = {
+      ...checkoutInput,
+      items: [checkoutInput.items[0]!, checkoutInput.items[0]!],
     };
 
-    expect(() => guard.validate(duplicated, 'key-1')).toThrow(
-      'Duplicate products',
-    );
+    expect(() =>
+      checkoutGuard.validate(duplicateProductInput, 'key-1'),
+    ).toThrow('Duplicate products');
   });
 
   it('hashes equivalent carts identically regardless of item order or null altContact', () => {
-    const reordered = {
-      ...base,
+    const reorderedInput = {
+      ...checkoutInput,
       altContact: undefined,
-      items: [...base.items].reverse(),
+      items: [...checkoutInput.items].reverse(),
     };
 
-    expect(guard.hashPayload(reordered)).toBe(guard.hashPayload(base));
+    expect(checkoutGuard.hashPayload(reorderedInput)).toBe(
+      checkoutGuard.hashPayload(checkoutInput),
+    );
   });
 
   it('changes the hash when any purchase field changes', () => {
-    const changed = {
-      ...base,
-      items: [{ ...base.items[0]!, quantity: 5 }, base.items[1]!],
+    const changedQuantityInput = {
+      ...checkoutInput,
+      items: [
+        { ...checkoutInput.items[0]!, quantity: 5 },
+        checkoutInput.items[1]!,
+      ],
     };
 
-    expect(guard.hashPayload(changed)).not.toBe(guard.hashPayload(base));
-
-    expect(guard.hashPayload({ ...base, paymentMethod: 'CARD' })).not.toBe(
-      guard.hashPayload(base),
+    expect(checkoutGuard.hashPayload(changedQuantityInput)).not.toBe(
+      checkoutGuard.hashPayload(checkoutInput),
     );
+
+    expect(
+      checkoutGuard.hashPayload({ ...checkoutInput, paymentMethod: 'CARD' }),
+    ).not.toBe(checkoutGuard.hashPayload(checkoutInput));
   });
 });

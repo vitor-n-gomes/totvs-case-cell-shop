@@ -12,12 +12,12 @@ import { KAFKA_CLIENT } from './kafka.topics';
       {
         name: KAFKA_CLIENT,
         inject: [ConfigService],
-        useFactory: (config: ConfigService) => ({
+        useFactory: (configService: ConfigService) => ({
           transport: Transport.KAFKA,
           options: {
             postfixId: '',
             producerOnlyMode: true,
-            client: kafkaClientOptions(config),
+            client: kafkaClientOptions(configService),
             producer: { allowAutoTopicCreation: false },
             send: { acks: -1 },
           },

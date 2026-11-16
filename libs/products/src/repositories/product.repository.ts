@@ -7,11 +7,11 @@ import { ProductEntity } from '../domain/entities';
 export class ProductRepository {
   constructor(
     @InjectRepository(ProductEntity)
-    private readonly products: Repository<ProductEntity>,
+    private readonly productTypeOrmRepository: Repository<ProductEntity>,
   ) {}
 
   findAll(): Promise<ProductEntity[]> {
-    return this.products
+    return this.productTypeOrmRepository
       .createQueryBuilder('product')
       .innerJoin('product.stock', 'stock')
       .where('stock.physicalQuantity - stock.reservedQuantity >= :minimum', {

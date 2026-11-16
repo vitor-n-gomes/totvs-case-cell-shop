@@ -29,10 +29,10 @@ const migrations = [
   ConvertPricesToIntegerCents1794700000011,
 ];
 
-export function databaseOptions(url: string): DataSourceOptions {
+export function databaseOptions(databaseUrl: string): DataSourceOptions {
   return {
     type: 'postgres',
-    url,
+    url: databaseUrl,
     entities: [
       RequestLogEntity,
       ...productEntities,

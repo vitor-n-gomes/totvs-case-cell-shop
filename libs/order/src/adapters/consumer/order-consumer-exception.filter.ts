@@ -41,19 +41,21 @@ function eventKind(payload: unknown): string {
 }
 
 function errorType(error: unknown): string {
-  const name = error instanceof Error ? error.name : 'UnknownError';
+  const errorName = error instanceof Error ? error.name : 'UnknownError';
 
-  return /^[A-Za-z][A-Za-z0-9._-]{0,80}$/.test(name) ? name : 'UnknownError';
+  return /^[A-Za-z][A-Za-z0-9._-]{0,80}$/.test(errorName)
+    ? errorName
+    : 'UnknownError';
 }
 
 @Catch()
 @Injectable()
 export class OrderConsumerExceptionFilter implements ExceptionFilter {
   constructor(
-    private readonly messaging: OrderMessaging,
-    private readonly config: ConfigService,
-    private readonly metrics: Metrics,
-    private readonly logger: AppLogger,
+    private readonly orderMessaging: OrderMessaging,
+    private readonly configService: ConfigService,
+    private readonly metricsService: Metrics,
+    private readonly appLogger: AppLogger,
     private readonly httpAdapterHost: HttpAdapterHost,
   ) {}
 
@@ -86,9 +88,9 @@ export class OrderConsumerExceptionFilter implements ExceptionFilter {
     }
 
     return from(this.sendToDlq(error, host)).pipe(
-      catchError((failure: unknown) => {
-        this.logger.error('order.consumer.dlq.failed', {
-          error_type: errorType(failure),
+      catchError((publicationError: unknown) => {
+        this.appLogger.error('order.consumer.dlq.failed', {
+          error_type: errorType(publicationError),
         });
 
         return throwError(
@@ -99,51 +101,57 @@ export class OrderConsumerExceptionFilter implements ExceptionFilter {
   }
 
   private async sendToDlq(error: unknown, host: ArgumentsHost): Promise<void> {
-    const rpc = host.switchToRpc();
-    const payload: unknown = rpc.getData();
-    const context = rpc.getContext<KafkaContext>();
-    const event = parseOrderEvent(payload);
-    const kind = event?.kind ?? eventKind(payload);
+    const rpcContext = host.switchToRpc();
+    const payload: unknown = rpcContext.getData();
+    const kafkaContext = rpcContext.getContext<KafkaContext>();
+    const orderEvent = parseOrderEvent(payload);
+    const orderEventKind = orderEvent?.kind ?? eventKind(payload);
 
-    const source = {
-      topic: context.getTopic(),
-      partition: context.getPartition(),
-      offset: context.getMessage().offset,
+    const sourceMessage = {
+      topic: kafkaContext.getTopic(),
+      partition: kafkaContext.getPartition(),
+      offset: kafkaContext.getMessage().offset,
     };
 
-    const reason = !event
+    const deadLetterReason = !orderEvent
       ? 'Invalid event payload'
       : error instanceof PermanentActivationError
         ? error.message
         : `Unexpected ${errorType(error)}`;
 
-    const correlationId = event?.meta?.correlation_id ?? randomUUID();
+    const correlationId = orderEvent?.meta?.correlation_id ?? randomUUID();
 
-    await this.messaging.publish(
-      `${this.config.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
-      event?.data.order_id ??
-        `${source.topic}:${source.partition}:${source.offset}`,
-      event ?? { kind, source, reason },
+    await this.orderMessaging.publish(
+      `${this.configService.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
+      orderEvent?.data.order_id ??
+        `${sourceMessage.topic}:${sourceMessage.partition}:${sourceMessage.offset}`,
+      orderEvent ?? {
+        kind: orderEventKind,
+        source: sourceMessage,
+        reason: deadLetterReason,
+      },
       {
         'x-correlation-id': correlationId,
-        'x-dlq-reason': reason,
+        'x-dlq-reason': deadLetterReason,
         'x-error-type': errorType(error),
-        'x-event-kind': kind,
-        'x-source-topic': source.topic,
-        'x-source-partition': String(source.partition),
-        'x-source-offset': source.offset,
+        'x-event-kind': orderEventKind,
+        'x-source-topic': sourceMessage.topic,
+        'x-source-partition': String(sourceMessage.partition),
+        'x-source-offset': sourceMessage.offset,
       },
     );
 
-    this.metrics.processing.inc({ result: event ? 'dlq' : 'invalid_dlq' });
+    this.metricsService.processingCounter.inc({
+      result: orderEvent ? 'dlq' : 'invalid_dlq',
+    });
 
-    this.logger.error('order.consumer.dead_lettered', {
+    this.appLogger.error('order.consumer.dead_lettered', {
       correlation_id: correlationId,
-      order_id: event?.data.order_id,
-      kind,
-      source_topic: source.topic,
-      source_partition: source.partition,
-      source_offset: source.offset,
+      order_id: orderEvent?.data.order_id,
+      kind: orderEventKind,
+      source_topic: sourceMessage.topic,
+      source_partition: sourceMessage.partition,
+      source_offset: sourceMessage.offset,
       error_type: errorType(error),
     });
   }

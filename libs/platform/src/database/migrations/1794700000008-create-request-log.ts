@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateRequestLog1794700000008 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE request_log (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         url varchar(2048) NOT NULL,
@@ -17,8 +17,8 @@ export class CreateRequestLog1794700000008 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       DROP INDEX request_log_correlation_idx;
       DROP TABLE request_log;
     `);

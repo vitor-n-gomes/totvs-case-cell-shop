@@ -22,30 +22,32 @@ import { ProductRepository } from '@app/products/repositories/product.repository
 import { newProduct, ProductRecord } from './support/in-memory-store';
 
 describe('Catalog with PostgreSQL and Redis (integration)', () => {
-  let context: RealServicesTestApp | undefined;
+  let testContext: RealServicesTestApp | undefined;
   let product: ProductRecord;
 
   beforeEach(async () => {
-    context = await createRealServicesTestApp();
-    product = await seedProduct(context.database, newProduct());
+    testContext = await createRealServicesTestApp();
+    product = await seedProduct(testContext.dataSource, newProduct());
   });
 
   afterEach(async () => {
-    await context?.close();
-    context = undefined;
+    await testContext?.close();
+    testContext = undefined;
   });
 
   it('uses the real cache with a 300-second TTL, invalidation and malformed-value recovery', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const logs = jest.spyOn(PinoLogger.prototype, 'info');
     const correlationId = randomUUID();
 
-    const first = await request(testApp.app.getHttpServer())
+    const firstCatalogResponse = await request(testApp.app.getHttpServer())
       .get('/products')
       .set('x-correlation-id', correlationId)
       .expect(200);
 
-    expect(first.body).toMatchObject([{ id: product.id, netPrice: 2990 }]);
+    expect(firstCatalogResponse.body).toMatchObject([
+      { id: product.id, netPrice: 2990 },
+    ]);
 
     const catalogSpan = logs.mock.calls.find(
       ([fields, message]) =>
@@ -88,12 +90,12 @@ describe('Catalog with PostgreSQL and Redis (integration)', () => {
       parent_span_id: catalogSpan.span_id,
     });
 
-    const ttl = await testApp.redis.client.ttl(CATALOG_KEY);
+    const ttl = await testApp.redisConnection.redisClient.ttl(CATALOG_KEY);
 
     expect(ttl).toBeGreaterThan(290);
     expect(ttl).toBeLessThanOrEqual(300);
 
-    await testApp.database
+    await testApp.dataSource
       .getRepository(ProductEntity)
       .update({ id: product.id }, { netPrice: 4990 });
 
@@ -101,11 +103,12 @@ describe('Catalog with PostgreSQL and Redis (integration)', () => {
       .get('/products')
       .expect(200);
 
-    expect(cached.body).toEqual(first.body);
-    await testApp.redis.client.expire(CATALOG_KEY, 1);
+    expect(cached.body).toEqual(firstCatalogResponse.body);
+    await testApp.redisConnection.redisClient.expire(CATALOG_KEY, 1);
 
     await waitUntil(
-      async () => (await testApp.redis.client.exists(CATALOG_KEY)) === 0,
+      async () =>
+        (await testApp.redisConnection.redisClient.exists(CATALOG_KEY)) === 0,
       'catalog TTL expiration',
     );
 
@@ -114,7 +117,7 @@ describe('Catalog with PostgreSQL and Redis (integration)', () => {
       .expect(200);
 
     expect(refreshed.body).toMatchObject([{ id: product.id, netPrice: 4990 }]);
-    await testApp.redis.client.set(CATALOG_KEY, '{not-json');
+    await testApp.redisConnection.redisClient.set(CATALOG_KEY, '{not-json');
 
     const recovered = await request(testApp.app.getHttpServer())
       .get('/products')
@@ -122,99 +125,125 @@ describe('Catalog with PostgreSQL and Redis (integration)', () => {
 
     expect(recovered.body).toEqual(refreshed.body);
 
-    expect(JSON.parse((await testApp.redis.client.get(CATALOG_KEY))!)).toEqual(
-      refreshed.body,
-    );
+    expect(
+      JSON.parse((await testApp.redisConnection.redisClient.get(CATALOG_KEY))!),
+    ).toEqual(refreshed.body);
 
-    const metrics = await request(testApp.app.getHttpServer())
+    const metricsService = await request(testApp.app.getHttpServer())
       .get('/metrics')
       .expect(200);
 
-    expect(metrics.text).toContain('shop_cache_requests_total{result="hit"} 1');
+    expect(metricsService.text).toContain(
+      'shop_cache_requests_total{result="hit"} 1',
+    );
 
-    expect(metrics.text).toContain(
+    expect(metricsService.text).toContain(
       'shop_cache_requests_total{result="miss"} 3',
     );
 
-    expect(metrics.text).toMatch(
+    expect(metricsService.text).toMatch(
       /shop_cache_requests_total\{result="invalid"\} [1-9]\d*/,
     );
   });
 
   it('coordinates cache misses across independent instances using a Redis lock', async () => {
-    const testApp = context!;
-    const repository = testApp.app.get(ProductRepository);
-    const findAll = repository.findAll.bind(repository);
+    const testApp = testContext!;
+    const productRepository = testApp.app.get(ProductRepository);
+    const findAllProducts = productRepository.findAll.bind(productRepository);
 
-    const load = jest
-      .spyOn(repository, 'findAll')
+    const findAllProductsMock = jest
+      .spyOn(productRepository, 'findAll')
       .mockImplementation(async () => {
         await delay(150);
 
-        return findAll();
+        return findAllProducts();
       });
 
-    const replicaRedis = new RedisConnection(
+    const redisConnection = new RedisConnection(
       testApp.app.get(ConfigService),
       testApp.app.get(AppLogger),
     );
 
-    replicaRedis.onModuleInit();
+    redisConnection.onModuleInit();
 
     try {
 
-      await waitUntil(async () => replicaRedis.client.isReady, 'replica Redis');
-      const first = testApp.app.get(GetProductsUseCase);
+      await waitUntil(
+        async () => redisConnection.redisClient.isReady,
+        'replica Redis',
+      );
 
-      const second = new GetProductsUseCase(
-        repository,
-        replicaRedis,
-        testApp.metrics,
+      const primaryGetProductsUseCase = testApp.app.get(GetProductsUseCase);
+
+      const secondaryGetProductsUseCase = new GetProductsUseCase(
+        productRepository,
+        redisConnection,
+        testApp.metricsService,
         testApp.app.get(Spans),
         testApp.app.get(AppLogger),
       );
 
       const results = await Promise.all(
         Array.from({ length: 12 }, (_, index) =>
-          (index % 2 === 0 ? first : second).execute(),
+          (index % 2 === 0
+            ? primaryGetProductsUseCase
+            : secondaryGetProductsUseCase
+          ).execute(),
         ),
       );
 
-      expect(load).toHaveBeenCalledTimes(1);
+      expect(findAllProductsMock).toHaveBeenCalledTimes(1);
 
       expect(results.every((catalog) => catalog[0]?.id === product.id)).toBe(
         true,
       );
 
-      expect(await testApp.redis.client.exists(CATALOG_KEY)).toBe(1);
-      expect(await testApp.redis.client.exists(CATALOG_LOCK)).toBe(0);
+      expect(
+        await testApp.redisConnection.redisClient.exists(CATALOG_KEY),
+      ).toBe(1);
+
+      expect(
+        await testApp.redisConnection.redisClient.exists(CATALOG_LOCK),
+      ).toBe(0);
 
     } finally {
 
-      replicaRedis.onModuleDestroy();
+      redisConnection.onModuleDestroy();
 
     }
   });
 
   it('recovers when a previous cache owner abandons its expiring lock', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
 
-    await testApp.redis.client.set(CATALOG_LOCK, 'abandoned', { PX: 200 });
+    await testApp.redisConnection.redisClient.set(CATALOG_LOCK, 'abandoned', {
+      PX: 200,
+    });
 
     const response = await request(testApp.app.getHttpServer())
       .get('/products')
       .expect(200);
 
     expect(response.body).toMatchObject([{ id: product.id }]);
-    expect(await testApp.redis.client.exists(CATALOG_KEY)).toBe(1);
-    expect(await testApp.redis.client.exists(CATALOG_LOCK)).toBe(0);
+
+    expect(await testApp.redisConnection.redisClient.exists(CATALOG_KEY)).toBe(
+      1,
+    );
+
+    expect(await testApp.redisConnection.redisClient.exists(CATALOG_LOCK)).toBe(
+      0,
+    );
   });
 
   it('falls back to PostgreSQL when its disposable Redis container stops', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
 
     await testApp.stopRedis();
-    await waitUntil(async () => !testApp.redis.client.isReady, 'Redis outage');
+
+    await waitUntil(
+      async () => !testApp.redisConnection.redisClient.isReady,
+      'Redis outage',
+    );
 
     const response = await request(testApp.app.getHttpServer())
       .get('/products')
@@ -222,11 +251,11 @@ describe('Catalog with PostgreSQL and Redis (integration)', () => {
 
     expect(response.body).toMatchObject([{ id: product.id, netPrice: 2990 }]);
 
-    const metrics = await request(testApp.app.getHttpServer())
+    const metricsService = await request(testApp.app.getHttpServer())
       .get('/metrics')
       .expect(200);
 
-    expect(metrics.text).toContain(
+    expect(metricsService.text).toContain(
       'shop_cache_requests_total{result="unavailable"} 1',
     );
 

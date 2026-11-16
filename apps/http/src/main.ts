@@ -16,9 +16,9 @@ async function bootstrap(): Promise<void> {
 
   try {
 
-    const logger = app.get(AppLogger);
+    const appLogger = app.get(AppLogger);
 
-    logger.setApp('http');
+    appLogger.setApp('http');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     configureApi(app);

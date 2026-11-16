@@ -6,15 +6,15 @@ import { executionContext } from './context';
 /** Local tracing simulation: span logs preserve causality but are not an OTel exporter. */
 @Injectable()
 export class Spans {
-  constructor(private readonly logger: AppLogger) {}
+  constructor(private readonly appLogger: AppLogger) {}
 
-  async run<T>(name: string, operation: () => Promise<T>): Promise<T> {
-    const parent = executionContext.getStore();
+  async run<T>(spanName: string, operation: () => Promise<T>): Promise<T> {
+    const parentTraceContext = executionContext.getStore();
     const spanId = randomBytes(8).toString('hex');
-    const started = performance.now();
+    const spanStartedAt = performance.now();
 
-    const invoke = async () => {
-      let outcome = 'success';
+    const runOperation = async () => {
+      let spanOutcome = 'success';
 
       try {
 
@@ -22,28 +22,32 @@ export class Spans {
 
       } catch (error) {
 
-        outcome = 'error';
+        spanOutcome = 'error';
 
         throw error;
 
       } finally {
 
-        this.logger.info('trace.span', {
-          name,
+        this.appLogger.info('trace.span', {
+          name: spanName,
           span_id: spanId,
-          parent_span_id: parent?.span_id,
-          duration_ms: performance.now() - started,
-          outcome,
+          parent_span_id: parentTraceContext?.span_id,
+          duration_ms: performance.now() - spanStartedAt,
+          outcome: spanOutcome,
         });
 
       }
     };
 
-    return parent
+    return parentTraceContext
       ? executionContext.run(
-          { ...parent, span_id: spanId, parent_span_id: parent.span_id },
-          invoke,
+          {
+            ...parentTraceContext,
+            span_id: spanId,
+            parent_span_id: parentTraceContext.span_id,
+          },
+          runOperation,
         )
-      : invoke();
+      : runOperation();
   }
 }

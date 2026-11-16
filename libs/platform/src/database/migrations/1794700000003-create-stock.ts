@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateStock1794700000003 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE stock (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         product_id uuid NOT NULL,
@@ -19,8 +19,8 @@ export class CreateStock1794700000003 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       ALTER TABLE stock DROP CONSTRAINT fk_stock_product_id;
       DROP INDEX idx_stock_product_id;
       DROP TABLE stock;

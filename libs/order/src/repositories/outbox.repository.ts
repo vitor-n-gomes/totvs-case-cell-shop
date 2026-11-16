@@ -11,20 +11,20 @@ export type ClaimedEvent = Pick<
 @Injectable()
 export class OutboxRepository {
   constructor(
-    private readonly database: DataSource,
+    private readonly dataSource: DataSource,
     @InjectRepository(OutboxEventEntity)
-    private readonly events: Repository<OutboxEventEntity>,
+    private readonly outboxEventTypeOrmRepository: Repository<OutboxEventEntity>,
   ) {}
 
   async append(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
     topic: string,
     payload: object,
     deduplicationKey: string,
-    delay = 0,
+    delaySeconds = 0,
   ): Promise<void> {
-    await manager
+    await entityManager
       .getRepository(OutboxEventEntity)
       .createQueryBuilder()
       .insert()
@@ -36,17 +36,18 @@ export class OutboxRepository {
         deduplicationKey,
         availableAt: () => "clock_timestamp() + :delay * interval '1 second'",
       })
-      .setParameter('delay', delay)
+      .setParameter('delay', delaySeconds)
       .setParameter('payload', JSON.stringify(payload))
       .orIgnore()
       .execute();
   }
 
   claim(): Promise<ClaimedEvent[]> {
-    return this.database.transaction(async (manager) => {
-      const repository = manager.getRepository(OutboxEventEntity);
+    return this.dataSource.transaction(async (entityManager) => {
+      const outboxEventTypeOrmRepository =
+        entityManager.getRepository(OutboxEventEntity);
 
-      const events = await repository
+      const outboxEvents = await outboxEventTypeOrmRepository
         .createQueryBuilder('event')
         .where('event.status = :status', { status: 'PENDING' })
         .andWhere('event.availableAt <= clock_timestamp()')
@@ -60,7 +61,7 @@ export class OutboxRepository {
         .setOnLocked('skip_locked')
         .getMany();
 
-      if (!events.length) {
+      if (!outboxEvents.length) {
 
         return [];
 
@@ -68,29 +69,32 @@ export class OutboxRepository {
 
       const leaseToken = randomUUID();
 
-      await repository
+      await outboxEventTypeOrmRepository
         .createQueryBuilder()
         .update()
         .set({
           leaseToken,
           leaseUntil: () => "clock_timestamp() + interval '30 seconds'",
         })
-        .whereInIds(events.map((event) => event.id))
+        .whereInIds(outboxEvents.map((outboxEvent) => outboxEvent.id))
         .execute();
 
-      return events.map((event) => ({ ...event, leaseToken }));
+      return outboxEvents.map((outboxEvent) => ({
+        ...outboxEvent,
+        leaseToken,
+      }));
     });
   }
 
-  async acknowledge(event: ClaimedEvent): Promise<void> {
-    await this.events.update(
-      { id: event.id, leaseToken: event.leaseToken },
+  async acknowledge(outboxEvent: ClaimedEvent): Promise<void> {
+    await this.outboxEventTypeOrmRepository.update(
+      { id: outboxEvent.id, leaseToken: outboxEvent.leaseToken },
       { status: 'PROCESSED', leaseToken: null, leaseUntil: null },
     );
   }
 
-  async release(event: ClaimedEvent): Promise<void> {
-    await this.events
+  async release(outboxEvent: ClaimedEvent): Promise<void> {
+    await this.outboxEventTypeOrmRepository
       .createQueryBuilder()
       .update()
       .set({
@@ -99,14 +103,14 @@ export class OutboxRepository {
         availableAt: () => "clock_timestamp() + interval '1 second'",
       })
       .where('id = :id AND lease_token = :leaseToken', {
-        id: event.id,
-        leaseToken: event.leaseToken,
+        id: outboxEvent.id,
+        leaseToken: outboxEvent.leaseToken,
       })
       .execute();
   }
 
   async backlog(): Promise<{ count: number; ageSeconds: number }> {
-    const row = await this.events
+    const backlogRow = await this.outboxEventTypeOrmRepository
       .createQueryBuilder('event')
       .select('count(*)::text', 'count')
       .addSelect(
@@ -117,8 +121,8 @@ export class OutboxRepository {
       .getRawOne<{ count: string; age: string }>();
 
     return {
-      count: Number(row?.count ?? 0),
-      ageSeconds: Number(row?.age ?? 0),
+      count: Number(backlogRow?.count ?? 0),
+      ageSeconds: Number(backlogRow?.age ?? 0),
     };
   }
 }

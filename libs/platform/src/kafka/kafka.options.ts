@@ -5,36 +5,36 @@ import { logLevel } from 'kafkajs';
 import type { KafkaConfig } from 'kafkajs';
 
 // Producer, consumers and the metadata admin share this authentication configuration.
-export function kafkaClientOptions(config: ConfigService): KafkaConfig {
-  const logger = new Logger('Kafka');
+export function kafkaClientOptions(configService: ConfigService): KafkaConfig {
+  const kafkaLogger = new Logger('Kafka');
 
-  const mechanism = config.get<'plain' | 'scram-sha-256' | 'scram-sha-512'>(
-    'KAFKA_SASL_MECHANISM',
-  );
+  const saslMechanism = configService.get<
+    'plain' | 'scram-sha-256' | 'scram-sha-512'
+  >('KAFKA_SASL_MECHANISM');
 
-  const credentials = mechanism
+  const saslCredentials = saslMechanism
     ? {
-        username: config.getOrThrow<string>('KAFKA_SASL_USERNAME'),
-        password: config.getOrThrow<string>('KAFKA_SASL_PASSWORD'),
+        username: configService.getOrThrow<string>('KAFKA_SASL_USERNAME'),
+        password: configService.getOrThrow<string>('KAFKA_SASL_PASSWORD'),
       }
     : undefined;
 
   const sasl: KafkaConfig['sasl'] =
-    mechanism === 'plain'
-      ? { mechanism, ...credentials! }
-      : mechanism === 'scram-sha-256'
-        ? { mechanism, ...credentials! }
-        : mechanism === 'scram-sha-512'
-          ? { mechanism, ...credentials! }
+    saslMechanism === 'plain'
+      ? { mechanism: saslMechanism, ...saslCredentials! }
+      : saslMechanism === 'scram-sha-256'
+        ? { mechanism: saslMechanism, ...saslCredentials! }
+        : saslMechanism === 'scram-sha-512'
+          ? { mechanism: saslMechanism, ...saslCredentials! }
           : undefined;
 
   return {
     clientId: 'casecellshop',
-    brokers: config.getOrThrow<string[]>('KAFKA_BROKERS'),
+    brokers: configService.getOrThrow<string[]>('KAFKA_BROKERS'),
     connectionTimeout: 3000,
     requestTimeout: 5000,
     retry: { retries: 3 },
-    ssl: config.get<boolean>('KAFKA_SSL', false),
+    ssl: configService.get<boolean>('KAFKA_SSL', false),
     sasl,
     logLevel: logLevel.ERROR,
 
@@ -54,7 +54,7 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
               ? error.message
               : undefined;
 
-        const entry = {
+        const logEntry = {
           msg: 'kafka.client.error',
           message,
           error: errorMessage,
@@ -63,11 +63,11 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
 
         if (errorMessage?.includes('rebalancing')) {
 
-          logger.warn(entry);
+          kafkaLogger.warn(logEntry);
 
         } else {
 
-          logger.error(entry);
+          kafkaLogger.error(logEntry);
 
         }
       },
@@ -75,12 +75,12 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
 }
 
 export function kafkaConsumerOptions(
-  config: ConfigService,
+  configService: ConfigService,
   groupId: string,
 ): NonNullable<KafkaOptions['options']> {
   return {
     postfixId: '',
-    client: kafkaClientOptions(config),
+    client: kafkaClientOptions(configService),
     consumer: { groupId, allowAutoTopicCreation: false },
     producer: { allowAutoTopicCreation: false },
     subscribe: { fromBeginning: true },

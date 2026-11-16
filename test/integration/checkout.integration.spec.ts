@@ -10,21 +10,21 @@ import { newProduct, ProductRecord } from './support/in-memory-store';
 import { CHECKOUT_TOPIC, createTestApp, TestApp } from './support/test-app';
 
 describe('POST /checkout (integration)', () => {
-  let context: TestApp;
+  let testContext: TestApp;
   let product: ProductRecord;
 
   beforeEach(async () => {
-    context = await createTestApp();
+    testContext = await createTestApp();
     product = newProduct({ physicalQuantity: 5 });
-    context.store.seedProducts([product]);
+    testContext.inMemoryStore.seedProducts([product]);
   });
 
   afterEach(async () => {
-    await context.app.close();
+    await testContext.app.close();
   });
 
   it('accepts a valid checkout for an in-stock product with 202 and a pending order', async () => {
-    const response = await request(context.app.getHttpServer())
+    const response = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
       .send(buildCheckoutPayload(product.id, 2))
@@ -35,7 +35,7 @@ describe('POST /checkout (integration)', () => {
       status: OrderStatus.Pending,
     });
 
-    const { store } = context;
+    const { inMemoryStore: store } = testContext;
 
     expect(store.orders.get(response.body.orderId)?.status).toBe(
       OrderStatus.Pending,
@@ -69,22 +69,25 @@ describe('POST /checkout (integration)', () => {
     const key = newIdempotencyKey();
     const payload = buildCheckoutPayload(product.id, 1);
 
-    const first = await request(context.app.getHttpServer())
+    const first = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
       .send(payload)
       .expect(202);
 
-    const replay = await request(context.app.getHttpServer())
+    const replay = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
       .send(payload)
       .expect(202);
 
     expect(replay.body).toEqual(first.body);
-    expect(context.store.orders.size).toBe(1);
-    expect(context.store.reservations).toHaveLength(1);
-    expect(context.store.outbox).toHaveLength(1);
-    expect(context.store.products.get(product.id)?.reservedQuantity).toBe(1);
+    expect(testContext.inMemoryStore.orders.size).toBe(1);
+    expect(testContext.inMemoryStore.reservations).toHaveLength(1);
+    expect(testContext.inMemoryStore.outbox).toHaveLength(1);
+
+    expect(
+      testContext.inMemoryStore.products.get(product.id)?.reservedQuantity,
+    ).toBe(1);
   });
 });

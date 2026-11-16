@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateStockReservation1794700000005 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE stock_reservation (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         order_id uuid NOT NULL,
@@ -27,8 +27,8 @@ export class CreateStockReservation1794700000005 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       ALTER TABLE stock_reservation DROP CONSTRAINT fk_stock_reservation_product_id;
       ALTER TABLE stock_reservation DROP CONSTRAINT fk_stock_reservation_order_id;
       DROP INDEX stock_reservation_expiry_idx;

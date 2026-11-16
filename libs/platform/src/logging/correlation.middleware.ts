@@ -7,27 +7,32 @@ import { AppLogger } from './app-logger';
 
 @Injectable()
 export class CorrelationMiddleware implements NestMiddleware {
-  constructor(private readonly logger: AppLogger) {}
+  constructor(private readonly appLogger: AppLogger) {}
 
   use(request: Request, response: Response, next: NextFunction): void {
-    const supplied = z.uuid().safeParse(request.header('x-correlation-id'));
-    const correlationId = supplied.success ? supplied.data : randomUUID();
+    const correlationIdParseResult = z
+      .uuid()
+      .safeParse(request.header('x-correlation-id'));
+
+    const correlationId = correlationIdParseResult.success
+      ? correlationIdParseResult.data
+      : randomUUID();
 
     response.locals.correlationId = correlationId;
     response.setHeader('x-correlation-id', correlationId);
-    const started = performance.now();
-    const context = newTraceContext(correlationId);
+    const requestStartedAt = performance.now();
+    const traceContext = newTraceContext(correlationId);
 
     response.on('finish', () =>
-      this.logger.info('http.request.completed', {
-        ...context,
+      this.appLogger.info('http.request.completed', {
+        ...traceContext,
         method: request.method,
         path: request.path,
         status_code: response.statusCode,
-        duration_ms: Math.round(performance.now() - started),
+        duration_ms: Math.round(performance.now() - requestStartedAt),
       }),
     );
 
-    executionContext.run(context, next);
+    executionContext.run(traceContext, next);
   }
 }

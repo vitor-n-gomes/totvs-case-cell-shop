@@ -10,14 +10,14 @@ const FINAL_STATUSES = [ProcessingStatus.Completed, ProcessingStatus.Failed];
 
 @Injectable()
 export class OrderActivationGuard {
-  constructor(private readonly orders: OrderRepository) {}
+  constructor(private readonly orderRepository: OrderRepository) {}
 
   async evaluate(
     orderId: string,
     attempt: number,
-    manager: EntityManager,
+    entityManager: EntityManager,
   ): Promise<ActivationDecision> {
-    const order = await this.orders.findById(orderId, manager);
+    const order = await this.orderRepository.findById(orderId, entityManager);
 
     if (!order) {
 

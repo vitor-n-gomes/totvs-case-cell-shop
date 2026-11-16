@@ -9,24 +9,27 @@ import { IdempotencyLogEntity } from '../domain/entities';
 @Injectable()
 export class IdempotencyLogRepository {
   succeeded(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
-    step: StepName,
+    stepName: StepName,
   ): Promise<boolean> {
-    return manager
-      .getRepository(IdempotencyLogEntity)
-      .existsBy({ orderId, action: ACTIVATION_ACTION, step, success: true });
+    return entityManager.getRepository(IdempotencyLogEntity).existsBy({
+      orderId,
+      action: ACTIVATION_ACTION,
+      step: stepName,
+      success: true,
+    });
   }
 
   async record(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
-    step: StepName,
+    stepName: StepName,
     success: boolean,
-    reference: Record<string, unknown>,
+    stepReference: Record<string, unknown>,
     description: string,
   ): Promise<void> {
-    await manager
+    await entityManager
       .getRepository(IdempotencyLogEntity)
       .createQueryBuilder()
       .insert()
@@ -34,12 +37,12 @@ export class IdempotencyLogRepository {
         id: randomUUID(),
         orderId,
         action: ACTIVATION_ACTION,
-        step,
+        step: stepName,
         success,
         reference: () => ':reference',
         description,
       })
-      .setParameter('reference', JSON.stringify(reference))
+      .setParameter('reference', JSON.stringify(stepReference))
       .orIgnore()
       .execute();
   }

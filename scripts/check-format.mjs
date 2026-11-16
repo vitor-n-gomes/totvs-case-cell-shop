@@ -24,14 +24,14 @@ if (prettierResult.status !== 0 && prettierResult.status !== 1) {
   process.exit(prettierResult.status ?? 1);
 }
 
-const candidates = new Set(
+const candidatePaths = new Set(
   prettierResult.stdout
     .split(/\r?\n/)
     .filter(Boolean)
     .map((file) => resolve(file)),
 );
 
-const eslint = new ESLint({
+const eslintFormatter = new ESLint({
   fix: true,
   fixTypes: ['layout'],
   overrideConfig: {
@@ -42,35 +42,37 @@ const eslint = new ESLint({
     rules: { '@typescript-eslint/no-deprecated': 'off' },
   },
 });
-const lintResults = await eslint.lintFiles(['.']);
-const lintedFiles = new Set(lintResults.map(({ filePath }) => filePath));
+const lintResults = await eslintFormatter.lintFiles(['.']);
+const lintedPaths = new Set(lintResults.map(({ filePath }) => filePath));
 
-for (const result of lintResults) {
-  if (result.output !== undefined) candidates.add(result.filePath);
+for (const lintResult of lintResults) {
+  if (lintResult.output !== undefined) candidatePaths.add(lintResult.filePath);
 }
 
-const differences = [];
+const formattingDifferences = [];
 
-for (const filePath of candidates) {
-  const original = await readFile(filePath, 'utf8');
-  const config = await prettier.resolveConfig(filePath);
-  let formatted = await prettier.format(original, {
-    ...config,
+for (const filePath of candidatePaths) {
+  const originalSource = await readFile(filePath, 'utf8');
+  const prettierConfig = await prettier.resolveConfig(filePath);
+  let formattedSource = await prettier.format(originalSource, {
+    ...prettierConfig,
     filepath: filePath,
   });
 
-  if (lintedFiles.has(filePath)) {
-    const [result] = await eslint.lintText(formatted, { filePath });
-    formatted = result.output ?? formatted;
+  if (lintedPaths.has(filePath)) {
+    const [lintResult] = await eslintFormatter.lintText(formattedSource, {
+      filePath,
+    });
+    formattedSource = lintResult.output ?? formattedSource;
   }
 
-  if (formatted !== original)
-    differences.push(relative(process.cwd(), filePath));
+  if (formattedSource !== originalSource)
+    formattingDifferences.push(relative(process.cwd(), filePath));
 }
 
-if (differences.length) {
+if (formattingDifferences.length) {
   process.stderr.write(
-    `${differences.join('\n')}\nFormatting differs. Run npm run format.\n`,
+    `${formattingDifferences.join('\n')}\nFormatting differs. Run npm run format.\n`,
   );
   process.exitCode = 1;
 } else {

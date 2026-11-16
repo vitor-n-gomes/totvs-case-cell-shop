@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateOutboxEvents1794700000007 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE outbox_events (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         order_id uuid NOT NULL,
@@ -27,8 +27,8 @@ export class CreateOutboxEvents1794700000007 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       ALTER TABLE outbox_events DROP CONSTRAINT fk_outbox_events_order_id;
       DROP INDEX outbox_pending_idx;
       DROP INDEX idx_outbox_events_order_id;

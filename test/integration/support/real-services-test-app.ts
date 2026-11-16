@@ -55,7 +55,7 @@ import {
 } from '../../../apps/http/src/configure-api';
 import { newProduct, ProductRecord } from './in-memory-store';
 
-const exec = promisify(execFile);
+const execFileAsync = promisify(execFile);
 
 type Cleanup = () => Promise<unknown>;
 
@@ -71,14 +71,14 @@ type SimulatorSettings = Partial<
 >;
 
 export async function seedProduct(
-  database: DataSource,
+  dataSource: DataSource,
   product: ProductRecord = newProduct(),
 ): Promise<ProductRecord> {
   const { physicalQuantity, reservedQuantity, ...details } = product;
 
-  await database.getRepository(ProductEntity).insert(details);
+  await dataSource.getRepository(ProductEntity).insert(details);
 
-  await database.getRepository(StockEntity).insert({
+  await dataSource.getRepository(StockEntity).insert({
     productId: product.id,
     physicalQuantity,
     reservedQuantity,
@@ -91,11 +91,11 @@ export async function waitUntil(
   condition: () => Promise<boolean>,
   description: string,
 ): Promise<void> {
-  const deadline = Date.now() + 15_000;
+  const waitDeadlineMs = Date.now() + 15_000;
 
   while (!(await condition())) {
 
-    if (Date.now() >= deadline) {
+    if (Date.now() >= waitDeadlineMs) {
 
       throw new Error(`Timed out waiting for ${description}`);
 
@@ -107,29 +107,33 @@ export async function waitUntil(
 }
 
 function testEnvironment() {
-  const values = {
+  const environmentVariables = {
     ...parse(readFileSync('.env.test.example')),
     ...(existsSync('.env.test.local')
       ? parse(readFileSync('.env.test.local'))
       : {}),
   };
 
-  for (const key of ['DATABASE_URL', 'KAFKA_BROKERS'] as const) {
+  for (const environmentVariable of [
+    'DATABASE_URL',
+    'KAFKA_BROKERS',
+  ] as const) {
 
-    if (process.env[key]) {
+    if (process.env[environmentVariable]) {
 
-      values[key] = process.env[key];
+      environmentVariables[environmentVariable] =
+        process.env[environmentVariable];
 
     }
 
   }
 
-  const database = new URL(values.DATABASE_URL ?? '');
+  const databaseUrl = new URL(environmentVariables.DATABASE_URL ?? '');
   const localHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
 
   if (
-    !localHosts.has(database.hostname) ||
-    !database.pathname.endsWith('_test')
+    !localHosts.has(databaseUrl.hostname) ||
+    !databaseUrl.pathname.endsWith('_test')
   ) {
 
     throw new Error(
@@ -139,7 +143,7 @@ function testEnvironment() {
   }
 
   if (
-    !(values.KAFKA_BROKERS ?? '')
+    !(environmentVariables.KAFKA_BROKERS ?? '')
       .split(',')
       .every((broker) => localHosts.has(broker.trim().split(':')[0] ?? ''))
   ) {
@@ -148,19 +152,22 @@ function testEnvironment() {
 
   }
 
-  return values;
+  return environmentVariables;
 }
 
 export async function createRealServicesTestApp(
-  simulator: SimulatorSettings = {},
+  simulatorSettings: SimulatorSettings = {},
 ) {
-  const connections: Cleanup[] = [];
-  const resources: Cleanup[] = [];
+  const connectionCleanups: Cleanup[] = [];
+  const resourceCleanups: Cleanup[] = [];
 
   const close = async () => {
-    const errors: unknown[] = [];
+    const cleanupErrors: unknown[] = [];
 
-    for (const cleanup of [...connections.reverse(), ...resources.reverse()]) {
+    for (const cleanup of [
+      ...connectionCleanups.reverse(),
+      ...resourceCleanups.reverse(),
+    ]) {
 
       try {
 
@@ -168,59 +175,62 @@ export async function createRealServicesTestApp(
 
       } catch (error) {
 
-        errors.push(error);
+        cleanupErrors.push(error);
 
       }
 
     }
 
-    connections.length = 0;
-    resources.length = 0;
+    connectionCleanups.length = 0;
+    resourceCleanups.length = 0;
 
-    if (errors.length) {
+    if (cleanupErrors.length) {
 
-      throw new AggregateError(errors, 'Integration test teardown failed');
+      throw new AggregateError(
+        cleanupErrors,
+        'Integration test teardown failed',
+      );
 
     }
   };
 
   try {
 
-    const values = testEnvironment();
-    const suffix = randomUUID().replaceAll('-', '');
-    const schema = `integration_${suffix}`;
-    const topic = `integration.${suffix}`;
-    const group = `integration-${suffix}`;
+    const environmentVariables = testEnvironment();
+    const testSuffix = randomUUID().replaceAll('-', '');
+    const testSchema = `integration_${testSuffix}`;
+    const checkoutTopic = `integration.${testSuffix}`;
+    const consumerGroupId = `integration-${testSuffix}`;
 
-    const adminDatabase = new DataSource({
-      ...databaseOptions(values.DATABASE_URL!),
+    const adminDataSource = new DataSource({
+      ...databaseOptions(environmentVariables.DATABASE_URL!),
       entities: [],
       migrations: [],
     });
 
-    resources.push(async () => {
-      if (adminDatabase.isInitialized) {
+    resourceCleanups.push(async () => {
+      if (adminDataSource.isInitialized) {
 
-        await adminDatabase.destroy();
+        await adminDataSource.destroy();
 
       }
     });
 
-    await adminDatabase.initialize();
-    await adminDatabase.query(`CREATE SCHEMA "${schema}"`);
+    await adminDataSource.initialize();
+    await adminDataSource.query(`CREATE SCHEMA "${testSchema}"`);
 
-    resources.push(() =>
-      adminDatabase.query(`DROP SCHEMA "${schema}" CASCADE`),
+    resourceCleanups.push(() =>
+      adminDataSource.query(`DROP SCHEMA "${testSchema}" CASCADE`),
     );
 
-    const container = `integration-redis-${suffix}`;
+    const redisContainerName = `integration-redis-${testSuffix}`;
 
-    await exec('docker', [
+    await execFileAsync('docker', [
       'run',
       '--detach',
       '--rm',
       '--name',
-      container,
+      redisContainerName,
       '--publish',
       '127.0.0.1::6379',
       'redis:7.4.6-bookworm',
@@ -231,75 +241,82 @@ export async function createRealServicesTestApp(
       'no',
     ]);
 
-    let redisRunning = true;
+    let isRedisRunning = true;
 
     const stopRedis = async () => {
-      if (redisRunning) {
+      if (isRedisRunning) {
 
-        await exec('docker', ['stop', container]);
-        redisRunning = false;
+        await execFileAsync('docker', ['stop', redisContainerName]);
+        isRedisRunning = false;
 
       }
     };
 
-    resources.push(stopRedis);
-    const { stdout } = await exec('docker', ['port', container, '6379/tcp']);
+    resourceCleanups.push(stopRedis);
 
-    const settings = validateEnvironment({
-      ...values,
+    const { stdout } = await execFileAsync('docker', [
+      'port',
+      redisContainerName,
+      '6379/tcp',
+    ]);
+
+    const environmentSettings = validateEnvironment({
+      ...environmentVariables,
       ERP_FAILURES: 0,
       EMAIL_FAILURES: 0,
       SIMULATOR_DELAY_MS: 20,
       SIMULATOR_TIMEOUT_MS: 1000,
       SIMULATOR_PERMANENT_FAILURE: 'none',
       RESERVATION_TTL_SECONDS: 900,
-      ...simulator,
+      ...simulatorSettings,
       NODE_ENV: 'test',
       REDIS_URL: `redis://${stdout.trim()}`,
-      CHECKOUT_TOPIC: topic,
-      KAFKA_GROUP_ID: group,
+      CHECKOUT_TOPIC: checkoutTopic,
+      KAFKA_GROUP_ID: consumerGroupId,
     });
 
-    const config = new ConfigService(settings);
-    const kafka = new Kafka(kafkaClientOptions(config));
-    const admin = kafka.admin();
+    const configService = new ConfigService(environmentSettings);
+    const kafkaClient = new Kafka(kafkaClientOptions(configService));
+    const kafkaAdmin = kafkaClient.admin();
 
-    resources.push(() => admin.disconnect());
-    await admin.connect();
-    const topics = [topic, `${topic}.dlq`];
+    resourceCleanups.push(() => kafkaAdmin.disconnect());
+    await kafkaAdmin.connect();
+    const testTopics = [checkoutTopic, `${checkoutTopic}.dlq`];
 
-    resources.push(() => admin.deleteTopics({ topics }));
+    resourceCleanups.push(() =>
+      kafkaAdmin.deleteTopics({ topics: testTopics }),
+    );
 
-    await admin.createTopics({
+    await kafkaAdmin.createTopics({
       waitForLeaders: true,
-      topics: topics.map((name) => ({
-        topic: name,
+      topics: testTopics.map((topicName) => ({
+        topic: topicName,
         numPartitions: 1,
         replicationFactor: 1,
       })),
     });
 
-    const options = {
-      ...databaseOptions(settings.DATABASE_URL),
-      schema,
+    const dataSourceOptions = {
+      ...databaseOptions(environmentSettings.DATABASE_URL),
+      schema: testSchema,
       extra: {
         statement_timeout: 3000,
-        options: `-c search_path=${schema}`,
+        options: `-c search_path=${testSchema}`,
       },
     };
 
-    const database = new DataSource(options);
+    const dataSource = new DataSource(dataSourceOptions);
 
-    connections.push(async () => {
-      if (database.isInitialized) {
+    connectionCleanups.push(async () => {
+      if (dataSource.isInitialized) {
 
-        await database.destroy();
+        await dataSource.destroy();
 
       }
     });
 
-    await database.initialize();
-    await database.runMigrations();
+    await dataSource.initialize();
+    await dataSource.runMigrations();
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -307,11 +324,11 @@ export async function createRealServicesTestApp(
           isGlobal: true,
           ignoreEnvFile: true,
           ignoreEnvVars: true,
-          load: [() => settings],
+          load: [() => environmentSettings],
         }),
         TypeOrmModule.forRootAsync({
-          useFactory: () => options,
-          dataSourceFactory: async () => database,
+          useFactory: () => dataSourceOptions,
+          dataSourceFactory: async () => dataSource,
         }),
         // Tests drive real relay and scheduler cycles explicitly.
         ScheduleModule.forRoot({
@@ -336,127 +353,141 @@ export async function createRealServicesTestApp(
       logger: false,
     });
 
-    connections.push(() => app.close());
-    const correlation = new CorrelationMiddleware(app.get(AppLogger));
+    connectionCleanups.push(() => app.close());
+    const correlationMiddleware = new CorrelationMiddleware(app.get(AppLogger));
 
-    app.use((req: never, res: never, next: () => void) =>
-      correlation.use(req, res, next),
+    app.use((request: never, response: never, next: () => void) =>
+      correlationMiddleware.use(request, response, next),
     );
 
     configureApi(app);
     SwaggerModule.setup('api-docs', app, createOpenApiDocument(app));
     await app.init();
-    const redis = app.get(RedisConnection);
+    const redisConnection = app.get(RedisConnection);
 
     await waitUntil(
-      async () => redis.client.isReady,
+      async () => redisConnection.redisClient.isReady,
       'isolated Redis readiness',
     );
 
-    await redis.client.ping();
+    await redisConnection.redisClient.ping();
 
-    const groups: string[] = [];
+    const consumerGroupIds: string[] = [];
 
-    resources.push(async () => {
-      if (groups.length) {
+    resourceCleanups.push(async () => {
+      if (consumerGroupIds.length) {
 
-        await admin.deleteGroups(groups);
+        await kafkaAdmin.deleteGroups(consumerGroupIds);
 
       }
     });
 
     return {
       app,
-      database,
-      redis,
-      topic,
-      metrics: app.get(Metrics),
-      messaging: app
+      dataSource,
+      redisConnection,
+      checkoutTopic,
+      metricsService: app.get(Metrics),
+      orderMessaging: app
         .select(OrderConsumerModule)
         .get(OrderMessaging, { strict: true }),
-      relay: app.get(OutboxRelay),
-      scheduler: app.get(ExpireReservationsUseCase),
+      outboxRelay: app.get(OutboxRelay),
+      expireReservationsUseCase: app.get(ExpireReservationsUseCase),
       close,
       stopRedis,
-      offsets: (observedTopic = topic) =>
-        admin.fetchTopicOffsets(observedTopic),
-      async observe(observedTopic = topic) {
-        const observerGroup = `${group}-observer-${randomUUID()}`;
-        const observer = kafka.consumer({ groupId: observerGroup });
+      offsets: (observedTopic = checkoutTopic) =>
+        kafkaAdmin.fetchTopicOffsets(observedTopic),
+      async observe(observedTopic = checkoutTopic) {
+        const observerGroupId = `${consumerGroupId}-observer-${randomUUID()}`;
 
-        connections.push(() => observer.disconnect());
+        const observerConsumer = kafkaClient.consumer({
+          groupId: observerGroupId,
+        });
+
+        connectionCleanups.push(() => observerConsumer.disconnect());
         const messages: { topic: string; message: KafkaMessage }[] = [];
-        let joined = false;
-        let failure: Error | undefined;
+        let hasObserverJoined = false;
+        let observerError: Error | undefined;
 
-        observer.on(observer.events.GROUP_JOIN, () => {
-          joined = true;
+        observerConsumer.on(observerConsumer.events.GROUP_JOIN, () => {
+          hasObserverJoined = true;
         });
 
-        observer.on(observer.events.CRASH, ({ payload }) => {
-          failure = payload.error;
+        observerConsumer.on(observerConsumer.events.CRASH, ({ payload }) => {
+          observerError = payload.error;
         });
 
-        await observer.connect();
-        await observer.subscribe({ topic: observedTopic, fromBeginning: true });
-        groups.push(observerGroup);
+        await observerConsumer.connect();
 
-        await observer.run({
+        await observerConsumer.subscribe({
+          topic: observedTopic,
+          fromBeginning: true,
+        });
+
+        consumerGroupIds.push(observerGroupId);
+
+        await observerConsumer.run({
           eachMessage: async ({ topic: receivedTopic, message }) => {
             messages.push({ topic: receivedTopic, message });
           },
         });
 
         await waitUntil(async () => {
-          if (failure) {
+          if (observerError) {
 
-            throw failure;
+            throw observerError;
 
           }
 
-          return joined;
+          return hasObserverJoined;
         }, 'Kafka observer group join');
 
         return messages;
       },
       async waitForConsumerOffset(offset: number) {
         await waitUntil(async () => {
-          const offsets = await admin.fetchOffsets({
-            groupId: group,
-            topics: [topic],
+          const groupOffsets = await kafkaAdmin.fetchOffsets({
+            groupId: consumerGroupId,
+            topics: [checkoutTopic],
           });
 
-          const committed = offsets[0]?.partitions[0]?.offset;
+          const committedOffset = groupOffsets[0]?.partitions[0]?.offset;
 
-          return committed !== undefined && Number(committed) >= offset;
+          return (
+            committedOffset !== undefined && Number(committedOffset) >= offset
+          );
         }, `consumer offset ${offset}`);
       },
       async startConsumer() {
-        let ready = false;
+        let isConsumerReady = false;
 
-        const server = new TopicKafkaServer(
-          kafkaConsumerOptions(config, group),
+        const kafkaServer = new TopicKafkaServer(
+          kafkaConsumerOptions(configService, consumerGroupId),
           ORDER_KAFKA_TRANSPORT,
           ORDER_EVENT_PATTERN,
-          topic,
-          (value) => {
-            ready = value;
+          checkoutTopic,
+          (isReady) => {
+            isConsumerReady = isReady;
           },
         );
 
         // Drain Kafka handlers before Nest destroys their database/Redis providers.
-        connections.push(() => server.close());
+        connectionCleanups.push(() => kafkaServer.close());
 
         app.useGlobalFilters(app.get(OrderConsumerExceptionFilter));
 
         app.connectMicroservice<MicroserviceOptions>(
-          { strategy: server },
+          { strategy: kafkaServer },
           { inheritAppConfig: true },
         );
 
         await app.startAllMicroservices();
-        groups.push(group);
-        await waitUntil(async () => ready, 'order consumer group join');
+        consumerGroupIds.push(consumerGroupId);
+
+        await waitUntil(
+          async () => isConsumerReady,
+          'order consumer group join',
+        );
       },
     };
 

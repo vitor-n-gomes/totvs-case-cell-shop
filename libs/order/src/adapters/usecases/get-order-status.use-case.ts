@@ -3,10 +3,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 @Injectable()
 export class GetOrderStatusUseCase {
-  constructor(private readonly orders: OrderRepository) {}
+  constructor(private readonly orderRepository: OrderRepository) {}
 
   async execute(orderId: string) {
-    const order = await this.orders.findById(orderId);
+    const order = await this.orderRepository.findById(orderId);
 
     if (!order) {
 
@@ -14,7 +14,7 @@ export class GetOrderStatusUseCase {
 
     }
 
-    const items = await this.orders.findItems(orderId);
+    const orderItems = await this.orderRepository.findItems(orderId);
 
     return {
       orderId: order.id,
@@ -25,7 +25,7 @@ export class GetOrderStatusUseCase {
       dueDate: order.dueDate,
       environment: order.environment,
       createdAt: order.createdAt.toISOString(),
-      items: items.map(({ productId, quantity, netPrice, listPrice }) => ({
+      items: orderItems.map(({ productId, quantity, netPrice, listPrice }) => ({
         productId,
         quantity,
         netPrice: Number(netPrice),

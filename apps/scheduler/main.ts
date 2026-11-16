@@ -16,9 +16,9 @@ async function bootstrap(): Promise<void> {
 
   try {
 
-    const logger = app.get(AppLogger);
+    const appLogger = app.get(AppLogger);
 
-    logger.setApp('scheduler');
+    appLogger.setApp('scheduler');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     app.get(ExpireReservationsUseCase).start();

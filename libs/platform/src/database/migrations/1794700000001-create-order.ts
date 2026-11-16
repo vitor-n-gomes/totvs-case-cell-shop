@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateOrder1794700000001 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE "order" (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         payment_type varchar(16) NOT NULL,
@@ -26,7 +26,7 @@ export class CreateOrder1794700000001 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query('DROP TABLE "order"');
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query('DROP TABLE "order"');
   }
 }

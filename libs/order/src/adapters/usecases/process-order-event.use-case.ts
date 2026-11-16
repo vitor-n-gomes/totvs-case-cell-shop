@@ -13,9 +13,9 @@ import { ReservationExpiredHandler } from './event-handlers/reservation-expired.
 @Injectable()
 export class ProcessOrderEventUseCase {
   constructor(
-    private readonly checkoutInitiated: CheckoutInitiatedHandler,
-    private readonly reservationExpired: ReservationExpiredHandler,
-    private readonly logger: AppLogger,
+    private readonly checkoutInitiatedHandler: CheckoutInitiatedHandler,
+    private readonly reservationExpiredHandler: ReservationExpiredHandler,
+    private readonly appLogger: AppLogger,
   ) {}
 
   async handle(event: OrderEvent): Promise<void> {
@@ -31,7 +31,7 @@ export class ProcessOrderEventUseCase {
         parent_span_id: event.meta?.parent_span_id,
       },
       async () => {
-        this.logger.info('order.event.received', {
+        this.appLogger.info('order.event.received', {
           event_id: event.meta?.event_id,
           kind: event.kind,
         });
@@ -42,7 +42,7 @@ export class ProcessOrderEventUseCase {
 
         } catch (error) {
 
-          this.logger.error('order.event.dispatch.failed', {
+          this.appLogger.error('order.event.dispatch.failed', {
             error_type: error instanceof Error ? error.name : 'UnknownError',
           });
 
@@ -57,11 +57,11 @@ export class ProcessOrderEventUseCase {
     switch (event.kind) {
 
       case ORDER_CHECKOUT_INITIATED:
-        await this.checkoutInitiated.execute(event);
+        await this.checkoutInitiatedHandler.execute(event);
         break;
 
       case ORDER_RESERVATION_EXPIRED:
-        await this.reservationExpired.handle(event);
+        await this.reservationExpiredHandler.handle(event);
         break;
 
     }

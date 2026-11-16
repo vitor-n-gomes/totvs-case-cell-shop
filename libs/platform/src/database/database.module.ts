@@ -15,8 +15,8 @@ import { databaseOptions } from './options';
   imports: [
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        ...databaseOptions(config.getOrThrow<string>('DATABASE_URL')),
+      useFactory: (configService: ConfigService) => ({
+        ...databaseOptions(configService.getOrThrow<string>('DATABASE_URL')),
         retryAttempts: 1,
       }),
     }),

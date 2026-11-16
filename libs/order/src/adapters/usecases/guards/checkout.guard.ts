@@ -7,7 +7,7 @@ const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7e]{1,128}$/;
 @Injectable()
 export class CheckoutGuard {
   validate(
-    input: CheckoutInput,
+    checkoutInput: CheckoutInput,
     idempotencyKey: string | undefined,
   ): asserts idempotencyKey is string {
     if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
@@ -18,25 +18,29 @@ export class CheckoutGuard {
 
     }
 
-    const uniqueProducts = new Set(input.items.map((item) => item.productId));
+    const uniqueProductIds = new Set(
+      checkoutInput.items.map((checkoutItem) => checkoutItem.productId),
+    );
 
-    if (uniqueProducts.size !== input.items.length) {
+    if (uniqueProductIds.size !== checkoutInput.items.length) {
 
       throw new BadRequestException('Duplicate products are not allowed');
 
     }
   }
 
-  hashPayload(input: CheckoutInput): string {
+  hashPayload(checkoutInput: CheckoutInput): string {
     const normalizedPayload = {
-      paymentType: input.paymentType,
-      dueDate: input.dueDate,
-      mainContact: input.mainContact,
-      altContact: input.altContact ?? null,
-      paymentMethod: input.paymentMethod,
-      environment: input.environment,
-      items: [...input.items]
-        .sort((a, b) => a.productId.localeCompare(b.productId))
+      paymentType: checkoutInput.paymentType,
+      dueDate: checkoutInput.dueDate,
+      mainContact: checkoutInput.mainContact,
+      altContact: checkoutInput.altContact ?? null,
+      paymentMethod: checkoutInput.paymentMethod,
+      environment: checkoutInput.environment,
+      items: [...checkoutInput.items]
+        .sort((leftItem, rightItem) =>
+          leftItem.productId.localeCompare(rightItem.productId),
+        )
         .map(({ productId, quantity }) => ({ productId, quantity })),
     };
 

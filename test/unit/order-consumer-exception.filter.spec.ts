@@ -20,22 +20,22 @@ class WorkerTestController {
 }
 
 describe('OrderConsumerExceptionFilter', () => {
-  async function createModule(publish: jest.Mock) {
+  async function createModule(publishMock: jest.Mock) {
     return Test.createTestingModule({
       controllers: [WorkerTestController],
       providers: [
         OrderConsumerExceptionFilter,
         Metrics,
         { provide: ConfigService, useValue: {} },
-        { provide: OrderMessaging, useValue: { publish } },
+        { provide: OrderMessaging, useValue: { publish: publishMock } },
         { provide: AppLogger, useValue: { error: jest.fn() } },
       ],
     }).compile();
   }
 
   it('preserves HTTP error handling instead of sending HTTP errors to Kafka', async () => {
-    const publish = jest.fn();
-    const moduleRef = await createModule(publish);
+    const publishMock = jest.fn();
+    const moduleRef = await createModule(publishMock);
     const app = moduleRef.createNestApplication();
 
     try {
@@ -52,7 +52,7 @@ describe('OrderConsumerExceptionFilter', () => {
         message: 'Worker unavailable',
       });
 
-      expect(publish).not.toHaveBeenCalled();
+      expect(publishMock).not.toHaveBeenCalled();
 
     } finally {
 
@@ -62,29 +62,29 @@ describe('OrderConsumerExceptionFilter', () => {
   });
 
   it('keeps a timeout eligible for redelivery without publishing to the DLQ', async () => {
-    const publish = jest.fn();
-    const moduleRef = await createModule(publish);
-    const host = new ExecutionContextHost([]);
+    const publishMock = jest.fn();
+    const moduleRef = await createModule(publishMock);
+    const argumentsHost = new ExecutionContextHost([]);
 
-    host.setType('rpc');
+    argumentsHost.setType('rpc');
 
     try {
 
-      const result = moduleRef
+      const filterResult = moduleRef
         .get(OrderConsumerExceptionFilter)
-        .catch(new DOMException('deadline', 'TimeoutError'), host);
+        .catch(new DOMException('deadline', 'TimeoutError'), argumentsHost);
 
-      if (!result) {
+      if (!filterResult) {
 
         throw new Error('Expected an observable for an RPC failure');
 
       }
 
-      await expect(lastValueFrom(result)).rejects.toBeInstanceOf(
+      await expect(lastValueFrom(filterResult)).rejects.toBeInstanceOf(
         KafkaRetriableException,
       );
 
-      expect(publish).not.toHaveBeenCalled();
+      expect(publishMock).not.toHaveBeenCalled();
 
     } finally {
 

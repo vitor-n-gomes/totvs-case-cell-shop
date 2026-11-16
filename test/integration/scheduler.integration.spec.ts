@@ -26,17 +26,17 @@ import { buildCheckoutPayload, newIdempotencyKey } from './support/fixtures';
 import { newProduct, ProductRecord } from './support/in-memory-store';
 
 describe('Scheduler reservation expiration (integration)', () => {
-  let context: RealServicesTestApp | undefined;
+  let testContext: RealServicesTestApp | undefined;
   let product: ProductRecord;
 
   beforeEach(async () => {
-    context = await createRealServicesTestApp();
+    testContext = await createRealServicesTestApp();
     product = newProduct({ physicalQuantity: 10 });
     const { physicalQuantity, reservedQuantity, ...details } = product;
 
-    await context.database.getRepository(ProductEntity).insert(details);
+    await testContext.dataSource.getRepository(ProductEntity).insert(details);
 
-    await context.database.getRepository(StockEntity).insert({
+    await testContext.dataSource.getRepository(StockEntity).insert({
       productId: product.id,
       physicalQuantity,
       reservedQuantity,
@@ -44,8 +44,8 @@ describe('Scheduler reservation expiration (integration)', () => {
   });
 
   afterEach(async () => {
-    await context?.close();
-    context = undefined;
+    await testContext?.close();
+    testContext = undefined;
   });
 
   async function checkout(testApp: RealServicesTestApp, expired: boolean) {
@@ -59,7 +59,7 @@ describe('Scheduler reservation expiration (integration)', () => {
 
     expect(response.body.status).toBe(OrderStatus.Pending);
 
-    await testApp.database.query(
+    await testApp.dataSource.query(
       `UPDATE stock_reservation
        SET expires_at = clock_timestamp() + $1 * interval '1 hour'
        WHERE order_id = $2`,
@@ -69,7 +69,7 @@ describe('Scheduler reservation expiration (integration)', () => {
     return orderId;
   }
 
-  async function snapshot({ database }: RealServicesTestApp) {
+  async function snapshot({ dataSource: database }: RealServicesTestApp) {
     return {
       orders: await database
         .getRepository(OrderEntity)
@@ -82,23 +82,25 @@ describe('Scheduler reservation expiration (integration)', () => {
   }
 
   it('publishes only the expired reservation keyed by order id without changing orders or stock', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const expiredId = await checkout(testApp, true);
     const validId = await checkout(testApp, false);
-    const before = await snapshot(testApp);
+    const initialSnapshot = await snapshot(testApp);
 
-    expect(before.orders).toHaveLength(2);
+    expect(initialSnapshot.orders).toHaveLength(2);
 
     expect(
-      before.orders.every((order) => order.status === OrderStatus.Pending),
+      initialSnapshot.orders.every(
+        (order) => order.status === OrderStatus.Pending,
+      ),
     ).toBe(true);
 
-    expect(before.reservations.map((entry) => entry.status)).toEqual([
+    expect(initialSnapshot.reservations.map((entry) => entry.status)).toEqual([
       'ACTIVE',
       'ACTIVE',
     ]);
 
-    expect(before.stock[0]).toMatchObject({
+    expect(initialSnapshot.stock[0]).toMatchObject({
       physicalQuantity: 10,
       reservedQuantity: 4,
     });
@@ -109,9 +111,9 @@ describe('Scheduler reservation expiration (integration)', () => {
       '0',
     ]);
 
-    await expect(testApp.scheduler.execute()).resolves.toBe(1);
+    await expect(testApp.expireReservationsUseCase.execute()).resolves.toBe(1);
 
-    expect(await snapshot(testApp)).toEqual(before);
+    expect(await snapshot(testApp)).toEqual(initialSnapshot);
 
     expect((await testApp.offsets()).map(({ offset }) => offset)).toEqual([
       '1',
@@ -124,7 +126,7 @@ describe('Scheduler reservation expiration (integration)', () => {
 
     const received = messages[0]!;
 
-    expect(received.topic).toBe(testApp.topic);
+    expect(received.topic).toBe(testApp.checkoutTopic);
     expect(received.message.key?.toString()).toBe(expiredId);
     const payload: unknown = JSON.parse(received.message.value!.toString());
     const event = orderEventSchema.parse(payload);
@@ -146,82 +148,91 @@ describe('Scheduler reservation expiration (integration)', () => {
   });
 
   it('cancels the expired order through Kafka, releases stock, invalidates the catalog and records the expiration', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const orderId = await checkout(testApp, true);
-    const before = await snapshot(testApp);
+    const initialSnapshot = await snapshot(testApp);
 
-    expect(before.orders[0]).toMatchObject({
+    expect(initialSnapshot.orders[0]).toMatchObject({
       id: orderId,
       status: OrderStatus.Pending,
       processingStatus: ProcessingStatus.Pending,
     });
 
-    expect(before.reservations[0]).toMatchObject({
+    expect(initialSnapshot.reservations[0]).toMatchObject({
       quantity: 2,
       status: 'ACTIVE',
     });
 
-    expect(before.stock[0]).toMatchObject({
+    expect(initialSnapshot.stock[0]).toMatchObject({
       physicalQuantity: 10,
       reservedQuantity: 2,
     });
 
     expect(
-      before.stock[0]!.physicalQuantity - before.stock[0]!.reservedQuantity,
+      initialSnapshot.stock[0]!.physicalQuantity -
+        initialSnapshot.stock[0]!.reservedQuantity,
     ).toBe(8);
 
     await request(testApp.app.getHttpServer()).get('/products').expect(200);
-    expect(await testApp.redis.client.exists(CATALOG_KEY)).toBe(1);
 
-    const expiredCount = async () => {
-      const { values } = await testApp.metrics.reservations.get();
+    expect(await testApp.redisConnection.redisClient.exists(CATALOG_KEY)).toBe(
+      1,
+    );
+
+    const expiredReservationCount = async () => {
+      const { values } =
+        await testApp.metricsService.reservationTransitionsCounter.get();
 
       return (
         values.find(({ labels }) => labels.result === 'expired')?.value ?? 0
       );
     };
 
-    const baseline = await expiredCount();
+    const baseline = await expiredReservationCount();
 
     await testApp.startConsumer();
 
-    await expect(testApp.scheduler.execute()).resolves.toBe(1);
+    await expect(testApp.expireReservationsUseCase.execute()).resolves.toBe(1);
 
     await waitUntil(
-      async () => (await expiredCount()) === baseline + 1,
+      async () => (await expiredReservationCount()) === baseline + 1,
       'consumer expiration completion',
     );
 
-    const after = await snapshot(testApp);
+    const finalSnapshot = await snapshot(testApp);
 
-    expect(after.orders[0]?.status).toBe(OrderStatus.Cancelled);
-    expect(after.reservations[0]?.status).toBe('EXPIRED');
+    expect(finalSnapshot.orders[0]?.status).toBe(OrderStatus.Cancelled);
+    expect(finalSnapshot.reservations[0]?.status).toBe('EXPIRED');
 
-    expect(after.stock[0]).toMatchObject({
+    expect(finalSnapshot.stock[0]).toMatchObject({
       physicalQuantity: 10,
       reservedQuantity: 0,
     });
 
     expect(
-      after.stock[0]!.physicalQuantity - after.stock[0]!.reservedQuantity,
+      finalSnapshot.stock[0]!.physicalQuantity -
+        finalSnapshot.stock[0]!.reservedQuantity,
     ).toBe(10);
 
-    expect(await testApp.redis.client.exists(CATALOG_KEY)).toBe(0);
-    expect(await expiredCount()).toBe(baseline + 1);
+    expect(await testApp.redisConnection.redisClient.exists(CATALOG_KEY)).toBe(
+      0,
+    );
 
-    expect(await testApp.metrics.registry.metrics()).toContain(
+    expect(await expiredReservationCount()).toBe(baseline + 1);
+
+    expect(await testApp.metricsService.metricsRegistry.metrics()).toContain(
       `shop_reservations_total{result="expired"} ${baseline + 1}`,
     );
   });
 
   it('ignores a premature expiration event without cancelling the order or releasing its reservation', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const orderId = await checkout(testApp, false);
-    const before = await snapshot(testApp);
+    const initialSnapshot = await snapshot(testApp);
 
     await testApp.startConsumer();
 
-    await testApp.messaging.publish(testApp.topic, orderId, {
+    await testApp.orderMessaging.publish(testApp.checkoutTopic, orderId, {
       kind: ORDER_RESERVATION_EXPIRED,
       data: { order_id: orderId },
       meta: createEventMeta(randomUUID()),
@@ -229,21 +240,21 @@ describe('Scheduler reservation expiration (integration)', () => {
 
     await testApp.waitForConsumerOffset(1);
 
-    expect(await snapshot(testApp)).toEqual(before);
+    expect(await snapshot(testApp)).toEqual(initialSnapshot);
   });
 
   it('handles a duplicate expiration event without releasing stock twice', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const expiredId = await checkout(testApp, true);
     const validId = await checkout(testApp, false);
     const messages = await testApp.observe();
 
     await testApp.startConsumer();
 
-    await testApp.scheduler.execute();
+    await testApp.expireReservationsUseCase.execute();
 
     await waitUntil(async () => {
-      const order = await testApp.database
+      const order = await testApp.dataSource
         .getRepository(OrderEntity)
         .findOneBy({ id: expiredId });
 
@@ -254,62 +265,71 @@ describe('Scheduler reservation expiration (integration)', () => {
       JSON.parse(messages[0]!.message.value!.toString()),
     );
 
-    await testApp.messaging.publish(testApp.topic, expiredId, event);
-    await testApp.waitForConsumerOffset(2);
-
-    const after = await snapshot(testApp);
-
-    expect(after.orders.find(({ id }) => id === expiredId)?.status).toBe(
-      OrderStatus.Cancelled,
+    await testApp.orderMessaging.publish(
+      testApp.checkoutTopic,
+      expiredId,
+      event,
     );
 
-    expect(after.orders.find(({ id }) => id === validId)?.status).toBe(
+    await testApp.waitForConsumerOffset(2);
+
+    const finalSnapshot = await snapshot(testApp);
+
+    expect(
+      finalSnapshot.orders.find(({ id }) => id === expiredId)?.status,
+    ).toBe(OrderStatus.Cancelled);
+
+    expect(finalSnapshot.orders.find(({ id }) => id === validId)?.status).toBe(
       OrderStatus.Pending,
     );
 
-    expect(after.stock[0]).toMatchObject({
+    expect(finalSnapshot.stock[0]).toMatchObject({
       physicalQuantity: 10,
       reservedQuantity: 2,
     });
 
     expect(
-      after.reservations.find(({ orderId }) => orderId === expiredId)?.status,
+      finalSnapshot.reservations.find(({ orderId }) => orderId === expiredId)
+        ?.status,
     ).toBe('EXPIRED');
 
     expect(
-      after.reservations.find(({ orderId }) => orderId === validId)?.status,
+      finalSnapshot.reservations.find(({ orderId }) => orderId === validId)
+        ?.status,
     ).toBe('ACTIVE');
 
-    expect(await testApp.metrics.registry.metrics()).toContain(
+    expect(await testApp.metricsService.metricsRegistry.metrics()).toContain(
       'shop_reservations_total{result="already_processed"} 1',
     );
   });
 
   it('keeps stock consistent when expiration races activation of an expired reservation', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const orderId = await checkout(testApp, true);
 
-    const outbox = await testApp.database
+    const outboxEvent = await testApp.dataSource
       .getRepository(OutboxEventEntity)
       .findOneByOrFail({ orderId });
 
-    const dispatcher = testApp.app.get(ProcessOrderEventUseCase);
+    const processOrderEventUseCase = testApp.app.get(ProcessOrderEventUseCase);
 
     await Promise.all([
-      dispatcher.handle(orderEventSchema.parse(outbox.payload)),
-      dispatcher.handle({
+      processOrderEventUseCase.handle(
+        orderEventSchema.parse(outboxEvent.payload),
+      ),
+      processOrderEventUseCase.handle({
         kind: ORDER_RESERVATION_EXPIRED,
         data: { order_id: orderId },
         meta: createEventMeta(randomUUID()),
       }),
     ]);
 
-    const after = await snapshot(testApp);
+    const finalSnapshot = await snapshot(testApp);
 
-    expect(after.orders[0]?.status).toBe(OrderStatus.Cancelled);
-    expect(after.reservations[0]?.status).toBe('EXPIRED');
+    expect(finalSnapshot.orders[0]?.status).toBe(OrderStatus.Cancelled);
+    expect(finalSnapshot.reservations[0]?.status).toBe('EXPIRED');
 
-    expect(after.stock[0]).toMatchObject({
+    expect(finalSnapshot.stock[0]).toMatchObject({
       physicalQuantity: 10,
       reservedQuantity: 0,
     });

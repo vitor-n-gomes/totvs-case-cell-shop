@@ -10,19 +10,22 @@ const POLL_INTERVAL_MS = 200;
 
 const log = (message) => process.stdout.write(`${message}\n`);
 
-async function request(url, { expectedStatus = 200, ...options } = {}) {
+async function request(url, { expectedStatus = 200, ...requestOptions } = {}) {
   const response = await fetch(url, {
-    ...options,
+    ...requestOptions,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  const text = await response.text();
-  const statuses = [expectedStatus].flat();
+  const responseText = await response.text();
+  const expectedStatuses = [expectedStatus].flat();
   assert.ok(
-    statuses.includes(response.status),
-    `${options.method ?? 'GET'} ${url}: expected HTTP ${statuses.join('/')}, got ${response.status} ${text}`,
+    expectedStatuses.includes(response.status),
+    `${requestOptions.method ?? 'GET'} ${url}: expected HTTP ${expectedStatuses.join('/')}, got ${response.status} ${responseText}`,
   );
-  const isJson = response.headers.get('content-type')?.includes('json');
-  return { status: response.status, body: isJson ? JSON.parse(text) : text };
+  const isJsonResponse = response.headers.get('content-type')?.includes('json');
+  return {
+    status: response.status,
+    body: isJsonResponse ? JSON.parse(responseText) : responseText,
+  };
 }
 
 async function checkReadiness() {
@@ -59,33 +62,37 @@ function checkoutRequest(productId) {
 // The catalog does not expose stock, so skip products rejected with 409 (insufficient stock).
 async function checkout(products) {
   for (const product of products) {
-    const purchase = checkoutRequest(product.id);
+    const checkoutRequestOptions = checkoutRequest(product.id);
     const { status, body } = await request(`${API_URL}/checkout`, {
-      ...purchase,
+      ...checkoutRequestOptions,
       expectedStatus: [202, 409],
     });
     if (status === 202) {
       assert.equal(body.status, 'Pending');
       log(`Checkout accepted for ${product.productKey}: ${body.orderId}`);
-      return { purchase, accepted: body };
+      return { purchase: checkoutRequestOptions, accepted: body };
     }
   }
   throw new Error('No product has stock left. Run npm run seed first.');
 }
 
-async function checkReplay(purchase, accepted) {
-  const replay = await request(`${API_URL}/checkout`, {
-    ...purchase,
+async function checkReplay(checkoutRequestOptions, checkoutAcceptance) {
+  const replayResponse = await request(`${API_URL}/checkout`, {
+    ...checkoutRequestOptions,
     expectedStatus: 202,
   });
-  assert.deepEqual(replay.body, accepted, 'Replay must return the same order');
+  assert.deepEqual(
+    replayResponse.body,
+    checkoutAcceptance,
+    'Replay must return the same order',
+  );
   log('Idempotent replay returned the same order.');
 }
 
 async function waitForCompletion(orderId) {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  const pollDeadlineMs = Date.now() + POLL_TIMEOUT_MS;
   let lastState = 'unknown';
-  while (Date.now() < deadline) {
+  while (Date.now() < pollDeadlineMs) {
     const { body: order } = await request(
       `${API_URL}/orders/${orderId}/status`,
     );
@@ -119,11 +126,12 @@ async function checkMetrics() {
 async function main() {
   await checkReadiness();
   const products = await listProducts();
-  const { purchase, accepted } = await checkout(products);
-  await checkReplay(purchase, accepted);
-  await waitForCompletion(accepted.orderId);
+  const { purchase: checkoutRequestOptions, accepted: checkoutAcceptance } =
+    await checkout(products);
+  await checkReplay(checkoutRequestOptions, checkoutAcceptance);
+  await waitForCompletion(checkoutAcceptance.orderId);
   await checkMetrics();
-  log(`Container smoke passed: ${accepted.orderId}`);
+  log(`Container smoke passed: ${checkoutAcceptance.orderId}`);
 }
 
 await main().catch((error) => {

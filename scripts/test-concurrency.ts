@@ -34,25 +34,25 @@ type CheckoutOutcome =
   | { kind: 'accepted'; request: number; orderId: string }
   | { kind: 'rejected'; rejection: Rejection };
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
-async function readStock(database: DataSource): Promise<StockSnapshot> {
-  const rows: {
+async function readStock(dataSource: DataSource): Promise<StockSnapshot> {
+  const stockRows: {
     product_id: string;
     physical_quantity: number;
     reserved_quantity: number;
-  }[] = await database.query(
+  }[] = await dataSource.query(
     `SELECT p.id AS product_id, s.physical_quantity, s.reserved_quantity
        FROM product p JOIN stock s ON s.product_id = p.id
       WHERE p.product_key = $1`,
     [PRODUCT_KEY],
   );
 
-  const row = rows[0];
+  const stockRow = stockRows[0];
 
-  if (!row) {
+  if (!stockRow) {
 
     throw new Error(
       `Product ${PRODUCT_KEY} not found. Run "npm run seed:run".`,
@@ -61,19 +61,19 @@ async function readStock(database: DataSource): Promise<StockSnapshot> {
   }
 
   return {
-    productId: row.product_id,
-    physical: row.physical_quantity,
-    reserved: row.reserved_quantity,
-    available: row.physical_quantity - row.reserved_quantity,
+    productId: stockRow.product_id,
+    physical: stockRow.physical_quantity,
+    reserved: stockRow.reserved_quantity,
+    available: stockRow.physical_quantity - stockRow.reserved_quantity,
   };
 }
 
 async function checkout(
-  api: string,
+  apiBaseUrl: string,
   productId: string,
-  request: number,
+  requestNumber: number,
 ): Promise<CheckoutOutcome> {
-  const response = await fetch(`${api}/checkout`, {
+  const response = await fetch(`${apiBaseUrl}/checkout`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -83,7 +83,7 @@ async function checkout(
     body: JSON.stringify({
       paymentType: PaymentType.PrePaid,
       dueDate: new Date().toISOString().slice(0, 10),
-      mainContact: `customer-${request}@example.test`,
+      mainContact: `customer-${requestNumber}@example.test`,
       paymentMethod: 'PIX',
       environment: Environment.Local,
       items: [{ productId, quantity: 1 }],
@@ -91,27 +91,38 @@ async function checkout(
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
-  const body: unknown = await response.json().catch(() => ({}));
-  const record = (body ?? {}) as { orderId?: string; message?: unknown };
+  const responseBody: unknown = await response.json().catch(() => ({}));
 
-  if (response.status === 202 && record.orderId) {
+  const checkoutResponse = (responseBody ?? {}) as {
+    orderId?: string;
+    message?: unknown;
+  };
 
-    return { kind: 'accepted', request, orderId: record.orderId };
+  if (response.status === 202 && checkoutResponse.orderId) {
+
+    return {
+      kind: 'accepted',
+      request: requestNumber,
+      orderId: checkoutResponse.orderId,
+    };
 
   }
 
   return {
     kind: 'rejected',
     rejection: {
-      request,
+      request: requestNumber,
       status: response.status,
-      message: String(record.message ?? response.statusText),
+      message: String(checkoutResponse.message ?? response.statusText),
     },
   };
 }
 
-async function orderStatus(api: string, orderId: string): Promise<string> {
-  const response = await fetch(`${api}/orders/${orderId}/status`, {
+async function orderStatus(
+  apiBaseUrl: string,
+  orderId: string,
+): Promise<string> {
+  const response = await fetch(`${apiBaseUrl}/orders/${orderId}/status`, {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
@@ -128,18 +139,18 @@ async function orderStatus(api: string, orderId: string): Promise<string> {
 
 // Returns the last known status of every order, even when some never settle.
 async function waitForTerminalStatus(
-  api: string,
+  apiBaseUrl: string,
   orderIds: string[],
 ): Promise<Map<string, string>> {
-  const statuses = new Map<string, string>(
-    orderIds.map((id) => [id, OrderStatus.Pending]),
+  const orderStatuses = new Map<string, string>(
+    orderIds.map((orderId) => [orderId, OrderStatus.Pending]),
   );
 
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  const pollDeadlineMs = Date.now() + POLL_TIMEOUT_MS;
 
-  while (Date.now() < deadline) {
+  while (Date.now() < pollDeadlineMs) {
 
-    for (const [id, status] of statuses) {
+    for (const [orderId, status] of orderStatuses) {
 
       if (status !== OrderStatus.Pending) {
 
@@ -147,11 +158,15 @@ async function waitForTerminalStatus(
 
       }
 
-      statuses.set(id, await orderStatus(api, id));
+      orderStatuses.set(orderId, await orderStatus(apiBaseUrl, orderId));
 
     }
 
-    if ([...statuses.values()].every((s) => s !== OrderStatus.Pending)) {
+    if (
+      [...orderStatuses.values()].every(
+        (orderStatus) => orderStatus !== OrderStatus.Pending,
+      )
+    ) {
 
       break;
 
@@ -161,36 +176,41 @@ async function waitForTerminalStatus(
 
   }
 
-  return statuses;
+  return orderStatuses;
 }
 
 async function main(): Promise<number> {
-  const root = resolve(__dirname, '..');
+  const projectRoot = resolve(__dirname, '..');
 
   config({
     path:
       process.env.ENV_FILE ??
-      ['.env.local', '.env'].map((f) => resolve(root, f)),
+      ['.env.local', '.env'].map((environmentFile) =>
+        resolve(projectRoot, environmentFile),
+      ),
   });
 
   const environment = validateEnvironment(process.env);
-  const api = process.env.API_URL ?? `http://localhost:${environment.API_PORT}`;
-  const database = new DataSource(databaseOptions(environment.DATABASE_URL));
 
-  await database.initialize();
+  const apiBaseUrl =
+    process.env.API_URL ?? `http://localhost:${environment.API_PORT}`;
+
+  const dataSource = new DataSource(databaseOptions(environment.DATABASE_URL));
+
+  await dataSource.initialize();
 
   try {
 
-    const before = await readStock(database);
+    const initialStock = await readStock(dataSource);
 
-    const health = await fetch(`${api}/health/ready`, {
+    const readinessResponse = await fetch(`${apiBaseUrl}/health/ready`, {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     }).catch(() => undefined);
 
-    if (!health?.ok) {
+    if (!readinessResponse?.ok) {
 
       process.stderr.write(
-        `API is not ready at ${api}. Start the http app and the consumer first.\n`,
+        `API is not ready at ${apiBaseUrl}. Start the http app and the consumer first.\n`,
       );
 
       return 1;
@@ -198,87 +218,101 @@ async function main(): Promise<number> {
     }
 
     process.stdout.write(
-      `Starting stock for ${PRODUCT_KEY}: physical=${before.physical} reserved=${before.reserved} available=${before.available}\n`,
+      `Starting stock for ${PRODUCT_KEY}: physical=${initialStock.physical} reserved=${initialStock.reserved} available=${initialStock.available}\n`,
     );
 
     process.stdout.write(
       `Firing ${REQUESTS} simultaneous POST /checkout requests...\n`,
     );
 
-    const settled = await Promise.allSettled(
+    const checkoutResults = await Promise.allSettled(
       Array.from({ length: REQUESTS }, (_, index) =>
-        checkout(api, before.productId, index + 1),
+        checkout(apiBaseUrl, initialStock.productId, index + 1),
       ),
     );
 
-    const accepted: string[] = [];
+    const acceptedOrderIds: string[] = [];
     const rejections: Rejection[] = [];
 
-    for (const [index, result] of settled.entries()) {
+    for (const [index, checkoutResult] of checkoutResults.entries()) {
 
-      if (result.status === 'rejected') {
+      if (checkoutResult.status === 'rejected') {
 
         rejections.push({
           request: index + 1,
           status: 'network-error',
           message:
-            result.reason instanceof Error
-              ? result.reason.message
-              : String(result.reason),
+            checkoutResult.reason instanceof Error
+              ? checkoutResult.reason.message
+              : String(checkoutResult.reason),
         });
 
-      } else if (result.value.kind === 'accepted') {
+      } else if (checkoutResult.value.kind === 'accepted') {
 
-        accepted.push(result.value.orderId);
+        acceptedOrderIds.push(checkoutResult.value.orderId);
 
         process.stdout.write(
-          `  #${result.value.request} 202 Accepted orderId=${result.value.orderId}\n`,
+          `  #${checkoutResult.value.request} 202 Accepted orderId=${checkoutResult.value.orderId}\n`,
         );
 
       } else {
 
-        rejections.push(result.value.rejection);
-        const { request, status, message } = result.value.rejection;
+        rejections.push(checkoutResult.value.rejection);
 
-        process.stdout.write(`  #${request} ${status} rejected: ${message}\n`);
+        const {
+          request: requestNumber,
+          status,
+          message,
+        } = checkoutResult.value.rejection;
+
+        process.stdout.write(
+          `  #${requestNumber} ${status} rejected: ${message}\n`,
+        );
 
       }
 
     }
 
     process.stdout.write(
-      `Polling ${accepted.length} accepted order(s) every ${POLL_INTERVAL_MS}ms (timeout ${POLL_TIMEOUT_MS / 1000}s)...\n`,
+      `Polling ${acceptedOrderIds.length} accepted order(s) every ${POLL_INTERVAL_MS}ms (timeout ${POLL_TIMEOUT_MS / 1000}s)...\n`,
     );
 
-    const statuses = await waitForTerminalStatus(api, accepted);
-    const finalStatuses = [...statuses.values()];
-    const active = finalStatuses.filter((s) => s === OrderStatus.Active).length;
+    const orderStatuses = await waitForTerminalStatus(
+      apiBaseUrl,
+      acceptedOrderIds,
+    );
 
-    const cancelled = finalStatuses.filter(
-      (s) => s === OrderStatus.Cancelled,
+    const finalStatuses = [...orderStatuses.values()];
+
+    const activeOrderCount = finalStatuses.filter(
+      (orderStatus) => orderStatus === OrderStatus.Active,
     ).length;
 
-    const pending = finalStatuses.filter(
-      (s) => s === OrderStatus.Pending,
+    const cancelledOrderCount = finalStatuses.filter(
+      (orderStatus) => orderStatus === OrderStatus.Cancelled,
     ).length;
 
-    const notSold = cancelled + rejections.length;
-    const after = await readStock(database);
+    const pendingOrderCount = finalStatuses.filter(
+      (orderStatus) => orderStatus === OrderStatus.Pending,
+    ).length;
 
-    const rows: (string | number)[][] = [
+    const unsoldRequestCount = cancelledOrderCount + rejections.length;
+    const finalStock = await readStock(dataSource);
+
+    const summaryRows: (string | number)[][] = [
       ['Metric', 'Actual', 'Expected'],
       ['Total requests sent', REQUESTS, REQUESTS],
-      ['Accepted (202)', accepted.length, '-'],
-      ['Orders Active', active, 1],
-      ['Orders Cancelled / rejected', notSold, REQUESTS - 1],
-      ['Orders stuck Pending', pending, 0],
-      ['Final available (physical - reserved)', after.available, 0],
-      ['Final physical_quantity', after.physical, 0],
-      ['Final reserved_quantity', after.reserved, 0],
+      ['Accepted (202)', acceptedOrderIds.length, '-'],
+      ['Orders Active', activeOrderCount, 1],
+      ['Orders Cancelled / rejected', unsoldRequestCount, REQUESTS - 1],
+      ['Orders stuck Pending', pendingOrderCount, 0],
+      ['Final available (physical - reserved)', finalStock.available, 0],
+      ['Final physical_quantity', finalStock.physical, 0],
+      ['Final reserved_quantity', finalStock.reserved, 0],
     ];
 
     process.stdout.write(
-      `\n${rows
+      `\n${summaryRows
         .map(
           ([label, actual, expected]) =>
             `${String(label).padEnd(40)}${String(actual).padEnd(10)}${expected}`,
@@ -286,54 +320,60 @@ async function main(): Promise<number> {
         .join('\n')}\n\n`,
     );
 
-    const errors: string[] = [];
+    const validationErrors: string[] = [];
 
-    if (pending > 0) {
+    if (pendingOrderCount > 0) {
 
-      errors.push(
-        `${pending} order(s) still Pending after ${POLL_TIMEOUT_MS / 1000}s. Is the consumer running?`,
+      validationErrors.push(
+        `${pendingOrderCount} order(s) still Pending after ${POLL_TIMEOUT_MS / 1000}s. Is the consumer running?`,
       );
 
     }
 
-    if (active !== 1) {
+    if (activeOrderCount !== 1) {
 
-      errors.push(`Expected exactly 1 Active order, got ${active}.`);
-
-    }
-
-    if (notSold !== REQUESTS - 1) {
-
-      errors.push(
-        `Expected ${REQUESTS - 1} Cancelled/rejected, got ${notSold}.`,
+      validationErrors.push(
+        `Expected exactly 1 Active order, got ${activeOrderCount}.`,
       );
 
     }
 
-    if (after.available < 0 || after.physical < 0) {
+    if (unsoldRequestCount !== REQUESTS - 1) {
 
-      errors.push(
-        `OVERSELLING: negative stock (available=${after.available}).`,
+      validationErrors.push(
+        `Expected ${REQUESTS - 1} Cancelled/rejected, got ${unsoldRequestCount}.`,
       );
 
     }
 
-    if (after.available !== 0) {
+    if (finalStock.available < 0 || finalStock.physical < 0) {
 
-      errors.push(`Expected available_quantity 0, got ${after.available}.`);
-
-    }
-
-    if (after.reserved !== 0) {
-
-      errors.push(`Expected reserved_quantity 0, got ${after.reserved}.`);
+      validationErrors.push(
+        `OVERSELLING: negative stock (available=${finalStock.available}).`,
+      );
 
     }
 
-    if (errors.length) {
+    if (finalStock.available !== 0) {
+
+      validationErrors.push(
+        `Expected available_quantity 0, got ${finalStock.available}.`,
+      );
+
+    }
+
+    if (finalStock.reserved !== 0) {
+
+      validationErrors.push(
+        `Expected reserved_quantity 0, got ${finalStock.reserved}.`,
+      );
+
+    }
+
+    if (validationErrors.length) {
 
       process.stderr.write(
-        `FAILED:\n${errors.map((e) => `  - ${e}`).join('\n')}\n`,
+        `FAILED:\n${validationErrors.map((validationError) => `  - ${validationError}`).join('\n')}\n`,
       );
 
       return 1;
@@ -346,14 +386,14 @@ async function main(): Promise<number> {
 
   } finally {
 
-    await database.destroy();
+    await dataSource.destroy();
 
   }
 }
 
 main()
-  .then((code) => {
-    process.exitCode = code;
+  .then((exitCode) => {
+    process.exitCode = exitCode;
   })
   .catch((error: unknown) => {
     process.stderr.write(

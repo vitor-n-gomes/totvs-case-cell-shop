@@ -5,57 +5,58 @@ import { AppLogger } from '../logging/app-logger';
 
 @Injectable()
 export class RedisConnection implements OnModuleInit, OnModuleDestroy {
-  readonly client;
-  private unavailable = false;
+  readonly redisClient;
+  private isUnavailable = false;
 
   constructor(
-    config: ConfigService,
-    private readonly logger: AppLogger,
+    configService: ConfigService,
+    private readonly appLogger: AppLogger,
   ) {
-    this.client = createClient({
-      url: config.getOrThrow<string>('REDIS_URL'),
+    this.redisClient = createClient({
+      url: configService.getOrThrow<string>('REDIS_URL'),
       disableOfflineQueue: true,
       socket: {
         connectTimeout: 1000,
-        reconnectStrategy: (retries) => Math.min(250 * (retries + 1), 3000),
+        reconnectStrategy: (retryCount) =>
+          Math.min(250 * (retryCount + 1), 3000),
       },
     });
 
     // Log once per outage instead of on every reconnect attempt.
-    this.client.on('error', () => {
-      if (this.unavailable) {
+    this.redisClient.on('error', () => {
+      if (this.isUnavailable) {
 
         return;
 
       }
 
-      this.unavailable = true;
-      this.logger.warn('redis.connection.unavailable');
+      this.isUnavailable = true;
+      this.appLogger.warn('redis.connection.unavailable');
     });
 
-    this.client.on('ready', () => {
-      if (!this.unavailable) {
+    this.redisClient.on('ready', () => {
+      if (!this.isUnavailable) {
 
         return;
 
       }
 
-      this.unavailable = false;
-      this.logger.info('redis.connection.restored');
+      this.isUnavailable = false;
+      this.appLogger.info('redis.connection.restored');
     });
   }
 
   onModuleInit(): void {
     // Optional cache must not block application startup or database fallback.
-    void this.client
+    void this.redisClient
       .connect()
-      .catch(() => this.logger.warn('redis.connection.failed'));
+      .catch(() => this.appLogger.warn('redis.connection.failed'));
   }
 
   onModuleDestroy(): void {
-    if (this.client.isOpen) {
+    if (this.redisClient.isOpen) {
 
-      this.client.destroy();
+      this.redisClient.destroy();
 
     }
   }

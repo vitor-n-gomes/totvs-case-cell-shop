@@ -7,44 +7,44 @@ import { KAFKA_CLIENT } from './kafka.topics';
 
 export class KafkaEvents<T extends object> {
   constructor(
-    public readonly key: string,
-    public readonly value: T,
-    public readonly headers: Record<string, string> = {},
+    public readonly messageKey: string,
+    public readonly payload: T,
+    public readonly messageHeaders: Record<string, string> = {},
   ) {}
 }
 @Injectable()
 export class KafkaService implements OnApplicationShutdown {
-  private connecting?: Promise<void>;
-  private adminConnecting?: Promise<Admin>;
-  private closing = false;
+  private connectionPromise?: Promise<void>;
+  private adminConnectionPromise?: Promise<Admin>;
+  private isClosing = false;
   constructor(
-    @Inject(KAFKA_CLIENT) private readonly client: ClientKafka,
-    private readonly config: ConfigService,
+    @Inject(KAFKA_CLIENT) private readonly kafkaClient: ClientKafka,
+    private readonly configService: ConfigService,
   ) {}
 
   ensureConnected(): Promise<void> {
-    if (this.closing) {
+    if (this.isClosing) {
 
       return Promise.reject(new Error('Kafka shutting down'));
 
     }
 
-    if (!this.connecting) {
+    if (!this.connectionPromise) {
 
-      this.connecting = this.client
+      this.connectionPromise = this.kafkaClient
         .connect()
         .then(() => undefined)
         .catch(async (error: unknown) => {
           // Nest caches a failed initial connection; close clears it so a later call can recover.
-          await this.client.close().catch(() => undefined);
-          this.connecting = undefined;
+          await this.kafkaClient.close().catch(() => undefined);
+          this.connectionPromise = undefined;
 
           throw error;
         });
 
     }
 
-    return this.connecting;
+    return this.connectionPromise;
   }
 
   async produce<T extends object>(
@@ -54,10 +54,10 @@ export class KafkaService implements OnApplicationShutdown {
     await this.ensureConnected();
 
     await lastValueFrom(
-      this.client.emit<unknown>(topic, {
-        key: event.key,
-        value: JSON.stringify(event.value),
-        headers: event.headers,
+      this.kafkaClient.emit<unknown>(topic, {
+        key: event.messageKey,
+        value: JSON.stringify(event.payload),
+        headers: event.messageHeaders,
       }),
     );
   }
@@ -65,39 +65,44 @@ export class KafkaService implements OnApplicationShutdown {
   async checkTopic(): Promise<void> {
     await this.ensureConnected();
 
-    if (!this.adminConnecting) {
+    if (!this.adminConnectionPromise) {
 
-      const admin = this.client.unwrap<Kafka>().admin();
+      const kafkaAdmin = this.kafkaClient.unwrap<Kafka>().admin();
 
-      this.adminConnecting = admin
+      this.adminConnectionPromise = kafkaAdmin
         .connect()
-        .then(() => admin)
+        .then(() => kafkaAdmin)
         .catch(async (error: unknown) => {
-          await admin.disconnect().catch(() => undefined);
-          this.adminConnecting = undefined;
+          await kafkaAdmin.disconnect().catch(() => undefined);
+          this.adminConnectionPromise = undefined;
 
           throw error;
         });
 
     }
 
-    const admin = await this.adminConnecting;
-    const checkout = this.config.getOrThrow<string>('CHECKOUT_TOPIC');
+    const kafkaAdmin = await this.adminConnectionPromise;
 
-    await admin.fetchTopicMetadata({
+    const checkoutTopic =
+      this.configService.getOrThrow<string>('CHECKOUT_TOPIC');
+
+    await kafkaAdmin.fetchTopicMetadata({
       topics: [
-        this.config.getOrThrow<string>('KAFKA_TOPIC'),
-        checkout,
-        `${checkout}.dlq`,
+        this.configService.getOrThrow<string>('KAFKA_TOPIC'),
+        checkoutTopic,
+        `${checkoutTopic}.dlq`,
       ],
     });
   }
 
   async onApplicationShutdown(): Promise<void> {
-    this.closing = true;
-    await this.connecting?.catch(() => undefined);
-    const admin = await this.adminConnecting?.catch(() => undefined);
+    this.isClosing = true;
+    await this.connectionPromise?.catch(() => undefined);
 
-    await admin?.disconnect();
+    const kafkaAdmin = await this.adminConnectionPromise?.catch(
+      () => undefined,
+    );
+
+    await kafkaAdmin?.disconnect();
   }
 }

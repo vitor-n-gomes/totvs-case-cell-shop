@@ -10,22 +10,22 @@ export class TopicKafkaServer extends ServerKafka {
   constructor(
     options: NonNullable<KafkaOptions['options']>,
     transportId: symbol,
-    private readonly pattern: string,
-    private readonly topic: string,
-    private readonly ready: (value: boolean) => void,
+    private readonly eventPattern: string,
+    private readonly kafkaTopic: string,
+    private readonly onReadinessChange: (isReady: boolean) => void,
   ) {
     super(options);
     this.setTransportId(transportId);
   }
 
   override addHandler(
-    pattern: string,
+    eventPattern: string,
     callback: MessageHandler,
     isEventHandler = false,
     extras: Record<string, unknown> = {},
   ): void {
     super.addHandler(
-      pattern === this.pattern ? this.topic : pattern,
+      eventPattern === this.eventPattern ? this.kafkaTopic : eventPattern,
       callback,
       isEventHandler,
       extras,
@@ -34,24 +34,26 @@ export class TopicKafkaServer extends ServerKafka {
 
   protected override registerConsumerEventListeners(): void {
     super.registerConsumerEventListeners();
-    const consumer = this.consumer!;
+    const kafkaConsumer = this.consumer!;
 
-    consumer.on(consumer.events.GROUP_JOIN, () => this.ready(true));
+    kafkaConsumer.on(kafkaConsumer.events.GROUP_JOIN, () =>
+      this.onReadinessChange(true),
+    );
 
-    for (const event of [
-      consumer.events.REBALANCING,
-      consumer.events.CRASH,
-      consumer.events.DISCONNECT,
-      consumer.events.STOP,
+    for (const consumerEvent of [
+      kafkaConsumer.events.REBALANCING,
+      kafkaConsumer.events.CRASH,
+      kafkaConsumer.events.DISCONNECT,
+      kafkaConsumer.events.STOP,
     ]) {
 
-      consumer.on(event, () => this.ready(false));
+      kafkaConsumer.on(consumerEvent, () => this.onReadinessChange(false));
 
     }
   }
 
   override async close(): Promise<void> {
-    this.ready(false);
+    this.onReadinessChange(false);
     await super.close();
   }
 }

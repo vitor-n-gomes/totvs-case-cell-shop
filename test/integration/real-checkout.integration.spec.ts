@@ -30,25 +30,25 @@ import { buildCheckoutPayload, newIdempotencyKey } from './support/fixtures';
 import { newProduct, ProductRecord } from './support/in-memory-store';
 
 describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
-  let context: RealServicesTestApp | undefined;
+  let testContext: RealServicesTestApp | undefined;
   let product: ProductRecord;
 
   beforeEach(async () => {
-    context = await createRealServicesTestApp();
+    testContext = await createRealServicesTestApp();
 
     product = await seedProduct(
-      context.database,
+      testContext.dataSource,
       newProduct({ physicalQuantity: 5 }),
     );
   });
 
   afterEach(async () => {
-    await context?.close();
-    context = undefined;
+    await testContext?.close();
+    testContext = undefined;
   });
 
   it('prevents overselling when 20 independent checkouts compete for five units', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
 
     const responses = await Promise.all(
       Array.from({ length: 20 }, () =>
@@ -62,18 +62,18 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     expect(responses.filter(({ status }) => status === 202)).toHaveLength(5);
     expect(responses.filter(({ status }) => status === 409)).toHaveLength(15);
 
-    const stock = await testApp.database
+    const stock = await testApp.dataSource
       .getRepository(StockEntity)
       .findOneByOrFail({ productId: product.id });
 
     expect(stock).toMatchObject({ physicalQuantity: 5, reservedQuantity: 5 });
-    expect(await testApp.database.getRepository(OrderEntity).count()).toBe(5);
+    expect(await testApp.dataSource.getRepository(OrderEntity).count()).toBe(5);
 
-    expect(await testApp.database.getRepository(OrderItemEntity).count()).toBe(
-      5,
-    );
+    expect(
+      await testApp.dataSource.getRepository(OrderItemEntity).count(),
+    ).toBe(5);
 
-    const reservations = await testApp.database
+    const reservations = await testApp.dataSource
       .getRepository(ReservationEntity)
       .find();
 
@@ -85,12 +85,12 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     ).toBe(5);
 
     expect(
-      await testApp.database.getRepository(OutboxEventEntity).count(),
+      await testApp.dataSource.getRepository(OutboxEventEntity).count(),
     ).toBe(5);
   });
 
   it('serializes simultaneous idempotent retries and rejects changed content', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const key = newIdempotencyKey();
     const correlationId = randomUUID();
     const payload = buildCheckoutPayload(product.id, 2);
@@ -123,19 +123,19 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       .send(buildCheckoutPayload(product.id, 3))
       .expect(409);
 
-    expect(await testApp.database.getRepository(OrderEntity).count()).toBe(1);
+    expect(await testApp.dataSource.getRepository(OrderEntity).count()).toBe(1);
 
     expect(
-      await testApp.database.getRepository(ReservationEntity).count(),
+      await testApp.dataSource.getRepository(ReservationEntity).count(),
     ).toBe(1);
 
     expect(
-      await testApp.database
+      await testApp.dataSource
         .getRepository(StockEntity)
         .findOneByOrFail({ productId: product.id }),
     ).toMatchObject({ physicalQuantity: 5, reservedQuantity: 2 });
 
-    const outbox = await testApp.database
+    const outbox = await testApp.dataSource
       .getRepository(OutboxEventEntity)
       .find();
 
@@ -143,7 +143,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
 
     expect(outbox[0]).toMatchObject({
       orderId: accepted.orderId,
-      topic: testApp.topic,
+      topic: testApp.checkoutTopic,
       status: 'PENDING',
     });
 
@@ -176,10 +176,10 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
   });
 
   it('rolls back the complete cart when a later item is missing or out of stock', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
 
     const available = await seedProduct(
-      testApp.database,
+      testApp.dataSource,
       newProduct({
         id: '00000000-0000-4000-8000-000000000001',
         productKey: 'available',
@@ -187,7 +187,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     );
 
     const unavailable = await seedProduct(
-      testApp.database,
+      testApp.dataSource,
       newProduct({
         id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
         productKey: 'unavailable',
@@ -217,33 +217,35 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
         .expect(expectedStatus);
 
       expect(
-        await testApp.database
+        await testApp.dataSource
           .getRepository(StockEntity)
           .findOneByOrFail({ productId: available.id }),
       ).toMatchObject({ physicalQuantity: 10, reservedQuantity: 0 });
 
-      expect(await testApp.database.getRepository(OrderEntity).count()).toBe(0);
+      expect(await testApp.dataSource.getRepository(OrderEntity).count()).toBe(
+        0,
+      );
 
       expect(
-        await testApp.database.getRepository(OrderItemEntity).count(),
+        await testApp.dataSource.getRepository(OrderItemEntity).count(),
       ).toBe(0);
 
       expect(
-        await testApp.database.getRepository(ReservationEntity).count(),
+        await testApp.dataSource.getRepository(ReservationEntity).count(),
       ).toBe(0);
 
       expect(
-        await testApp.database.getRepository(OutboxEventEntity).count(),
+        await testApp.dataSource.getRepository(OutboxEventEntity).count(),
       ).toBe(0);
 
     }
   });
 
   it('treats the same cart in a different item order as an idempotent replay', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
 
     const other = await seedProduct(
-      testApp.database,
+      testApp.dataSource,
       newProduct({ productKey: 'other-case' }),
     );
 
@@ -270,19 +272,19 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       .expect(202);
 
     expect(replay.body).toEqual(first.body);
-    expect(await testApp.database.getRepository(OrderEntity).count()).toBe(1);
+    expect(await testApp.dataSource.getRepository(OrderEntity).count()).toBe(1);
 
     expect(
-      await testApp.database.getRepository(ReservationEntity).count(),
+      await testApp.dataSource.getRepository(ReservationEntity).count(),
     ).toBe(2);
 
     expect(
-      await testApp.database.getRepository(OutboxEventEntity).count(),
+      await testApp.dataSource.getRepository(OutboxEventEntity).count(),
     ).toBe(1);
   });
 
   it('rolls back the order and stock if writing its outbox event fails', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const key = newIdempotencyKey();
     const payload = buildCheckoutPayload(product.id, 2);
 
@@ -297,22 +299,22 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       .expect(500);
 
     expect(JSON.stringify(failed.body)).not.toContain('simulated outbox');
-    expect(await testApp.database.getRepository(OrderEntity).count()).toBe(0);
-
-    expect(await testApp.database.getRepository(OrderItemEntity).count()).toBe(
-      0,
-    );
+    expect(await testApp.dataSource.getRepository(OrderEntity).count()).toBe(0);
 
     expect(
-      await testApp.database.getRepository(ReservationEntity).count(),
+      await testApp.dataSource.getRepository(OrderItemEntity).count(),
     ).toBe(0);
 
     expect(
-      await testApp.database.getRepository(OutboxEventEntity).count(),
+      await testApp.dataSource.getRepository(ReservationEntity).count(),
     ).toBe(0);
 
     expect(
-      await testApp.database
+      await testApp.dataSource.getRepository(OutboxEventEntity).count(),
+    ).toBe(0);
+
+    expect(
+      await testApp.dataSource
         .getRepository(StockEntity)
         .findOneByOrFail({ productId: product.id }),
     ).toMatchObject({ physicalQuantity: 5, reservedQuantity: 0 });
@@ -323,15 +325,15 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       .send(payload)
       .expect(202);
 
-    expect(await testApp.database.getRepository(OrderEntity).count()).toBe(1);
+    expect(await testApp.dataSource.getRepository(OrderEntity).count()).toBe(1);
 
     expect(
-      await testApp.database.getRepository(OutboxEventEntity).count(),
+      await testApp.dataSource.getRepository(OutboxEventEntity).count(),
     ).toBe(1);
   });
 
   it('exposes the HTTP contract, redacted audit records and metrics', async () => {
-    const testApp = context!;
+    const testApp = testContext!;
     const logs = jest.spyOn(PinoLogger.prototype, 'info');
     const correlationId = randomUUID();
 
@@ -385,13 +387,13 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
 
     await waitUntil(
       async () =>
-        (await testApp.database
+        (await testApp.dataSource
           .getRepository(RequestLogEntity)
           .countBy({ correlationId: acceptedCorrelation })) === 1,
       'redacted request audit',
     );
 
-    const audit = await testApp.database
+    const audit = await testApp.dataSource
       .getRepository(RequestLogEntity)
       .findOneByOrFail({ correlationId: acceptedCorrelation });
 
@@ -409,12 +411,17 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     expect(JSON.stringify(logs.mock.calls)).not.toContain(payload.mainContact);
     expect(JSON.stringify(logs.mock.calls)).not.toContain(payload.altContact);
 
-    const metrics = await request(testApp.app.getHttpServer())
+    const metricsService = await request(testApp.app.getHttpServer())
       .get('/metrics')
       .expect(200);
 
-    expect(metrics.text).toContain('shop_checkout_total{result="accepted"} 1');
-    expect(metrics.text).toContain('shop_request_log_total{result="saved"}');
+    expect(metricsService.text).toContain(
+      'shop_checkout_total{result="accepted"} 1',
+    );
+
+    expect(metricsService.text).toContain(
+      'shop_request_log_total{result="saved"}',
+    );
 
     const openapi = await request(testApp.app.getHttpServer())
       .get('/api-docs-json')

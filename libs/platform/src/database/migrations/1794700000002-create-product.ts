@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateProduct1794700000002 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE product (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         name varchar(200) NOT NULL,
@@ -17,7 +17,7 @@ export class CreateProduct1794700000002 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query('DROP TABLE product');
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query('DROP TABLE product');
   }
 }

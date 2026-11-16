@@ -23,27 +23,27 @@ async function bootstrap(): Promise<void> {
 
   try {
 
-    const logger = app.get(AppLogger);
+    const appLogger = app.get(AppLogger);
 
-    logger.setApp('consumer');
+    appLogger.setApp('consumer');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     app.useGlobalFilters(app.get(OrderConsumerExceptionFilter));
-    const config = app.get(ConfigService);
-    const health = app.get(HealthService);
+    const configService = app.get(ConfigService);
+    const healthService = app.get(HealthService);
 
-    health.checkoutConsumerReady = false;
-    const group = config.getOrThrow<string>('KAFKA_GROUP_ID');
+    healthService.checkoutConsumerReady = false;
+    const consumerGroupId = configService.getOrThrow<string>('KAFKA_GROUP_ID');
 
     app.connectMicroservice<MicroserviceOptions>(
       {
         strategy: new TopicKafkaServer(
-          kafkaConsumerOptions(config, `${group}-checkout`),
+          kafkaConsumerOptions(configService, `${consumerGroupId}-checkout`),
           ORDER_KAFKA_TRANSPORT,
           ORDER_EVENT_PATTERN,
-          config.getOrThrow<string>('CHECKOUT_TOPIC'),
-          (ready) => {
-            health.checkoutConsumerReady = ready;
+          configService.getOrThrow<string>('CHECKOUT_TOPIC'),
+          (isConsumerReady) => {
+            healthService.checkoutConsumerReady = isConsumerReady;
           },
         ),
       },
@@ -51,7 +51,11 @@ async function bootstrap(): Promise<void> {
     );
 
     await app.startAllMicroservices();
-    await app.listen(config.getOrThrow<number>('WORKER_PORT'), '0.0.0.0');
+
+    await app.listen(
+      configService.getOrThrow<number>('WORKER_PORT'),
+      '0.0.0.0',
+    );
 
   } catch (error) {
 

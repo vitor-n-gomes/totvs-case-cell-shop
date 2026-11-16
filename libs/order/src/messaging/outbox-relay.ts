@@ -13,113 +13,128 @@ import { parseOrderEvent } from '@app/order/messaging/order-events';
 
 @Injectable()
 export class OutboxRelay implements BeforeApplicationShutdown {
-  private flight?: Promise<void>;
-  private stopped = false;
+  private relayPromise?: Promise<void>;
+  private isStopped = false;
   constructor(
-    private readonly outbox: OutboxRepository,
-    private readonly messaging: OrderMessaging,
-    private readonly metrics: Metrics,
-    private readonly logger: AppLogger,
-    private readonly spans: Spans,
+    private readonly outboxRepository: OutboxRepository,
+    private readonly orderMessaging: OrderMessaging,
+    private readonly metricsService: Metrics,
+    private readonly appLogger: AppLogger,
+    private readonly spansService: Spans,
   ) {}
 
   @Interval(1000)
   async tick(): Promise<void> {
-    if (this.stopped || this.flight) {
+    if (this.isStopped || this.relayPromise) {
 
       return;
 
     }
 
-    this.flight = this.execute();
+    this.relayPromise = this.execute();
 
     try {
 
-      await this.flight;
+      await this.relayPromise;
 
     } catch {
 
-      this.logger.error('outbox.relay.failed');
+      this.appLogger.error('outbox.relay.failed');
 
     } finally {
 
-      this.flight = undefined;
+      this.relayPromise = undefined;
 
     }
   }
 
   async execute(): Promise<void> {
-    const before = await this.outbox.backlog();
+    const initialBacklog = await this.outboxRepository.backlog();
 
-    this.metrics.backlog.set(before.count);
-    this.metrics.oldest.set(before.ageSeconds);
-    await this.messaging.ensureConnected();
-    const events = await this.outbox.claim();
+    this.metricsService.outboxBacklogGauge.set(initialBacklog.count);
+
+    this.metricsService.oldestOutboxEventAgeGauge.set(
+      initialBacklog.ageSeconds,
+    );
+
+    await this.orderMessaging.ensureConnected();
+    const claimedEvents = await this.outboxRepository.claim();
 
     // The bounded batch publishes concurrently so later events do not wait out their leases.
-    const results = await Promise.allSettled(
-      events.map(async (event) => {
-        const payload = parseOrderEvent(event.payload);
+    const publicationResults = await Promise.allSettled(
+      claimedEvents.map(async (claimedEvent) => {
+        const orderEvent = parseOrderEvent(claimedEvent.payload);
 
-        if (!payload) {
+        if (!orderEvent) {
 
           throw new Error('Invalid order event in outbox');
 
         }
 
-        if (!payload.meta) {
+        if (!orderEvent.meta) {
 
           throw new Error('Outbox event without meta');
 
         }
 
-        const { correlation_id: correlationId, ...trace } = payload.meta;
+        const { correlation_id: correlationId, ...eventTrace } =
+          orderEvent.meta;
 
-        const context = {
+        const traceContext = {
           ...newTraceContext(correlationId),
-          trace_id: trace.trace_id,
-          span_id: trace.parent_span_id,
-          order_id: event.orderId,
+          trace_id: eventTrace.trace_id,
+          span_id: eventTrace.parent_span_id,
+          order_id: claimedEvent.orderId,
         };
 
-        await executionContext.run(context, async () => {
+        await executionContext.run(traceContext, async () => {
           try {
 
-            await this.spans.run('outbox.publish', () =>
-              this.messaging.publish(event.topic, event.orderId, payload, {
-                'x-correlation-id': correlationId,
-              }),
+            await this.spansService.run('outbox.publish', () =>
+              this.orderMessaging.publish(
+                claimedEvent.topic,
+                claimedEvent.orderId,
+                orderEvent,
+                {
+                  'x-correlation-id': correlationId,
+                },
+              ),
             );
 
-            await this.outbox.acknowledge(event);
-            this.metrics.processing.inc({ result: 'published' });
+            await this.outboxRepository.acknowledge(claimedEvent);
+            this.metricsService.processingCounter.inc({ result: 'published' });
 
           } catch {
 
-            await this.outbox.release(event);
-            this.logger.warn('outbox.publish.failed');
+            await this.outboxRepository.release(claimedEvent);
+            this.appLogger.warn('outbox.publish.failed');
 
           }
         });
       }),
     );
 
-    const failure = results.find((result) => result.status === 'rejected');
+    const publicationFailure = publicationResults.find(
+      (publicationResult) => publicationResult.status === 'rejected',
+    );
 
-    if (failure?.status === 'rejected') {
+    if (publicationFailure?.status === 'rejected') {
 
-      throw failure.reason;
+      throw publicationFailure.reason;
 
     }
 
-    const backlog = await this.outbox.backlog();
+    const remainingBacklog = await this.outboxRepository.backlog();
 
-    this.metrics.backlog.set(backlog.count);
-    this.metrics.oldest.set(backlog.ageSeconds);
+    this.metricsService.outboxBacklogGauge.set(remainingBacklog.count);
+
+    this.metricsService.oldestOutboxEventAgeGauge.set(
+      remainingBacklog.ageSeconds,
+    );
   }
 
   async beforeApplicationShutdown(): Promise<void> {
-    this.stopped = true;
-    await this.flight?.catch(() => undefined);
+    this.isStopped = true;
+    await this.relayPromise?.catch(() => undefined);
   }
 }
