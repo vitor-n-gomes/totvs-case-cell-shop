@@ -28,8 +28,8 @@ const EXPECTED_STEPS = [
 
 interface ProductSnapshot {
   productId: string;
-  netPrice: string;
-  listPrice: string;
+  netPrice: number;
+  listPrice: number;
   physical: number;
   reserved: number;
 }
@@ -44,8 +44,8 @@ interface OrderSnapshot extends Acceptance {
   items: {
     productId: string;
     quantity: number;
-    netPrice: string;
-    listPrice: string;
+    netPrice: number;
+    listPrice: number;
   }[];
 }
 

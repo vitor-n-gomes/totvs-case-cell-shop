@@ -255,12 +255,16 @@
             "type": "string"
           },
           "netPrice": {
-            "type": "number",
-            "example": 2990
+            "type": "integer",
+            "minimum": 0,
+            "example": 2990,
+            "description": "Price in integer cents (minor currency units)"
           },
           "listPrice": {
-            "type": "number",
-            "example": 3990
+            "type": "integer",
+            "minimum": 0,
+            "example": 3990,
+            "description": "Price in integer cents (minor currency units)"
           }
         },
         "required": ["id", "name", "productKey", "netPrice", "listPrice"]
@@ -353,12 +357,16 @@
             "maximum": 1000000
           },
           "netPrice": {
-            "type": "number",
-            "example": 2990
+            "type": "integer",
+            "minimum": 0,
+            "example": 2990,
+            "description": "Price in integer cents (minor currency units)"
           },
           "listPrice": {
-            "type": "number",
-            "example": 3990
+            "type": "integer",
+            "minimum": 0,
+            "example": 3990,
+            "description": "Price in integer cents (minor currency units)"
           }
         },
         "required": ["productId", "quantity", "netPrice", "listPrice"]

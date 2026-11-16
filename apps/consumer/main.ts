@@ -30,7 +30,6 @@ async function bootstrap(): Promise<void> {
     const config = app.get(ConfigService);
     const health = app.get(HealthService);
 
-    health.consumerReady = false;
     health.checkoutConsumerReady = false;
     const group = config.getOrThrow<string>('KAFKA_GROUP_ID');
 
