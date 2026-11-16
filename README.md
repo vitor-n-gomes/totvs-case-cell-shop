@@ -4,6 +4,24 @@ A NestJS storefront API and Kafka worker implementing cached catalog reads, idem
 
 The five conceptual answers are in [docs/conceptual-answers.md](docs/conceptual-answers.md). [docs/tasks.md](docs/tasks.md) contains the implementation requirements; [PROMPTS.md](PROMPTS.md) records AI assistance and review decisions.
 
+## Table of contents
+
+- [Quick start](#quick-start)
+- [Run locally](#run-locally)
+- [Try the purchase flow](#try-the-purchase-flow)
+- [Architecture and consistency](#architecture-and-consistency)
+  - [Checkout and inventory](#checkout-and-inventory)
+  - [Activation and recovery](#activation-and-recovery)
+  - [Cache policy](#cache-policy)
+- [Observability and operations](#observability-and-operations)
+  - [Dashboard, alert and query examples](#dashboard-alert-and-query-examples)
+  - [Runbooks](#runbooks)
+- [Architecture decision: why Apache Kafka?](#architecture-decision-why-apache-kafka)
+  - [Trade-offs and how they are handled](#trade-offs-and-how-they-are-handled)
+- [Simplifications, trade-offs and limitations](#simplifications-trade-offs-and-limitations)
+- [Manual validation](#manual-validation)
+- [Automated tests](#automated-tests)
+
 ## Quick start
 
 The fastest path is Docker only (Docker Compose v2 required, no Node.js needed on the host):
