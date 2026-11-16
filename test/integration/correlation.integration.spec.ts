@@ -27,7 +27,7 @@ describe('Correlation id propagation (integration)', () => {
       .set('X-Correlation-Id', correlationId)
       .expect(200);
 
-    expect(response.headers['X-Correlation-Id']).toBe(correlationId);
+    expect(response.get('X-Correlation-Id')).toBe(correlationId);
   });
 
   it('echoes X-Correlation-Id on POST /checkout and GET /orders/:orderId/status', async () => {
@@ -46,8 +46,8 @@ describe('Correlation id propagation (integration)', () => {
       .set('X-Correlation-Id', correlationId)
       .expect(200);
 
-    expect(checkout.headers['X-Correlation-Id']).toBe(correlationId);
-    expect(status.headers['X-Correlation-Id']).toBe(correlationId);
+    expect(checkout.get('X-Correlation-Id')).toBe(correlationId);
+    expect(status.get('X-Correlation-Id')).toBe(correlationId);
 
     expect(
       [...testContext.inMemoryStore.orders.values()].map(
