@@ -30,7 +30,18 @@ const candidates = new Set(
     .filter(Boolean)
     .map((file) => resolve(file)),
 );
-const eslint = new ESLint({ fix: true, fixTypes: ['layout'] });
+
+const eslint = new ESLint({
+  fix: true,
+  fixTypes: ['layout'],
+  overrideConfig: {
+    files: ['**/*.ts'],
+    languageOptions: {
+      parserOptions: { projectService: false, project: null },
+    },
+    rules: { '@typescript-eslint/no-deprecated': 'off' },
+  },
+});
 const lintResults = await eslint.lintFiles(['.']);
 const lintedFiles = new Set(lintResults.map(({ filePath }) => filePath));
 

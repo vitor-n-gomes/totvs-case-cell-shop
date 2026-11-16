@@ -66,7 +66,6 @@ export class ActivationFailureHandler {
     error: unknown,
     terminal: boolean,
   ): Promise<void> {
-    
     const { manager } = runner;
     const { event } = context;
     const { attempt } = event.meta;
