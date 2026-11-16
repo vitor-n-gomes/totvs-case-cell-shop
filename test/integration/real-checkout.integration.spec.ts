@@ -363,7 +363,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       correlationId,
     });
 
-    expect(invalid.headers['X-Correlation-Id']).toBe(correlationId);
+    expect(invalid.get('X-Correlation-Id')).toBe(correlationId);
 
     await request(testApp.app.getHttpServer())
       .post('/checkout')
@@ -393,7 +393,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       .send(payload)
       .expect(202);
 
-    expect(accepted.headers['X-Correlation-Id']).toBe(acceptedCorrelation);
+    expect(accepted.get('X-Correlation-Id')).toBe(acceptedCorrelation);
 
     await waitUntil(
       async () =>
