@@ -223,6 +223,7 @@ describe('ReservationExpiredHandler (consumer)', () => {
       reservationRepository,
       deleteCacheMock,
       metricsService,
+      redisConnection,
     };
   }
 
@@ -329,5 +330,102 @@ describe('ReservationExpiredHandler (consumer)', () => {
     expect(
       await counter(metricsService, 'reservationTransitionsCounter'),
     ).toEqual({ expired: 1 });
+  });
+
+  it('ignores unknown orders and rolls back without releasing stock', async () => {
+    const {
+      reservationExpiredHandler,
+      orderRepository,
+      reservationRepository,
+      queryRunner,
+      deleteCacheMock,
+    } = setup({});
+
+    orderRepository.lock.mockResolvedValue(null);
+    await reservationExpiredHandler.handle(event);
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(orderRepository.transitionStatus).not.toHaveBeenCalled();
+    expect(reservationRepository.release).not.toHaveBeenCalled();
+    expect(deleteCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a premature expiration event without releasing stock or invalidating cache', async () => {
+    const {
+      reservationExpiredHandler,
+      reservationRepository,
+      queryRunner,
+      deleteCacheMock,
+    } = setup({});
+
+    reservationRepository.hasExpired.mockResolvedValue(false);
+    await reservationExpiredHandler.handle(event);
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(reservationRepository.release).not.toHaveBeenCalled();
+    expect(deleteCacheMock).not.toHaveBeenCalled();
+
+    expect(appLogger.warn).toHaveBeenCalledWith('reservation.expire.ignored', {
+      reason: 'not_expired',
+    });
+  });
+
+  it('rolls back stock release failures and preserves the original error for redelivery', async () => {
+    const {
+      reservationExpiredHandler,
+      reservationRepository,
+      queryRunner,
+      deleteCacheMock,
+      metricsService,
+    } = setup({});
+
+    const failure = new Error('stock release failed');
+
+    reservationRepository.release.mockRejectedValue(failure);
+    await expect(reservationExpiredHandler.handle(event)).rejects.toBe(failure);
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(deleteCacheMock).not.toHaveBeenCalled();
+    expect(await counter(metricsService, 'processingCounter')).toEqual({});
+  });
+
+  it('does not attempt rollback again after a closed transaction reports commit failure', async () => {
+    const { reservationExpiredHandler, queryRunner, deleteCacheMock } = setup(
+      {},
+    );
+
+    const failure = new Error('commit result unknown');
+
+    queryRunner.commitTransaction.mockImplementation(async () => {
+      queryRunner.isTransactionActive = false;
+
+      throw failure;
+    });
+
+    await expect(reservationExpiredHandler.handle(event)).rejects.toBe(failure);
+    expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
+    expect(deleteCacheMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps a committed expiry successful when Redis is not ready', async () => {
+    const {
+      reservationExpiredHandler,
+      redisConnection,
+      deleteCacheMock,
+      queryRunner,
+      metricsService,
+    } = setup({});
+
+    redisConnection.redisClient.isReady = false;
+
+    await expect(
+      reservationExpiredHandler.handle(event),
+    ).resolves.toBeUndefined();
+
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(deleteCacheMock).not.toHaveBeenCalled();
+
+    expect(await counter(metricsService, 'processingCounter')).toEqual({
+      expired: 1,
+    });
   });
 });

@@ -11,6 +11,7 @@ import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import {
   CATALOG_KEY,
+  CATALOG_LOCK,
   GetProductsUseCase,
 } from '@app/products/adapters/usecases/get-products.use-case';
 import { ProductRepository } from '@app/products/repositories/product.repository';
@@ -47,6 +48,10 @@ async function cacheCounts(metricsService: Metrics) {
 }
 
 describe('GetProductsUseCase', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   function build(
     findAllProductsMock: jest.Mock,
     redisConnection = new InMemoryRedisConnection(),
@@ -149,6 +154,123 @@ describe('GetProductsUseCase', () => {
     });
 
     expect(redisConnection.redisClient.has(CATALOG_KEY)).toBe(false);
+  });
+
+  it('caches an empty catalog and serves it without reloading', async () => {
+    const findAll = jest.fn().mockResolvedValue([]);
+    const { getProductsUseCase } = build(findAll);
+
+    await expect(getProductsUseCase.execute()).resolves.toEqual([]);
+    await expect(getProductsUseCase.execute()).resolves.toEqual([]);
+    expect(findAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects valid JSON with an invalid catalog shape and replaces it', async () => {
+    const findAll = jest.fn().mockResolvedValue([catalogRow(1)]);
+
+    const { getProductsUseCase, redisConnection, metricsService } =
+      build(findAll);
+
+    await redisConnection.redisClient.set(
+      CATALOG_KEY,
+      JSON.stringify([{ ...catalogRow(1), unexpected: true }]),
+    );
+
+    await expect(getProductsUseCase.execute()).resolves.toMatchObject([
+      { netPrice: 1000, listPrice: 1500 },
+    ]);
+
+    expect((await cacheCounts(metricsService)).invalid).toBeGreaterThan(0);
+    expect(findAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the cache lock after a failed load and permits a later retry', async () => {
+    const findAll = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('database down'))
+      .mockResolvedValue([catalogRow(1)]);
+
+    const { getProductsUseCase, redisConnection } = build(findAll);
+
+    await expect(getProductsUseCase.execute()).rejects.toMatchObject({
+      status: 503,
+    });
+
+    expect(redisConnection.redisClient.has(CATALOG_LOCK)).toBe(false);
+    await expect(getProductsUseCase.execute()).resolves.toHaveLength(1);
+    expect(findAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns products even when cache write and unlock fail', async () => {
+    const findAll = jest.fn().mockResolvedValue([catalogRow(1)]);
+    const { getProductsUseCase, redisConnection } = build(findAll);
+
+    jest
+      .spyOn(redisConnection.redisClient, 'eval')
+      .mockRejectedValue(new Error('Redis unavailable'));
+
+    await expect(getProductsUseCase.execute()).resolves.toHaveLength(1);
+    expect(appLogger.warn).toHaveBeenCalledWith('catalog.cache.write.failed');
+    expect(appLogger.warn).toHaveBeenCalledWith('catalog.cache.unlock.failed');
+  });
+
+  it('falls back to the repository if lock acquisition fails', async () => {
+    const findAll = jest.fn().mockResolvedValue([catalogRow(1)]);
+    const { getProductsUseCase, redisConnection } = build(findAll);
+
+    jest
+      .spyOn(redisConnection.redisClient, 'set')
+      .mockRejectedValue(new Error('Redis unavailable'));
+
+    await expect(getProductsUseCase.execute()).resolves.toHaveLength(1);
+    expect(appLogger.warn).toHaveBeenCalledWith('catalog.cache.unavailable');
+  });
+
+  it('waits for another loader and uses its result without loading the database', async () => {
+    const findAll = jest.fn();
+    const { getProductsUseCase, redisConnection } = build(findAll);
+
+    jest.useFakeTimers();
+
+    await redisConnection.redisClient.set(CATALOG_LOCK, 'another-loader', {
+      PX: 5000,
+    });
+
+    const operation = getProductsUseCase.execute();
+
+    await jest.advanceTimersByTimeAsync(50);
+
+    await redisConnection.redisClient.set(
+      CATALOG_KEY,
+      JSON.stringify([{ ...catalogRow(1), netPrice: 1000, listPrice: 1500 }]),
+    );
+
+    await jest.advanceTimersByTimeAsync(50);
+    await expect(operation).resolves.toHaveLength(1);
+    expect(findAll).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 after the refresh deadline when another loader keeps the lock', async () => {
+    const findAll = jest.fn();
+    const { getProductsUseCase, redisConnection } = build(findAll);
+
+    jest.useFakeTimers();
+
+    await redisConnection.redisClient.set(CATALOG_LOCK, 'another-loader', {
+      PX: 10000,
+    });
+
+    const rejected = expect(getProductsUseCase.execute()).rejects.toMatchObject(
+      { status: 503 },
+    );
+
+    await jest.advanceTimersByTimeAsync(6000);
+    await rejected;
+    expect(findAll).not.toHaveBeenCalled();
+
+    expect(await redisConnection.redisClient.get(CATALOG_LOCK)).toBe(
+      'another-loader',
+    );
   });
 });
 
