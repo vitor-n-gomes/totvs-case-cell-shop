@@ -36,9 +36,11 @@ describe('POST /checkout (integration)', () => {
     });
 
     const { store } = context;
+
     expect(store.orders.get(response.body.orderId)?.status).toBe(
       OrderStatus.Pending,
     );
+
     expect(store.reservations).toEqual([
       {
         orderId: response.body.orderId,
@@ -47,8 +49,10 @@ describe('POST /checkout (integration)', () => {
         status: 'ACTIVE',
       },
     ]);
+
     expect(store.products.get(product.id)?.reservedQuantity).toBe(2);
     expect(store.outbox).toHaveLength(1);
+
     expect(store.outbox[0]).toMatchObject({
       orderId: response.body.orderId,
       topic: CHECKOUT_TOPIC,
@@ -70,6 +74,7 @@ describe('POST /checkout (integration)', () => {
       .set('Idempotency-Key', key)
       .send(payload)
       .expect(202);
+
     const replay = await request(context.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)

@@ -37,6 +37,7 @@ import { ProductsModule } from '@app/products/products.module';
 import { configureApi } from '../../../apps/http/src/configure-api';
 
 const exec = promisify(execFile);
+
 type Cleanup = () => Promise<unknown>;
 
 export async function waitUntil(
@@ -44,9 +45,11 @@ export async function waitUntil(
   description: string,
 ): Promise<void> {
   const deadline = Date.now() + 15_000;
+
   while (!(await condition())) {
     if (Date.now() >= deadline)
       throw new Error(`Timed out waiting for ${description}`);
+
     await delay(25);
   }
 }
@@ -58,22 +61,28 @@ function testEnvironment() {
       ? parse(readFileSync('.env.test.local'))
       : {}),
   };
+
   for (const key of ['DATABASE_URL', 'KAFKA_BROKERS'] as const) {
     if (process.env[key]) values[key] = process.env[key];
   }
+
   const database = new URL(values.DATABASE_URL ?? '');
+
   if (!database.pathname.endsWith('_test'))
     throw new Error(
       'Scheduler integration requires a dedicated _test database',
     );
+
   return values;
 }
 
 export async function createSchedulerTestApp() {
   const connections: Cleanup[] = [];
   const resources: Cleanup[] = [];
+
   const close = async () => {
     const errors: unknown[] = [];
+
     for (const cleanup of [...connections.reverse(), ...resources.reverse()]) {
       try {
         await cleanup();
@@ -81,8 +90,10 @@ export async function createSchedulerTestApp() {
         errors.push(error);
       }
     }
+
     connections.length = 0;
     resources.length = 0;
+
     if (errors.length)
       throw new AggregateError(errors, 'Scheduler test teardown failed');
   };
@@ -93,21 +104,26 @@ export async function createSchedulerTestApp() {
     const schema = `scheduler_${suffix}`;
     const topic = `scheduler.${suffix}`;
     const group = `scheduler-${suffix}`;
+
     const adminDatabase = new DataSource({
       ...databaseOptions(values.DATABASE_URL!),
       entities: [],
       migrations: [],
     });
+
     resources.push(async () => {
       if (adminDatabase.isInitialized) await adminDatabase.destroy();
     });
+
     await adminDatabase.initialize();
     await adminDatabase.query(`CREATE SCHEMA "${schema}"`);
+
     resources.push(() =>
       adminDatabase.query(`DROP SCHEMA "${schema}" CASCADE`),
     );
 
     const container = `scheduler-test-${suffix}`;
+
     await exec('docker', [
       'run',
       '--detach',
@@ -123,8 +139,10 @@ export async function createSchedulerTestApp() {
       '--appendonly',
       'no',
     ]);
+
     resources.push(() => exec('docker', ['stop', container]));
     const { stdout } = await exec('docker', ['port', container, '6379/tcp']);
+
     const settings = validateEnvironment({
       ...values,
       NODE_ENV: 'test',
@@ -132,13 +150,17 @@ export async function createSchedulerTestApp() {
       CHECKOUT_TOPIC: topic,
       KAFKA_GROUP_ID: group,
     });
+
     const config = new ConfigService(settings);
     const kafka = new Kafka(kafkaClientOptions(config));
     const admin = kafka.admin();
+
     resources.push(() => admin.disconnect());
     await admin.connect();
     const topics = [topic, `${topic}.dlq`];
+
     resources.push(() => admin.deleteTopics({ topics }));
+
     await admin.createTopics({
       waitForLeaders: true,
       topics: topics.map((name) => ({
@@ -156,10 +178,13 @@ export async function createSchedulerTestApp() {
         options: `-c search_path=${schema}`,
       },
     };
+
     const database = new DataSource(options);
+
     connections.push(async () => {
       if (database.isInitialized) await database.destroy();
     });
+
     await database.initialize();
     await database.runMigrations();
 
@@ -186,24 +211,31 @@ export async function createSchedulerTestApp() {
       .overrideProvider(OutboxRelay)
       .useValue({})
       .compile();
+
     const app: INestApplication = moduleRef.createNestApplication({
       logger: false,
     });
+
     connections.push(() => app.close());
     const correlation = new CorrelationMiddleware(app.get(AppLogger));
+
     app.use((req: never, res: never, next: () => void) =>
       correlation.use(req, res, next),
     );
+
     configureApi(app);
     await app.init();
     const redis = app.get(RedisConnection);
+
     await waitUntil(
       async () => redis.client.isReady,
       'isolated Redis readiness',
     );
+
     await redis.client.ping();
 
     const groups: string[] = [];
+
     resources.push(async () => {
       if (groups.length) await admin.deleteGroups(groups);
     });
@@ -220,32 +252,41 @@ export async function createSchedulerTestApp() {
       async observe() {
         const observerGroup = `${group}-observer`;
         const observer = kafka.consumer({ groupId: observerGroup });
+
         connections.push(() => observer.disconnect());
         const messages: { topic: string; message: KafkaMessage }[] = [];
         let joined = false;
         let failure: Error | undefined;
+
         observer.on(observer.events.GROUP_JOIN, () => {
           joined = true;
         });
+
         observer.on(observer.events.CRASH, ({ payload }) => {
           failure = payload.error;
         });
+
         await observer.connect();
         await observer.subscribe({ topic, fromBeginning: true });
         groups.push(observerGroup);
+
         await observer.run({
           eachMessage: async ({ topic: receivedTopic, message }) => {
             messages.push({ topic: receivedTopic, message });
           },
         });
+
         await waitUntil(async () => {
           if (failure) throw failure;
+
           return joined;
         }, 'Kafka observer group join');
+
         return messages;
       },
       async startConsumer() {
         let ready = false;
+
         const server = new TopicKafkaServer(
           kafkaConsumerOptions(config, group),
           ORDER_KAFKA_TRANSPORT,
@@ -255,11 +296,14 @@ export async function createSchedulerTestApp() {
             ready = value;
           },
         );
+
         // Drain Kafka handlers before Nest destroys their database/Redis providers.
         connections.push(() => server.close());
+
         app.connectMicroservice<MicroserviceOptions>({
           strategy: server,
         });
+
         await app.startAllMicroservices();
         groups.push(group);
         await waitUntil(async () => ready, 'order consumer group join');
@@ -275,6 +319,7 @@ export async function createSchedulerTestApp() {
         { cause: cleanupError },
       );
     }
+
     throw error;
   }
 }

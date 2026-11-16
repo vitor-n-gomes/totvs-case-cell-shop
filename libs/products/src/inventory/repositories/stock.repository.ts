@@ -24,13 +24,16 @@ export class StockRepository {
     ttl: number,
   ): Promise<ReservedItem[]> {
     const reserved: ReservedItem[] = [];
+
     for (const item of [...items].sort((a, b) =>
       a.productId.localeCompare(b.productId),
     )) {
       const product = await manager
         .getRepository(ProductEntity)
         .findOneBy({ id: item.productId });
+
       if (!product) throw new NotFoundException('Product not found');
+
       const result = await manager
         .getRepository(StockEntity)
         .createQueryBuilder()
@@ -41,7 +44,9 @@ export class StockRepository {
           quantity: item.quantity,
         })
         .execute();
+
       if (!result.affected) throw new ConflictException('Insufficient stock');
+
       await manager
         .getRepository(ReservationEntity)
         .createQueryBuilder()
@@ -56,12 +61,14 @@ export class StockRepository {
         })
         .setParameter('ttl', ttl)
         .execute();
+
       reserved.push({
         ...item,
         netPrice: product.netPrice,
         listPrice: product.listPrice,
       });
     }
+
     return reserved;
   }
 }

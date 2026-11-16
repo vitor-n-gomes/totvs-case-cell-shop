@@ -41,6 +41,7 @@ export class ActivationFailureHandler {
     error: unknown,
   ): Promise<void> {
     const { attempt } = context.event.meta;
+
     const terminal =
       error instanceof PermanentActivationError || attempt >= MAX_ATTEMPTS;
 
@@ -49,6 +50,7 @@ export class ActivationFailureHandler {
     );
 
     this.metrics.processing.inc({ result: terminal ? 'dlq' : 'retry' });
+
     this.logger.warn('order.activation.failed', {
       order_id: order.id,
       step: context.currentStep,
@@ -68,11 +70,13 @@ export class ActivationFailureHandler {
     const { event } = context;
     const { attempt } = event.meta;
     const current = await this.orders.lockOrFail(manager, order.id);
+
     const reference = {
       error_type: error instanceof Error ? error.name : 'UnknownError',
       attempt,
       event_id: event.meta.event_id,
     };
+
     await this.journal.record(
       manager,
       order.id,
@@ -81,12 +85,15 @@ export class ActivationFailureHandler {
       reference,
       terminal ? 'Failed; dead letter scheduled' : 'Failed; retry scheduled',
     );
+
     if (terminal && current.status === OrderStatus.Pending) {
       await this.reservations.release(manager, order.id);
+
       await this.orders.update(manager, order.id, {
         status: OrderStatus.Cancelled,
       });
     }
+
     await this.orders.update(manager, order.id, {
       processingStatus: terminal
         ? ProcessingStatus.Failed
@@ -95,18 +102,21 @@ export class ActivationFailureHandler {
     });
 
     const topic = this.config.getOrThrow<string>('CHECKOUT_TOPIC');
+
     const nextMeta = {
       ...event.meta,
       event_id: randomUUID(),
       occurred_at: new Date().toISOString(),
       attempt: terminal ? attempt : attempt + 1,
     };
+
     // Terminal failures dead-letter the same checkout event; failure details live in the journal.
     const nextEvent: CheckoutInitiatedEvent = {
       kind: ORDER_CHECKOUT_INITIATED,
       data: { order_id: order.id },
       meta: nextMeta,
     };
+
     await this.outbox.append(
       manager,
       order.id,
@@ -122,11 +132,13 @@ export class ActivationFailureHandler {
     work: () => Promise<void>,
   ): Promise<void> {
     await runner.startTransaction();
+
     try {
       await work();
       await runner.commitTransaction();
     } catch (failure) {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
+
       throw failure;
     }
   }

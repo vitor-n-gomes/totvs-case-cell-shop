@@ -17,19 +17,26 @@ export function simulateWorkerProcessing(
   orderId: string,
 ): void {
   const order = store.orders.get(orderId);
+
   if (!order) throw new Error(`Order ${orderId} not found`);
+
   for (const reservation of store.reservations) {
     if (reservation.orderId !== orderId || reservation.status !== 'ACTIVE')
       continue;
+
     const product = store.products.get(reservation.productId);
+
     if (product) {
       product.physicalQuantity -= reservation.quantity;
       product.reservedQuantity -= reservation.quantity;
     }
+
     reservation.status = 'CONSUMED';
   }
+
   for (const event of store.outbox)
     if (event.orderId === orderId) event.status = 'PROCESSED';
+
   order.status = OrderStatus.Active;
   order.processingStatus = ProcessingStatus.Completed;
 }

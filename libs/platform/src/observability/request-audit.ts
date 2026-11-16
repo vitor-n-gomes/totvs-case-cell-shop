@@ -14,10 +14,12 @@ import { Metrics } from './metrics';
 
 export function sanitizePayload(value: unknown, depth = 0): unknown {
   if (depth > 6) return '[truncated]';
+
   if (Array.isArray(value))
     return value
       .slice(0, 100)
       .map((entry) => sanitizePayload(entry, depth + 1));
+
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value)
@@ -32,8 +34,10 @@ export function sanitizePayload(value: unknown, depth = 0): unknown {
         ]),
     );
   }
+
   return typeof value === 'string' ? value.slice(0, 500) : (value ?? null);
 }
+
 interface AuditEntry {
   url: string;
   method: string;
@@ -54,8 +58,10 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
   enqueue(entry: AuditEntry): void {
     if (this.closing || this.queue.length >= 1000) {
       this.metrics.audit.inc({ result: 'dropped' });
+
       return;
     }
+
     this.queue.push(entry);
     this.startDrain();
   }
@@ -66,6 +72,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
         .then(() => this.drain())
         .finally(() => {
           this.draining = undefined;
+
           if (this.queue.length) this.startDrain();
         });
     }
@@ -74,6 +81,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
   private async drain(): Promise<void> {
     while (this.queue.length) {
       const entry = this.queue.shift()!;
+
       try {
         await this.database.query(
           'INSERT INTO request_log (id,url,method,payload,correlation_id) VALUES ($1,$2,$3,$4,$5)',
@@ -85,6 +93,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
             entry.correlationId,
           ],
         );
+
         this.metrics.audit.inc({ result: 'saved' });
       } catch {
         this.metrics.audit.inc({ result: 'failed' });
@@ -95,6 +104,7 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
 
   async beforeApplicationShutdown(): Promise<void> {
     this.closing = true;
+
     while (this.draining) await this.draining;
   }
 }
@@ -109,15 +119,18 @@ export class RequestAuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
     const started = performance.now();
+
     // Route templates keep order IDs out of Prometheus labels and request audit URLs.
     const route =
       (request.route as { path?: string } | undefined)?.path ?? 'unmatched';
+
     response.once('finish', () =>
       this.metrics.http.observe(
         { method: request.method, route, status: String(response.statusCode) },
         (performance.now() - started) / 1000,
       ),
     );
+
     if (['POST', 'PUT', 'DELETE'].includes(request.method))
       this.audit.enqueue({
         url: route,
@@ -125,6 +138,7 @@ export class RequestAuditInterceptor implements NestInterceptor {
         payload: sanitizePayload(request.body),
         correlationId: String(response.locals.correlationId),
       });
+
     return next.handle();
   }
 }

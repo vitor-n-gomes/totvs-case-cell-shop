@@ -39,6 +39,7 @@ export class OrderRepository {
     const details: OrderColumns = manager
       .getRepository(OrderEntity)
       .create(input);
+
     const result = await manager
       .getRepository(OrderEntity)
       .createQueryBuilder()
@@ -54,6 +55,7 @@ export class OrderRepository {
       .orIgnore()
       .returning(['id'])
       .execute();
+
     return (result.raw as { id: string }[]).length > 0;
   }
 
@@ -119,6 +121,7 @@ export class OrderRepository {
       .where('id = :id', { id })
       .andWhere('status IN (:...from)', { from: [...from] })
       .execute();
+
     return result.affected ?? 0;
   }
 
@@ -129,16 +132,21 @@ export class OrderRepository {
   ): Promise<T> {
     const runner = this.database.createQueryRunner();
     let locked = false;
+
     try {
       await runner.connect();
+
       await runner.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [
         id,
       ]);
+
       locked = true;
+
       return await work(runner);
     } finally {
       try {
         if (runner.isTransactionActive) await runner.rollbackTransaction();
+
         if (locked)
           await runner.query(
             'SELECT pg_advisory_unlock(hashtextextended($1,0))',

@@ -35,7 +35,9 @@ export class TopicKafkaServer extends ServerKafka {
   protected override registerConsumerEventListeners(): void {
     super.registerConsumerEventListeners();
     const consumer = this.consumer!;
+
     consumer.on(consumer.events.GROUP_JOIN, () => this.ready(true));
+
     for (const event of [
       consumer.events.REBALANCING,
       consumer.events.CRASH,

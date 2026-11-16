@@ -41,6 +41,7 @@ export class AppLogger implements LoggerService {
 
   startupFailure(app: 'http' | 'consumer' | 'scheduler', error: unknown): void {
     this.setApp(app);
+
     this.info(`${app}.startup.failed`, {
       error:
         error instanceof Error &&

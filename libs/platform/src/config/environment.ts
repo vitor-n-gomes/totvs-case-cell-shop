@@ -90,6 +90,7 @@ const environmentSchema = z
           });
       }
     }
+
     if (value.API_PORT === value.WORKER_PORT) {
       context.addIssue({
         code: 'custom',
@@ -105,11 +106,13 @@ export function validateEnvironment(
   input: Record<string, unknown>,
 ): Environment {
   const result = environmentSchema.safeParse(input);
+
   if (!result.success) {
     // Validation errors describe keys and constraints, never credential values.
     throw new Error(
       `Invalid configuration: ${result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`,
     );
   }
+
   return result.data;
 }

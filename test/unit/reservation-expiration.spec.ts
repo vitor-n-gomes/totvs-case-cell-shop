@@ -30,7 +30,9 @@ const logger = {
   warn: jest.fn(),
   error: jest.fn(),
 } as unknown as AppLogger;
+
 const spans = new Spans(logger);
+
 const config = {
   getOrThrow: (key: string) =>
     ({ CHECKOUT_TOPIC: 'order.checkout.initiated', SCHEDULER_INTERVAL_MS: 10 })[
@@ -40,24 +42,30 @@ const config = {
 
 async function counter(metrics: Metrics, name: 'reservations' | 'processing') {
   const { values } = await metrics[name].get();
+
   return Object.fromEntries(values.map((v) => [v.labels.result, v.value]));
 }
 
 describe('ExpireReservationsUseCase (scheduler producer)', () => {
   it('publishes a schema-valid event per expired order keyed by order id, without touching state', async () => {
     const ids = [randomUUID(), randomUUID()];
+
     const reservations = {
       expiredOrderIds: jest.fn().mockResolvedValue(ids),
       release: jest.fn(),
     };
+
     const published: { topic: string; key: string; payload: object }[] = [];
+
     const messaging = {
       ensureConnected: jest.fn().mockResolvedValue(undefined),
       publish: jest.fn((topic: string, key: string, payload: object) => {
         published.push({ topic, key, payload });
+
         return Promise.resolve();
       }),
     };
+
     const useCase = new ExpireReservationsUseCase(
       reservations as unknown as ReservationRepository,
       messaging as unknown as OrderMessaging,
@@ -73,11 +81,14 @@ describe('ExpireReservationsUseCase (scheduler producer)', () => {
       [OrderStatus.Pending],
       EXPIRATION_BATCH_SIZE,
     );
+
     expect(reservations.release).not.toHaveBeenCalled();
     expect(published.map((p) => p.key)).toEqual(ids);
+
     for (const { topic, key, payload } of published) {
       expect(topic).toBe('order.checkout.initiated');
       const event = parseOrderEvent(payload);
+
       expect(event?.kind).toBe(ORDER_RESERVATION_EXPIRED);
       expect(event?.data.order_id).toBe(key);
       expect(event?.meta?.trace_id).toMatch(/^[a-f0-9]{32}$/);
@@ -87,11 +98,13 @@ describe('ExpireReservationsUseCase (scheduler producer)', () => {
 
   it('skips a tick while the previous cycle is still running', async () => {
     let finish!: (ids: string[]) => void;
+
     const reservations = {
       expiredOrderIds: jest.fn(
         () => new Promise<string[]>((resolve) => (finish = resolve)),
       ),
     };
+
     const useCase = new ExpireReservationsUseCase(
       reservations as unknown as ReservationRepository,
       {} as OrderMessaging,
@@ -102,6 +115,7 @@ describe('ExpireReservationsUseCase (scheduler producer)', () => {
     );
 
     const first = useCase.tick();
+
     await useCase.tick();
     finish([]);
     await first;
@@ -112,6 +126,7 @@ describe('ExpireReservationsUseCase (scheduler producer)', () => {
 
 describe('ReservationExpiredHandler (consumer)', () => {
   const orderId = randomUUID();
+
   const event = {
     kind: ORDER_RESERVATION_EXPIRED,
     data: { order_id: orderId },
@@ -128,17 +143,21 @@ describe('ReservationExpiredHandler (consumer)', () => {
       isTransactionActive: false,
       startTransaction: jest.fn(() => {
         runner.isTransactionActive = true;
+
         return Promise.resolve();
       }),
       commitTransaction: jest.fn(() => {
         runner.isTransactionActive = false;
+
         return Promise.resolve();
       }),
       rollbackTransaction: jest.fn(() => {
         runner.isTransactionActive = false;
+
         return Promise.resolve();
       }),
     };
+
     const orders = {
       withActivationLock: jest.fn(
         (_id: string, work: (r: QueryRunner) => Promise<unknown>) =>
@@ -150,17 +169,22 @@ describe('ReservationExpiredHandler (consumer)', () => {
       }),
       transitionStatus: jest.fn().mockResolvedValue(options.affected ?? 1),
     };
+
     const reservations = {
       hasExpired: jest.fn().mockResolvedValue(true),
       release: jest.fn().mockResolvedValue(2),
     };
+
     const del = options.redisFails
       ? jest.fn().mockRejectedValue(new Error('down'))
       : jest.fn().mockResolvedValue(1);
+
     const redis = {
       client: { isReady: true, withCommandOptions: () => ({ del }) },
     };
+
     const metrics = new Metrics();
+
     const handler = new ReservationExpiredHandler(
       orders as unknown as OrderRepository,
       reservations as unknown as ReservationRepository,
@@ -169,6 +193,7 @@ describe('ReservationExpiredHandler (consumer)', () => {
       spans,
       logger,
     );
+
     return { handler, runner, orders, reservations, del, metrics };
   }
 
@@ -181,12 +206,14 @@ describe('ReservationExpiredHandler (consumer)', () => {
       orderId,
       expect.any(Function),
     );
+
     expect(orders.transitionStatus).toHaveBeenCalledWith(
       runner.manager,
       orderId,
       [OrderStatus.Pending],
       OrderStatus.Cancelled,
     );
+
     expect(reservations.release).toHaveBeenCalledWith(runner.manager, orderId);
     expect(runner.commitTransaction).toHaveBeenCalled();
     expect(del).toHaveBeenCalledWith(CATALOG_KEY);
@@ -204,10 +231,12 @@ describe('ReservationExpiredHandler (consumer)', () => {
     expect(reservations.release).not.toHaveBeenCalled();
     expect(runner.commitTransaction).not.toHaveBeenCalled();
     expect(del).not.toHaveBeenCalled();
+
     expect(logger.info).toHaveBeenCalledWith(
       'reservation.expire.skipped',
       expect.anything(),
     );
+
     expect(await counter(metrics, 'reservations')).toEqual({
       already_processed: 1,
     });
@@ -230,9 +259,11 @@ describe('ReservationExpiredHandler (consumer)', () => {
     await expect(handler.handle(event)).resolves.toBeUndefined();
 
     expect(runner.commitTransaction).toHaveBeenCalled();
+
     expect(logger.warn).toHaveBeenCalledWith(
       'reservation.expire.cache_invalidation_failed',
     );
+
     expect(await counter(metrics, 'reservations')).toEqual({ expired: 1 });
   });
 });

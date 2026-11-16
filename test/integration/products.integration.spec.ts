@@ -8,11 +8,13 @@ async function cacheCount(
   result: 'hit' | 'miss',
 ): Promise<number> {
   const { values } = await metrics.cache.get();
+
   return values.find((value) => value.labels.result === result)?.value ?? 0;
 }
 
 describe('GET /products (integration)', () => {
   let context: TestApp;
+
   const products = [
     newProduct({ productKey: 'a-clear-case', netPrice: 2990, listPrice: 3990 }),
     newProduct({
@@ -45,12 +47,15 @@ describe('GET /products (integration)', () => {
         listPrice,
       })),
     );
+
     expect(context.store.catalogQueries).toBe(1);
     expect(context.redis.client.has(CATALOG_KEY)).toBe(true);
     expect(context.redis.client.ttlSeconds(CATALOG_KEY)).toBeGreaterThan(290);
+
     expect(context.redis.client.ttlSeconds(CATALOG_KEY)).toBeLessThanOrEqual(
       300,
     );
+
     expect(await cacheCount(context, 'miss')).toBe(1);
   });
 
@@ -58,6 +63,7 @@ describe('GET /products (integration)', () => {
     const first = await request(context.app.getHttpServer())
       .get('/products')
       .expect(200);
+
     const second = await request(context.app.getHttpServer())
       .get('/products')
       .expect(200);

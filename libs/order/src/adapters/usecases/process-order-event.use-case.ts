@@ -33,6 +33,7 @@ export class ProcessOrderEventUseCase {
 
   async handle(payload: unknown, source: EventSource): Promise<void> {
     const event = parseOrderEvent(payload);
+
     if (!event) {
       await this.sendToDlq(
         payload,
@@ -40,6 +41,7 @@ export class ProcessOrderEventUseCase {
         'Invalid event payload',
         'invalid_dlq',
       );
+
       return;
     }
 

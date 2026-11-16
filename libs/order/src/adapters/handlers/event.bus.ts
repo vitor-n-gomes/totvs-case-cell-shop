@@ -59,6 +59,7 @@ export class EventBus implements IEventBus {
     }
 
     const existingHandlers = this.handlers.get(kind)!;
+
     if (existingHandlers.length > 0) {
       this.logger.warn(`Handler already registered for event kind: ${kind}`, {
         event_kind: kind,
@@ -67,6 +68,7 @@ export class EventBus implements IEventBus {
     }
 
     existingHandlers.push(handler);
+
     this.logger.info(`Handler registered for event kind: ${kind}`, {
       event_kind: kind,
       handler_count: existingHandlers.length,
@@ -85,6 +87,7 @@ export class EventBus implements IEventBus {
       this.logger.warn(`No handlers registered for event kind: ${event.kind}`, {
         event_kind: event.kind,
       });
+
       return;
     }
 
@@ -117,6 +120,7 @@ export class EventBus implements IEventBus {
   async publish(event: OrderEvent, topic?: string): Promise<void> {
     const kafkaTopic =
       topic || this.config.get<string>('KAFKA_ORDER_TOPIC', 'order.events');
+
     const key = event.data.order_id ?? event.meta?.correlation_id ?? event.kind;
 
     this.logger.info(`Publishing event to Kafka`, {

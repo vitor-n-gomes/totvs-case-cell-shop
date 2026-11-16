@@ -26,7 +26,9 @@ export class OutboxRelay implements BeforeApplicationShutdown {
   @Interval(1000)
   async tick(): Promise<void> {
     if (this.stopped || this.flight) return;
+
     this.flight = this.execute();
+
     try {
       await this.flight;
     } catch {
@@ -38,23 +40,30 @@ export class OutboxRelay implements BeforeApplicationShutdown {
 
   async execute(): Promise<void> {
     const before = await this.outbox.backlog();
+
     this.metrics.backlog.set(before.count);
     this.metrics.oldest.set(before.ageSeconds);
     await this.messaging.ensureConnected();
     const events = await this.outbox.claim();
+
     // The bounded batch publishes concurrently so later events do not wait out their leases.
     const results = await Promise.allSettled(
       events.map(async (event) => {
         const payload = parseOrderEvent(event.payload);
+
         if (!payload) throw new Error('Invalid order event in outbox');
+
         if (!payload.meta) throw new Error('Outbox event without meta');
+
         const { correlation_id: correlationId, ...trace } = payload.meta;
+
         const context = {
           ...newTraceContext(correlationId),
           trace_id: trace.trace_id,
           span_id: trace.parent_span_id,
           order_id: event.orderId,
         };
+
         await executionContext.run(context, async () => {
           try {
             await this.spans.run('outbox.publish', () =>
@@ -62,6 +71,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
                 'x-correlation-id': correlationId,
               }),
             );
+
             await this.outbox.acknowledge(event);
             this.metrics.processing.inc({ result: 'published' });
           } catch {
@@ -71,9 +81,13 @@ export class OutboxRelay implements BeforeApplicationShutdown {
         });
       }),
     );
+
     const failure = results.find((result) => result.status === 'rejected');
+
     if (failure?.status === 'rejected') throw failure.reason;
+
     const backlog = await this.outbox.backlog();
+
     this.metrics.backlog.set(backlog.count);
     this.metrics.oldest.set(backlog.ageSeconds);
   }

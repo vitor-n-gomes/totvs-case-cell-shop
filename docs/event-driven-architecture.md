@@ -99,11 +99,11 @@ O contexto de observabilidade (`executionContext`, logs e spans) usa as mesmas c
 
 ## 4. Tipos de Eventos Implementados
 
-| Evento                        | Kind                        | Emitido Por                             | Descrição                                                    |
-| ----------------------------- | --------------------------- | --------------------------------------- | ------------------------------------------------------------ |
-| **ORDER_CHECKOUT_INITIATED**  | `ORDER_CHECKOUT_INITIATED`  | `CheckoutUseCase`                       | Novo checkout iniciado (entrada do consumer)                 |
-| **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou                                     |
-| **ORDER_ACTIVATED**           | `ORDER_ACTIVATED`           | `OnlineActivationStrategy`              | Order ativada (somente in-process, EventBus, best effort)    |
+| Evento                        | Kind                        | Emitido Por                             | Descrição                                                 |
+| ----------------------------- | --------------------------- | --------------------------------------- | --------------------------------------------------------- |
+| **ORDER_CHECKOUT_INITIATED**  | `ORDER_CHECKOUT_INITIATED`  | `CheckoutUseCase`                       | Novo checkout iniciado (entrada do consumer)              |
+| **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou                                  |
+| **ORDER_ACTIVATED**           | `ORDER_ACTIVATED`           | `OnlineActivationStrategy`              | Order ativada (somente in-process, EventBus, best effort) |
 
 Não existem eventos dedicados a erro. Retries e DLQ reenviam o **mesmo evento** com o `kind` original:
 

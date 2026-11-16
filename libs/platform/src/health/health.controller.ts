@@ -15,7 +15,9 @@ export class HealthController {
   @Get('ready')
   async ready(@Res({ passthrough: true }) response: Response) {
     const result = await this.health.readiness();
+
     response.status(result.ready ? 200 : 503);
+
     return result;
   }
 

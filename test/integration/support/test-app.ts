@@ -62,6 +62,7 @@ const settings: Record<string, unknown> = {
 export async function createTestApp(): Promise<TestApp> {
   const store = new InMemoryStore();
   const redis = new InMemoryRedisConnection();
+
   const moduleRef = await Test.createTestingModule({
     controllers: [ProductsController, OrderController],
     providers: [
@@ -90,10 +91,13 @@ export async function createTestApp(): Promise<TestApp> {
 
   const app = moduleRef.createNestApplication({ logger: false });
   const correlation = new CorrelationMiddleware(app.get(AppLogger));
+
   app.use((req: never, res: never, next: () => void) =>
     correlation.use(req, res, next),
   );
+
   configureApi(app);
   await app.init();
+
   return { app, store, redis, metrics: app.get(Metrics) };
 }

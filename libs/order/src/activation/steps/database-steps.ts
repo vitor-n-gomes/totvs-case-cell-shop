@@ -21,6 +21,7 @@ export class ConsumeStockReservationStep implements ActivationStep {
     } catch (error) {
       if (error instanceof InventoryError)
         throw new PermanentActivationError(error.message, { cause: error });
+
       throw error;
     }
   }
@@ -34,6 +35,7 @@ export class ActivateOrderStep implements ActivationStep {
     await this.orders.update(context.manager, context.order.id, {
       status: OrderStatus.Active,
     });
+
     context.order.status = OrderStatus.Active;
   }
 }

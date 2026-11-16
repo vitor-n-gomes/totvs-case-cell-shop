@@ -39,6 +39,7 @@ describe('Correlation id propagation (integration)', () => {
       .set('x-correlation-id', correlationId)
       .send(buildCheckoutPayload(product.id))
       .expect(202);
+
     const status = await request(context.app.getHttpServer())
       .get(`/orders/${checkout.body.orderId as string}/status`)
       .set('x-correlation-id', correlationId)
@@ -46,6 +47,7 @@ describe('Correlation id propagation (integration)', () => {
 
     expect(checkout.headers['x-correlation-id']).toBe(correlationId);
     expect(status.headers['x-correlation-id']).toBe(correlationId);
+
     expect(
       [...context.store.orders.values()].map((order) => order.correlationId),
     ).toEqual([correlationId]);

@@ -23,6 +23,7 @@ describe('order events (snake_case envelope)', () => {
       'schema_version',
       'trace_id',
     ]);
+
     expect(meta.correlation_id).toBe(correlationId);
   });
 
@@ -43,6 +44,7 @@ describe('order events (snake_case envelope)', () => {
         data: { orderId },
       }),
     ).toBeNull();
+
     expect(
       parseOrderEvent({
         kind: ORDER_RESERVATION_EXPIRED,
@@ -66,16 +68,20 @@ describe('Spans', () => {
   it('propagates span_id and parent_span_id through the execution context', async () => {
     const info = jest.fn();
     const spans = new Spans({ info } as never);
+
     const parent = {
       correlation_id: correlationId,
       trace_id: 'a'.repeat(32),
       span_id: 'b'.repeat(16),
     };
+
     const inner = await executionContext.run(parent, () =>
       spans.run('test', () => Promise.resolve(executionContext.getStore())),
     );
+
     expect(inner?.parent_span_id).toBe(parent.span_id);
     expect(inner?.span_id).not.toBe(parent.span_id);
+
     expect(info).toHaveBeenCalledWith(
       'trace.span',
       expect.objectContaining({

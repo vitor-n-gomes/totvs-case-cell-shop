@@ -84,6 +84,7 @@ export class FakeProductRepository {
 
   findAll() {
     this.store.catalogQueries += 1;
+
     return Promise.resolve(
       [...this.store.products.values()]
         .filter(
@@ -114,6 +115,7 @@ export class FakeOrderRepository {
     correlationId: string,
   ): Promise<boolean> {
     if (this.find(idempotencyKey)) return Promise.resolve(false);
+
     this.store.orders.set(id, {
       id,
       paymentType: input.paymentType,
@@ -128,6 +130,7 @@ export class FakeOrderRepository {
       correlationId,
       createdAt: new Date(),
     });
+
     return Promise.resolve(true);
   }
 
@@ -153,6 +156,7 @@ export class FakeOrderRepository {
     items: Omit<OrderItemRecord, 'orderId'>[],
   ): Promise<void> {
     this.store.items.push(...items.map((item) => ({ ...item, orderId })));
+
     return Promise.resolve();
   }
 
@@ -174,14 +178,18 @@ export class FakeStockRepository {
     return Promise.resolve(
       items.map(({ productId, quantity }) => {
         const product = this.store.products.get(productId);
+
         if (!product) throw new Error(`Seed product ${productId} first`);
+
         product.reservedQuantity += quantity;
+
         this.store.reservations.push({
           orderId,
           productId,
           quantity,
           status: 'ACTIVE',
         });
+
         return {
           productId,
           quantity,
@@ -206,6 +214,7 @@ export class FakeOutboxRepository {
     const duplicate = this.store.outbox.some(
       (event) => event.deduplicationKey === deduplicationKey,
     );
+
     if (!duplicate)
       this.store.outbox.push({
         orderId,
@@ -214,6 +223,7 @@ export class FakeOutboxRepository {
         deduplicationKey,
         status: 'PENDING',
       });
+
     return Promise.resolve();
   }
 }
@@ -222,6 +232,7 @@ export function newProduct(
   overrides: Partial<ProductRecord> = {},
 ): ProductRecord {
   const id = overrides.id ?? randomUUID();
+
   return {
     id,
     name: `Case ${id.slice(0, 8)}`,

@@ -19,7 +19,9 @@ async function exportDocument(): Promise<void> {
       { provide: GetOrderStatusUseCase, useValue: {} },
     ],
   }).compile();
+
   const app = module.createNestApplication();
+
   try {
     await writeFile(
       'openapi.json',

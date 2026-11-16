@@ -45,6 +45,7 @@ export class OutboxRepository {
   claim(): Promise<ClaimedEvent[]> {
     return this.database.transaction(async (manager) => {
       const repository = manager.getRepository(OutboxEventEntity);
+
       const events = await repository
         .createQueryBuilder('event')
         .where('event.status = :status', { status: 'PENDING' })
@@ -58,8 +59,11 @@ export class OutboxRepository {
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
         .getMany();
+
       if (!events.length) return [];
+
       const leaseToken = randomUUID();
+
       await repository
         .createQueryBuilder()
         .update()
@@ -69,6 +73,7 @@ export class OutboxRepository {
         })
         .whereInIds(events.map((event) => event.id))
         .execute();
+
       return events.map((event) => ({ ...event, leaseToken }));
     });
   }
@@ -106,6 +111,7 @@ export class OutboxRepository {
       )
       .where('event.status = :status', { status: 'PENDING' })
       .getRawOne<{ count: string; age: string }>();
+
     return {
       count: Number(row?.count ?? 0),
       ageSeconds: Number(row?.age ?? 0),

@@ -31,7 +31,9 @@ function createProductName(style: string): string {
     'Samsung Galaxy S25',
     'Google Pixel 9',
   ]);
+
   const color = faker.helpers.arrayElement(['Black', 'Blue', 'Pink', 'Clear']);
+
   return `${style} phone case for ${model} - ${color}`;
 }
 
@@ -90,30 +92,38 @@ async function upsertProduct(
       product.listPrice,
     ],
   );
+
   return rows[0]!.id;
 }
 
 async function seed(): Promise<void> {
   const root = resolve(__dirname, '../../..');
+
   config({
     path:
       process.env.ENV_FILE ??
       ['.env.local', '.env'].map((f) => resolve(root, f)),
   });
+
   const environment = validateEnvironment(process.env);
   const database = new DataSource(databaseOptions(environment.DATABASE_URL));
+
   const redis = createClient({
     url: environment.REDIS_URL,
     socket: { reconnectStrategy: false, connectTimeout: 1000 },
   });
+
   redis.on('error', () => undefined);
+
   try {
     // Require invalidation availability before changing catalog data.
     await redis.connect();
     await database.initialize();
+
     await database.transaction(async (manager) => {
       for (const product of catalog) {
         const productId = await upsertProduct(manager, product);
+
         // Re-running a seed must never replenish sold or reserved stock.
         await manager.query(
           'INSERT INTO stock (id,product_id,physical_quantity) VALUES ($1,$2,100) ON CONFLICT (product_id) DO NOTHING',
@@ -124,10 +134,12 @@ async function seed(): Promise<void> {
       // The restricted-inventory product is reset on every run so the
       // concurrency test always starts from one unit and no reservations.
       const limitedId = await upsertProduct(manager, limitedProduct);
+
       await manager.query(
         'DELETE FROM stock_reservation WHERE product_id = $1',
         [limitedId],
       );
+
       await manager.query(
         `INSERT INTO stock (id,product_id,physical_quantity,reserved_quantity)
          VALUES ($1,$2,1,0)
@@ -138,20 +150,25 @@ async function seed(): Promise<void> {
         [randomUUID(), limitedId],
       );
     });
+
     await redis
       .withCommandOptions({ abortSignal: AbortSignal.timeout(1000) })
       .del([CATALOG_KEY, CATALOG_LOCK]);
+
     process.stdout.write(
       `Catalog seeded; stock preserved except ${LIMITED_PRODUCT_KEY} (reset to 1 unit); cache invalidated.\n`,
     );
   } finally {
     if (redis.isOpen) redis.destroy();
+
     if (database.isInitialized) await database.destroy();
   }
 }
+
 void seed().catch((error: unknown) => {
   process.stderr.write(
     `Seed failed: ${error instanceof Error ? error.message : String(error)}\nIf the transaction committed, retry seed to invalidate the cache.\n`,
   );
+
   process.exitCode = 1;
 });

@@ -19,13 +19,16 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     abortOnError: false,
   });
+
   try {
     const logger = app.get(AppLogger);
+
     logger.setApp('consumer');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     const config = app.get(ConfigService);
     const health = app.get(HealthService);
+
     health.consumerReady = false;
     health.checkoutConsumerReady = false;
     const group = config.getOrThrow<string>('KAFKA_GROUP_ID');
@@ -44,18 +47,22 @@ async function bootstrap(): Promise<void> {
       },
       { inheritAppConfig: true },
     );
+
     await app.startAllMicroservices();
     await app.listen(config.getOrThrow<number>('WORKER_PORT'), '0.0.0.0');
   } catch (error) {
     await app.close();
+
     throw error;
   }
 }
+
 void bootstrap().catch((error: unknown) => {
   new BootstrapLogger('Bootstrap').error(
     error instanceof Error && error.message.startsWith('Invalid configuration:')
       ? error.message
       : 'consumer.startup.failed',
   );
+
   process.exitCode = 1;
 });

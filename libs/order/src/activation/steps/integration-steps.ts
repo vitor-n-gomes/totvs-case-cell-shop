@@ -22,13 +22,17 @@ export class IntegrationSimulator {
   ): Promise<void> {
     const timeout = this.config.getOrThrow<number>('SIMULATOR_TIMEOUT_MS');
     const delay = this.config.getOrThrow<number>('SIMULATOR_DELAY_MS');
+
     await new Promise((resolve) =>
       setTimeout(resolve, Math.min(delay, timeout)),
     );
+
     if (delay > timeout)
       throw new IntegrationTimeoutError('Integration timeout');
+
     if (this.config.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') === kind)
       throw new PermanentActivationError('Integration rejected request');
+
     if (
       context.event.meta.attempt <=
       this.config.getOrThrow<number>(
@@ -36,6 +40,7 @@ export class IntegrationSimulator {
       )
     )
       throw new Error('Simulated transient integration failure');
+
     this.logger.info(`integration.${kind}.accepted`, {
       order_id: context.order.id,
       idempotency_key: `${context.order.id}:${kind}`,

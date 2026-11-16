@@ -12,6 +12,7 @@ const eventMetaSchema = z.strictObject({
   trace_id: z.string().regex(/^[a-f0-9]{32}$/),
   parent_span_id: z.string().regex(/^[a-f0-9]{16}$/),
 });
+
 export type EventMeta = z.infer<typeof eventMetaSchema>;
 
 const checkoutEventMetaSchema = eventMetaSchema.extend({
@@ -25,6 +26,7 @@ const checkoutEventSchema = z.strictObject({
   }),
   meta: checkoutEventMetaSchema,
 });
+
 export type CheckoutInitiatedEvent = z.infer<typeof checkoutEventSchema>;
 
 const reservationExpiredEventSchema = z.strictObject({
@@ -34,6 +36,7 @@ const reservationExpiredEventSchema = z.strictObject({
   }),
   meta: eventMetaSchema.optional(),
 });
+
 export type ReservationExpiredEvent = z.infer<
   typeof reservationExpiredEventSchema
 >;
@@ -55,5 +58,6 @@ export type DomainEvent = OrderEvent | OrderActivatedEvent;
 
 export function parseOrderEvent(payload: unknown): OrderEvent | null {
   const parsed = orderEventSchema.safeParse(payload);
+
   return parsed.success ? parsed.data : null;
 }

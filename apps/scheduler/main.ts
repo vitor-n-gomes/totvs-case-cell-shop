@@ -13,14 +13,17 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     abortOnError: false,
   });
+
   try {
     const logger = app.get(AppLogger);
+
     logger.setApp('scheduler');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     app.get(ExpireReservationsUseCase).start();
   } catch (error) {
     await app.close();
+
     throw error;
   }
 }
@@ -31,5 +34,6 @@ void bootstrap().catch((error: unknown) => {
       ? error.message
       : 'scheduler.startup.failed',
   );
+
   process.exitCode = 1;
 });

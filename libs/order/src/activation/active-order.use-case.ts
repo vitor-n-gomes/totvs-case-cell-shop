@@ -24,15 +24,20 @@ export class ActiveOrderUseCase {
   async execute(event: CheckoutInitiatedEvent): Promise<void> {
     const { order_id: orderId } = event.data;
     const { attempt } = event.meta;
+
     return this.orders.withActivationLock(orderId, async (runner) => {
       const decision = await this.guard.evaluate(
         orderId,
         attempt,
         runner.manager,
       );
+
       if (decision === 'skip') return;
+
       const order = await this.orders.findById(orderId, runner.manager);
+
       if (!order) return;
+
       const context: ActivationContext = {
         order,
         event,
@@ -40,14 +45,17 @@ export class ActiveOrderUseCase {
         manager: runner.manager,
         currentStep: StepName.ConsumeStockReservationStep,
       };
+
       try {
         await this.spans.run('order.activation', () =>
           this.strategy.execute(context, runner),
         );
+
         await this.orders.update(runner.manager, order.id, {
           processingStatus: ProcessingStatus.Completed,
           lastAttempt: attempt,
         });
+
         this.metrics.processing.inc({ result: 'completed' });
       } catch (error) {
         await this.failureHandler.handle(runner, order, context, error);

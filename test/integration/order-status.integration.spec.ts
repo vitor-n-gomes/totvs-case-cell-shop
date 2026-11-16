@@ -18,6 +18,7 @@ describe('GET /orders/:orderId/status (integration)', () => {
       .set('Idempotency-Key', newIdempotencyKey())
       .send(buildCheckoutPayload(product.id, 1))
       .expect(202);
+
     return response.body.orderId as string;
   }
 

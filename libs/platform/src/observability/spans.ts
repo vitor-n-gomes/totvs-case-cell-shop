@@ -12,12 +12,15 @@ export class Spans {
     const parent = executionContext.getStore();
     const spanId = randomBytes(8).toString('hex');
     const started = performance.now();
+
     const invoke = async () => {
       let outcome = 'success';
+
       try {
         return await operation();
       } catch (error) {
         outcome = 'error';
+
         throw error;
       } finally {
         this.logger.info('trace.span', {
@@ -29,6 +32,7 @@ export class Spans {
         });
       }
     };
+
     return parent
       ? executionContext.run(
           { ...parent, span_id: spanId, parent_span_id: parent.span_id },

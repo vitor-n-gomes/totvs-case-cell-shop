@@ -7,15 +7,18 @@ import type { KafkaConfig } from 'kafkajs';
 // Producer, consumers and the metadata admin share this authentication configuration.
 export function kafkaClientOptions(config: ConfigService): KafkaConfig {
   const logger = new Logger('Kafka');
+
   const mechanism = config.get<'plain' | 'scram-sha-256' | 'scram-sha-512'>(
     'KAFKA_SASL_MECHANISM',
   );
+
   const credentials = mechanism
     ? {
         username: config.getOrThrow<string>('KAFKA_SASL_USERNAME'),
         password: config.getOrThrow<string>('KAFKA_SASL_PASSWORD'),
       }
     : undefined;
+
   const sasl: KafkaConfig['sasl'] =
     mechanism === 'plain'
       ? { mechanism, ...credentials! }
@@ -24,6 +27,7 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
         : mechanism === 'scram-sha-512'
           ? { mechanism, ...credentials! }
           : undefined;
+
   return {
     clientId: 'casecellshop',
     brokers: config.getOrThrow<string[]>('KAFKA_BROKERS'),
@@ -42,6 +46,7 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
           error?: string;
           groupId?: string;
         };
+
         const entry = { msg: 'kafka.client.error', message, error, groupId };
 
         if (error?.includes('rebalancing')) logger.warn(entry);
@@ -49,6 +54,7 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
       },
   };
 }
+
 export function kafkaConsumerOptions(
   config: ConfigService,
   groupId: string,

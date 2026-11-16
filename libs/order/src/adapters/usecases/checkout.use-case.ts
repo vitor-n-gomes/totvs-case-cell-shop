@@ -62,9 +62,11 @@ export class CheckoutUseCase {
       );
 
       this.recordSuccessMetrics(replay, input.items.length);
+
       return { orderId, status: OrderStatus.Pending };
     } catch (error) {
       this.metrics.checkout.inc({ result: 'rejected' });
+
       throw this.mapExecutionError(error);
     }
   }
@@ -77,6 +79,7 @@ export class CheckoutUseCase {
   ): Promise<{ orderId: string; replay: boolean }> {
     return this.database.transaction(async (manager) => {
       const orderId = randomUUID();
+
       const inserted = await this.orders.insertPending(
         manager,
         orderId,
@@ -97,6 +100,7 @@ export class CheckoutUseCase {
       const ttlSeconds = this.config.getOrThrow<number>(
         'RESERVATION_TTL_SECONDS',
       );
+
       const reservedItems = await this.stock.reserve(
         manager,
         orderId,
@@ -117,14 +121,17 @@ export class CheckoutUseCase {
     requestHash: string,
   ): Promise<{ orderId: string; replay: true }> {
     const existing = await this.orders.findByKey(manager, idempotencyKey);
+
     if (!existing) {
       throw new Error('Order insert failed');
     }
+
     if (existing.requestHash !== requestHash) {
       throw new ConflictException(
         'Idempotency key already used with different content',
       );
     }
+
     return { orderId: existing.id, replay: true };
   }
 
@@ -150,6 +157,7 @@ export class CheckoutUseCase {
 
   private recordSuccessMetrics(replay: boolean, itemCount: number): void {
     this.metrics.checkout.inc({ result: replay ? 'replayed' : 'accepted' });
+
     if (!replay) {
       this.metrics.reservations.inc({ result: 'reserved' }, itemCount);
     }
@@ -157,12 +165,14 @@ export class CheckoutUseCase {
 
   private mapExecutionError(error: unknown): unknown {
     if (error instanceof HttpException) return error;
+
     if (isTransientDatabaseFailure(error)) {
       return new ServiceUnavailableException(
         'Checkout temporarily unavailable; retry with the same idempotency key',
         { cause: error },
       );
     }
+
     return error;
   }
 }

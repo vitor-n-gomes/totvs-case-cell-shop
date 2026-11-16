@@ -29,6 +29,7 @@ export class OrderConsumer {
         .getHeartbeat()()
         .catch(() => undefined);
     }, 1000);
+
     try {
       await this.process.handle(payload, {
         topic: context.getTopic(),
@@ -37,6 +38,7 @@ export class OrderConsumer {
       });
     } catch {
       this.logger.error('checkout.consumer.failed');
+
       throw new KafkaRetriableException('Checkout processing failed');
     } finally {
       clearInterval(timer);

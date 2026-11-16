@@ -17,6 +17,7 @@ export class CheckoutGuard {
     }
 
     const uniqueProducts = new Set(input.items.map((item) => item.productId));
+
     if (uniqueProducts.size !== input.items.length) {
       throw new BadRequestException('Duplicate products are not allowed');
     }

@@ -37,6 +37,7 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
 
   handle(event: ReservationExpiredEvent): Promise<void> {
     const orderId = event.data.order_id;
+
     return this.spans.run('reservation.expire', async () => {
       // Same advisory lock as activation: an expiry never races a checkout retry.
       const outcome = await this.orders.withActivationLock(orderId, (runner) =>
@@ -47,20 +48,25 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
         this.logger.warn('reservation.expire.ignored', {
           reason: outcome.result,
         });
+
         return;
       }
+
       if (outcome.result !== 'expired') {
         if (outcome.result === 'already_processed')
           this.metrics.reservations.inc({ result: 'already_processed' });
+
         this.logger.info('reservation.expire.skipped', {
           reason: outcome.result,
         });
+
         return;
       }
 
       await this.invalidateCatalog();
       this.metrics.reservations.inc({ result: 'expired' });
       this.metrics.processing.inc({ result: 'expired' });
+
       this.logger.info('reservation.expire.completed', {
         released_items: outcome.released,
       });
@@ -72,14 +78,18 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
     orderId: string,
   ): Promise<ExpireOutcome> {
     await runner.startTransaction();
+
     try {
       const outcome = await this.expire(runner.manager, orderId);
+
       // Only a real expiry commits; every skip leaves the database untouched.
       if (outcome.result === 'expired') await runner.commitTransaction();
       else await runner.rollbackTransaction();
+
       return outcome;
     } catch (error) {
       if (runner.isTransactionActive) await runner.rollbackTransaction();
+
       throw error;
     }
   }
@@ -89,7 +99,9 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
     orderId: string,
   ): Promise<ExpireOutcome> {
     const order = await this.orders.lock(manager, orderId);
+
     if (!order) return { result: 'not_found' };
+
     if (order.processingStatus === ProcessingStatus.Completed)
       return { result: 'completed' };
 
@@ -99,18 +111,22 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
       EXPIRABLE_ORDER_STATUSES,
       OrderStatus.Cancelled,
     );
+
     if (affected === 0) return { result: 'already_processed' };
+
     // Guards against a premature or forged event; the status change is rolled back.
     if (!(await this.reservations.hasExpired(manager, orderId)))
       return { result: 'not_expired' };
 
     const released = await this.reservations.release(manager, orderId);
+
     return { result: 'expired', released };
   }
 
   private async invalidateCatalog(): Promise<void> {
     try {
       if (!this.redis.client.isReady) throw new Error('Cache unavailable');
+
       await this.redis.client
         .withCommandOptions({ abortSignal: AbortSignal.timeout(1000) })
         .del(CATALOG_KEY);

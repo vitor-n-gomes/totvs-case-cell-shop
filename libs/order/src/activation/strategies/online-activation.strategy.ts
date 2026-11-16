@@ -22,6 +22,7 @@ import { ActivationContext } from '../steps/activation-step';
 @Injectable()
 export class OnlineActivationStrategy {
   readonly stepNames = Object.values(StepName);
+
   constructor(
     private readonly registry: ActivationStepRegistry,
     private readonly orders: OrderRepository,
@@ -36,40 +37,52 @@ export class OnlineActivationStrategy {
     runner: QueryRunner,
   ): Promise<void> {
     await runner.startTransaction();
+
     try {
       context.order = await this.orders.lockOrFail(
         runner.manager,
         context.order.id,
       );
+
       if (context.order.status === OrderStatus.Cancelled)
         throw new OrderCancelledError('Order cancelled');
+
       await this.orders.update(runner.manager, context.order.id, {
         processingStatus: ProcessingStatus.Processing,
       });
+
       const consumedBefore = await this.journal.succeeded(
         context.manager,
         context.order.id,
         StepName.ConsumeStockReservationStep,
       );
+
       for (const name of this.stepNames.slice(0, 2))
         await this.runStep(name, context);
+
       await runner.commitTransaction();
+
       if (!consumedBefore)
         this.metrics.reservations.inc(
           { result: 'consumed' },
           context.consumedReservations ?? 0,
         );
-      const activated: OrderActivatedEvent = {
-        kind: ORDER_ACTIVATED,
-        data: { order_id: context.order.id },
-        meta: createEventMeta(context.correlationId),
-      };
-      await this.eventBus.dispatch(activated);
     } catch (error) {
       // The transaction is already closed if the failure came after the commit.
       if (runner.isTransactionActive) await runner.rollbackTransaction();
+
       throw error;
     }
+
+    // Best-effort notification: EventBus swallows handler errors.
+    const activated: OrderActivatedEvent = {
+      kind: ORDER_ACTIVATED,
+      data: { order_id: context.order.id },
+      meta: createEventMeta(context.correlationId),
+    };
+
+    await this.eventBus.dispatch(activated);
+
     for (const name of this.stepNames.slice(2))
       await this.runStep(name, context);
   }
@@ -79,13 +92,19 @@ export class OnlineActivationStrategy {
     context: ActivationContext,
   ): Promise<void> {
     context.currentStep = name;
+
     const step = this.registry.get(name);
+
     if (step.shouldExecute && !step.shouldExecute(context)) return;
+
     if (await this.journal.succeeded(context.manager, context.order.id, name))
       return;
+
     const end = this.metrics.steps.startTimer({ step: name });
+
     try {
       await this.spans.run(name, () => step.exec(context));
+
       await this.journal.record(
         context.manager,
         context.order.id,
@@ -94,9 +113,11 @@ export class OnlineActivationStrategy {
         { attempt: context.event.meta.attempt },
         'Step completed',
       );
+
       end({ result: 'success' });
     } catch (error) {
       end({ result: 'failure' });
+
       throw error;
     }
   }

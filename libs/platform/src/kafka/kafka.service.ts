@@ -24,6 +24,7 @@ export class KafkaService implements OnApplicationShutdown {
 
   ensureConnected(): Promise<void> {
     if (this.closing) return Promise.reject(new Error('Kafka shutting down'));
+
     if (!this.connecting) {
       this.connecting = this.client
         .connect()
@@ -32,9 +33,11 @@ export class KafkaService implements OnApplicationShutdown {
           // Nest caches a failed initial connection; close clears it so a later call can recover.
           await this.client.close().catch(() => undefined);
           this.connecting = undefined;
+
           throw error;
         });
     }
+
     return this.connecting;
   }
 
@@ -43,6 +46,7 @@ export class KafkaService implements OnApplicationShutdown {
     event: KafkaEvents<T>,
   ): Promise<void> {
     await this.ensureConnected();
+
     await lastValueFrom(
       this.client.emit<unknown>(topic, {
         key: event.key,
@@ -54,19 +58,24 @@ export class KafkaService implements OnApplicationShutdown {
 
   async checkTopic(): Promise<void> {
     await this.ensureConnected();
+
     if (!this.adminConnecting) {
       const admin = this.client.unwrap<Kafka>().admin();
+
       this.adminConnecting = admin
         .connect()
         .then(() => admin)
         .catch(async (error: unknown) => {
           await admin.disconnect().catch(() => undefined);
           this.adminConnecting = undefined;
+
           throw error;
         });
     }
+
     const admin = await this.adminConnecting;
     const checkout = this.config.getOrThrow<string>('CHECKOUT_TOPIC');
+
     await admin.fetchTopicMetadata({
       topics: [
         this.config.getOrThrow<string>('KAFKA_TOPIC'),
@@ -80,6 +89,7 @@ export class KafkaService implements OnApplicationShutdown {
     this.closing = true;
     await this.connecting?.catch(() => undefined);
     const admin = await this.adminConnecting?.catch(() => undefined);
+
     await admin?.disconnect();
   }
 }

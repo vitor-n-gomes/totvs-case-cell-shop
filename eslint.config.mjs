@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
@@ -142,8 +143,50 @@ export default defineConfig(
   },
   {
     files: ['**/*.ts'],
-    plugins: { localStyle: localStylePlugin },
-    rules: { 'localStyle/blank-line-between-methods': 'error' },
+    plugins: { localStyle: localStylePlugin, '@stylistic': stylistic },
+    rules: {
+      'localStyle/blank-line-between-methods': 'error',
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        // Blank line around control flow / multiline statements...
+        {
+          blankLine: 'always',
+          prev: '*',
+          next: [
+            'block-like',
+            'if',
+            'for',
+            'while',
+            'multiline-expression',
+            'multiline-const',
+            'multiline-let',
+            'return',
+            'throw',
+          ],
+        },
+        {
+          blankLine: 'always',
+          prev: [
+            'block-like',
+            'if',
+            'for',
+            'while',
+            'multiline-expression',
+            'multiline-const',
+            'multiline-let',
+            'const',
+            'let',
+          ],
+          next: '*',
+        },
+        // ...but keep runs of single-line declarations together.
+        {
+          blankLine: 'any',
+          prev: ['singleline-const', 'singleline-let'],
+          next: ['singleline-const', 'singleline-let'],
+        },
+      ],
+    },
   },
   {
     files: ['**/*entity.ts', '**/entities.ts', '**/*dto.ts', '**/dto.ts'],

@@ -9,6 +9,7 @@ import { ProductRepository } from '../../repositories/product.repository';
 
 export const CATALOG_KEY = 'storefront:products';
 export const CATALOG_LOCK = `${CATALOG_KEY}:lock`;
+
 const productSchema = z.array(
   z.strictObject({
     id: z.uuid(),
@@ -18,6 +19,7 @@ const productSchema = z.array(
     listPrice: z.number(),
   }),
 );
+
 type ProductView = z.infer<typeof productSchema>[number];
 @Injectable()
 export class GetProductsUseCase {
@@ -34,15 +36,20 @@ export class GetProductsUseCase {
     return this.spans.run('catalog.get', async () => {
       try {
         const cached = await this.read();
+
         if (cached) {
           this.metrics.cache.inc({ result: 'hit' });
+
           return cached;
         }
+
         this.metrics.cache.inc({ result: 'miss' });
       } catch {
         this.metrics.cache.inc({ result: 'unavailable' });
+
         return this.singleFlight(() => this.load());
       }
+
       return this.singleFlight(() => this.fill());
     });
   }
@@ -54,11 +61,13 @@ export class GetProductsUseCase {
       this.flight = operation().finally(() => {
         this.flight = undefined;
       });
+
     return this.flight;
   }
 
   private client() {
     if (!this.redis.client.isReady) throw new Error('Cache unavailable');
+
     return this.redis.client.withCommandOptions({
       abortSignal: AbortSignal.timeout(1000),
     });
@@ -66,11 +75,14 @@ export class GetProductsUseCase {
 
   private async read(): Promise<ProductView[] | null> {
     const value = await this.client().get(CATALOG_KEY);
+
     if (!value) return null;
+
     try {
       return productSchema.parse(JSON.parse(value));
     } catch {
       this.metrics.cache.inc({ result: 'invalid' });
+
       return null;
     }
   }
@@ -97,23 +109,30 @@ export class GetProductsUseCase {
 
   private async fill(): Promise<ProductView[]> {
     const deadline = Date.now() + 6000;
+
     while (Date.now() < deadline) {
       const token = randomUUID();
       let locked: string | null;
+
       try {
         const cached = await this.read();
+
         if (cached) return cached;
+
         locked = await this.client().set(CATALOG_LOCK, token, {
           NX: true,
           PX: 5000,
         });
       } catch {
         this.logger.warn('catalog.cache.unavailable');
+
         return this.load();
       }
+
       if (locked) {
         try {
           const products = await this.load();
+
           // An expired/replaced lock must never publish a stale loader's result.
           try {
             const stored = await this.client().eval(
@@ -123,10 +142,12 @@ export class GetProductsUseCase {
                 arguments: [token, JSON.stringify(products)],
               },
             );
+
             if (stored !== 1) continue;
           } catch {
             this.logger.warn('catalog.cache.write.failed');
           }
+
           return products;
         } finally {
           try {
@@ -139,8 +160,10 @@ export class GetProductsUseCase {
           }
         }
       }
+
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
+
     throw new ServiceUnavailableException(
       'Catalog refresh in progress; retry shortly',
     );
