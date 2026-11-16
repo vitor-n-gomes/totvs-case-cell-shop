@@ -48,7 +48,7 @@ To exercise duplicate Kafka delivery, run `npm run test:duplicate-checkout-event
 
 If ports 3000/3001 are already used by local development, set `API_HOST_PORT=3300 WORKER_HOST_PORT=3301` when running Compose. Run the smoke test with `API_URL=http://localhost:3300 WORKER_URL=http://localhost:3301` in that case.
 
-Configuration loads `.env.local` before `.env`; environment variables take precedence. `ENV_FILE` selects one explicit file. Tests use only `.env.test.local` or `TEST_ENV_FILE`. Migrations never run automatically at application startup and TypeORM schema synchronization is disabled.
+Application configuration loads `.env.local` before `.env`; environment variables take precedence. `ENV_FILE` selects one explicit application file. The real-service integration tests load `.env.test.example` and optional `.env.test.local` instead; see the test instructions below. Migrations never run automatically at application startup and TypeORM schema synchronization is disabled.
 
 Each app and library has a standard `tsconfig.json` for editor discovery, extending its Nest build configuration. These configurations inherit aliases and decorator settings from the root, including when opening an individual app/library folder. Scripts and tests also have their own editor configurations. If an already-open editor still reports unresolved `@app/*` imports after pulling configuration changes, run **TypeScript: Restart TS Server** from its command palette.
 
@@ -68,7 +68,7 @@ Checkout returns `202` and `{ "orderId": "<uuid>", "status": "Pending" }` after 
 
 Checkout enum values are case-sensitive: `PrePaid`/`PostPaid`, `Local`/`PreProd`/`Prod`, and PascalCase order/processing statuses. Uppercase legacy values are rejected by API validation. The database stores these fields as ordinary `varchar(16)` columns; enum validation stays in the application. The migration history was rebuilt from scratch (parent tables first, child tables with named foreign keys and indexed FK columns); an installation created from the previous history must be recreated (drop the schema, then `npm run migration:run`). Existing idempotency hashes retain the original request representation; retrying a pre-upgrade key with PascalCase content returns `409`.
 
-All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are decimal strings, not floating-point numbers. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
+All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are integer cents, not floating-point amounts. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
 
 | Endpoint                      | Behavior                                                                       |
 | ----------------------------- | ------------------------------------------------------------------------------ |
@@ -183,40 +183,33 @@ A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache
 
 **Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For Failed active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
 
-## Manual validation after the Orders refactor
+## Manual validation
 
-See [docs/manual-validation.md](docs/manual-validation.md) for startup commands, expected responses and database checks. This refactor validates production types, builds, formatting and lint. Unit/integration tests have deliberately not been migrated or run; their old imports still need updating after manual validation.
+See [docs/manual-validation.md](docs/manual-validation.md) for startup commands, expected responses and database checks.
 
 Kafka uses `@nestjs/microservices` (`ClientKafka` and `@EventPattern`) and logging uses `nestjs-pino`. Brokers and topics come from the shared validated configuration. Both applications start without SASL locally; optional `KAFKA_SSL`, `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME` and `KAFKA_SASL_PASSWORD` configure authentication in one place for producer, consumers and metadata checks. Supported mechanisms are `plain`, `scram-sha-256` and `scram-sha-512`. All three SASL fields must be supplied together. Credentials are not logged. Existing `API_PORT` / `WORKER_PORT` and host-port variables remain supported.
 
 kafkajs 2.2.4 (the latest release) schedules a negative timeout in its request queue, which Node.js 24 reports once per connection as `TimeoutNegativeWarning` and clamps to 1 ms. The warning is harmless, so the `start:*:prod` scripts and Compose (`NODE_OPTIONS`) suppress only that warning with `--disable-warning=TimeoutNegativeWarning`.
 
-For the checks applicable to this stage:
+## Automated tests
+
+The real-service integration tests require Docker, a local PostgreSQL test database and a local Kafka broker. To start only those dependencies using this repository's Compose configuration:
 
 ```bash
-npm run typecheck:app
-npm run build
-npx eslint apps libs scripts
-npm run format:check
-```
-
-## Earlier verification workflow
-
-The commands below describe the previous test workflow. Its suites require a follow-up migration to the new module/application locations before the full workflow can pass.
-
-```bash
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run infra:up
-cp .env.test.example .env.test.local
+docker compose up -d --wait postgres kafka
 npm run test:integration
 ```
 
-Integration tests refuse nonlocal services, databases without a `_test` suffix and Redis databases other than `/1`. They create isolated Kafka topics/groups and fixtures, run real migrations, then remove their own data. The dedicated Redis catalog keys are cleared; do not share Redis `/1` with development applications. If an old Docker volume lacks the test database, create it once with `docker compose exec postgres createdb -U casecellshop casecellshop_test`.
+The tests load `.env.test.example`, then optional `.env.test.local`; explicit `DATABASE_URL` and `KAFKA_BROKERS` environment variables take precedence. Application `.env` files are not loaded. Simulator behavior and reservation TTL are fixed by the tests. PostgreSQL and Kafka must be on loopback, and the database name must end in `_test`. If an existing Compose volume lacks the test database, create it once with `docker compose exec postgres createdb -U casecellshop casecellshop_test`.
 
-Coverage includes the preserved demo flow, real HTTP/Kafka checkout, overselling races, concurrent idempotency, cart rollback, expiration versus activation, persisted retries, DLQ failures, lease recovery, cache coordination and audit redaction. The [verification record](docs/verification.md) distinguishes completed checks from limitations.
+Each real-service test applies the official migrations in a uniquely named schema, creates its own Kafka topics and groups, and starts a disposable Redis container on an ephemeral loopback port. Docker needs the `redis:7.4.6-bookworm` image locally or permission to pull it. Teardown closes consumers and removes only those owned resources; it does not truncate shared tables, flush shared Redis, or stop existing PostgreSQL/Kafka containers. For a focused run:
 
-CI checks formatting, lint, types, builds, unit tests, dependency audits, OpenAPI drift, real-service integration and container readiness. The complete solution remains local until explicitly published; no GitHub submission or push is part of this delivery.
+```bash
+npm run test:integration -- --runTestsByPath test/integration/real-messaging.integration.spec.ts --detectOpenHandles
+```
+
+The tests cover the HTTP/OpenAPI contract, audit redaction and metrics, catalog TTL/stampede/fallback, 20 concurrent buyers for five units, idempotency and transaction rollback, real Kafka delivery and duplicate processing, retry/backoff/DLQ, outbox recovery, and reservation expiration. Four earlier integration files still use in-memory adapters; their real-service counterparts are the `real-*` suites and the scheduler suite.
+
+The test applications run the real Nest modules in the Jest process; they do not prove container startup or multi-host performance. Scheduler and relay cycles are invoked explicitly. ERP and email are simulations, and some failure paths use controlled adapter faults; only the disposable Redis container is stopped to test an actual outage. Trace spans are log stubs, and no production SLO or real ERP reconciliation is verified. See [docs/verification.md](docs/verification.md) for the coverage and limitations.
+
+Other checks are `npm test`, `npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build`.

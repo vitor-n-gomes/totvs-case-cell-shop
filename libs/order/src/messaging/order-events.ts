@@ -56,7 +56,7 @@ export interface OrderActivatedEvent {
 
 export type DomainEvent = OrderEvent | OrderActivatedEvent;
 
-export function parseOrderEvent(payload: unknown): OrderEvent | null {
+export function parseOrderEvent(payload: object): OrderEvent | null {
   const parsed = orderEventSchema.safeParse(payload);
 
   return parsed.success ? parsed.data : null;

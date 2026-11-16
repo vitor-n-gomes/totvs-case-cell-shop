@@ -1,6 +1,6 @@
 # Validação manual da refatoração de Orders
 
-Esta etapa não executa nem corrige testes unitários ou de integração. O roteiro abaixo é para validação manual em ambiente local. Os comandos de compra consomem estoque desse ambiente. Use uma chave nova em cada cenário, exceto nos cenários explícitos de replay.
+Este roteiro é para validação manual em ambiente local; os testes automatizados estão descritos no [README](../README.md#automated-tests). Os comandos de compra consomem estoque desse ambiente. Use uma chave nova em cada cenário, exceto nos cenários explícitos de replay.
 
 ## Preparação
 
@@ -49,7 +49,7 @@ curl -i http://localhost:3000/checkout \
 curl -s http://localhost:3000/orders/ORDER_ID/status
 ```
 
-O POST deve retornar `202` com `{ "orderId": "…", "status": "Pending" }`. A consulta deve mostrar os itens com preços em strings decimais e evoluir para `Active` / `Completed`. Ela não expõe os contatos.
+O POST deve retornar `202` com `{ "orderId": "…", "status": "Pending" }`. A consulta deve mostrar os itens com preços em centavos inteiros e evoluir para `Active` / `Completed`. Ela não expõe os contatos.
 
 Repita exatamente a requisição: deve retornar o mesmo ID e a mesma resposta de aceite, mesmo após a ativação. Repita a chave alterando a quantidade: deve retornar `409`. Envie a mesma chave e conteúdo simultaneamente em dois terminais: ambos devem obter o mesmo pedido, com uma única reserva por produto.
 

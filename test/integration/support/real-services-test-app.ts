@@ -7,8 +7,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { INestApplication } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { MicroserviceOptions } from '@nestjs/microservices';
 import { ScheduleModule } from '@nestjs/schedule';
+import { SwaggerModule } from '@nestjs/swagger';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { parse } from 'dotenv';
@@ -17,10 +19,14 @@ import { DataSource } from 'typeorm';
 import { OrderModule } from '@app/order/order.module';
 import { OrderConsumerModule } from '@app/order/order-consumer.module';
 import { OrderSchedulerModule } from '@app/order/order-scheduler.module';
+import { OrderMessaging } from '@app/order/adapters/order.messaging';
 import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations.use-case';
 import { OutboxRelay } from '@app/order/messaging/outbox-relay';
 import { RedisConnection } from '@app/platform/cache/redis-connection';
-import { validateEnvironment } from '@app/platform/config/environment';
+import {
+  Environment,
+  validateEnvironment,
+} from '@app/platform/config/environment';
 import {
   kafkaClientOptions,
   kafkaConsumerOptions,
@@ -32,13 +38,53 @@ import {
 import { TopicKafkaServer } from '@app/platform/kafka/topic-kafka.server';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { CorrelationMiddleware } from '@app/platform/logging/correlation.middleware';
+import { LoggingModule } from '@app/platform/logging/logging.module';
 import { Metrics } from '@app/platform/observability/metrics';
+import { ObservabilityModule } from '@app/platform/observability/observability.module';
+import {
+  RequestAuditInterceptor,
+  RequestAuditRepository,
+} from '@app/platform/observability/request-audit';
+import { ProductEntity } from '@app/products/domain/entities';
+import { StockEntity } from '@app/products/inventory/domain/entities';
 import { ProductsModule } from '@app/products/products.module';
-import { configureApi } from '../../../apps/http/src/configure-api';
+import {
+  configureApi,
+  createOpenApiDocument,
+} from '../../../apps/http/src/configure-api';
+import { newProduct, ProductRecord } from './in-memory-store';
 
 const exec = promisify(execFile);
 
 type Cleanup = () => Promise<unknown>;
+
+type SimulatorSettings = Partial<
+  Pick<
+    Environment,
+    | 'ERP_FAILURES'
+    | 'EMAIL_FAILURES'
+    | 'SIMULATOR_DELAY_MS'
+    | 'SIMULATOR_TIMEOUT_MS'
+    | 'SIMULATOR_PERMANENT_FAILURE'
+  >
+>;
+
+export async function seedProduct(
+  database: DataSource,
+  product: ProductRecord = newProduct(),
+): Promise<ProductRecord> {
+  const { physicalQuantity, reservedQuantity, ...details } = product;
+
+  await database.getRepository(ProductEntity).insert(details);
+
+  await database.getRepository(StockEntity).insert({
+    productId: product.id,
+    physicalQuantity,
+    reservedQuantity,
+  });
+
+  return product;
+}
 
 export async function waitUntil(
   condition: () => Promise<boolean>,
@@ -78,19 +124,35 @@ function testEnvironment() {
   }
 
   const database = new URL(values.DATABASE_URL ?? '');
+  const localHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-  if (!database.pathname.endsWith('_test')) {
+  if (
+    !localHosts.has(database.hostname) ||
+    !database.pathname.endsWith('_test')
+  ) {
 
     throw new Error(
-      'Scheduler integration requires a dedicated _test database',
+      'Integration tests require a local dedicated _test database',
     );
+
+  }
+
+  if (
+    !(values.KAFKA_BROKERS ?? '')
+      .split(',')
+      .every((broker) => localHosts.has(broker.trim().split(':')[0] ?? ''))
+  ) {
+
+    throw new Error('Integration tests require local Kafka brokers');
 
   }
 
   return values;
 }
 
-export async function createSchedulerTestApp() {
+export async function createRealServicesTestApp(
+  simulator: SimulatorSettings = {},
+) {
   const connections: Cleanup[] = [];
   const resources: Cleanup[] = [];
 
@@ -116,7 +178,7 @@ export async function createSchedulerTestApp() {
 
     if (errors.length) {
 
-      throw new AggregateError(errors, 'Scheduler test teardown failed');
+      throw new AggregateError(errors, 'Integration test teardown failed');
 
     }
   };
@@ -125,9 +187,9 @@ export async function createSchedulerTestApp() {
 
     const values = testEnvironment();
     const suffix = randomUUID().replaceAll('-', '');
-    const schema = `scheduler_${suffix}`;
-    const topic = `scheduler.${suffix}`;
-    const group = `scheduler-${suffix}`;
+    const schema = `integration_${suffix}`;
+    const topic = `integration.${suffix}`;
+    const group = `integration-${suffix}`;
 
     const adminDatabase = new DataSource({
       ...databaseOptions(values.DATABASE_URL!),
@@ -150,7 +212,7 @@ export async function createSchedulerTestApp() {
       adminDatabase.query(`DROP SCHEMA "${schema}" CASCADE`),
     );
 
-    const container = `scheduler-test-${suffix}`;
+    const container = `integration-redis-${suffix}`;
 
     await exec('docker', [
       'run',
@@ -168,11 +230,29 @@ export async function createSchedulerTestApp() {
       'no',
     ]);
 
-    resources.push(() => exec('docker', ['stop', container]));
+    let redisRunning = true;
+
+    const stopRedis = async () => {
+      if (redisRunning) {
+
+        await exec('docker', ['stop', container]);
+        redisRunning = false;
+
+      }
+    };
+
+    resources.push(stopRedis);
     const { stdout } = await exec('docker', ['port', container, '6379/tcp']);
 
     const settings = validateEnvironment({
       ...values,
+      ERP_FAILURES: 0,
+      EMAIL_FAILURES: 0,
+      SIMULATOR_DELAY_MS: 20,
+      SIMULATOR_TIMEOUT_MS: 1000,
+      SIMULATOR_PERMANENT_FAILURE: 'none',
+      RESERVATION_TTL_SECONDS: 900,
+      ...simulator,
       NODE_ENV: 'test',
       REDIS_URL: `redis://${stdout.trim()}`,
       CHECKOUT_TOPIC: topic,
@@ -232,17 +312,24 @@ export async function createSchedulerTestApp() {
           useFactory: () => options,
           dataSourceFactory: async () => database,
         }),
-        ScheduleModule.forRoot(),
+        // Tests drive real relay and scheduler cycles explicitly.
+        ScheduleModule.forRoot({
+          cronJobs: false,
+          intervals: false,
+          timeouts: false,
+        }),
         OrderModule,
         ProductsModule,
         OrderSchedulerModule,
         OrderConsumerModule,
+        LoggingModule,
+        ObservabilityModule,
       ],
-    })
-      // Checkout creates its outbox row, but activation is not part of this flow.
-      .overrideProvider(OutboxRelay)
-      .useValue({})
-      .compile();
+      providers: [
+        RequestAuditRepository,
+        { provide: APP_INTERCEPTOR, useClass: RequestAuditInterceptor },
+      ],
+    }).compile();
 
     const app: INestApplication = moduleRef.createNestApplication({
       logger: false,
@@ -256,6 +343,7 @@ export async function createSchedulerTestApp() {
     );
 
     configureApi(app);
+    SwaggerModule.setup('api-docs', app, createOpenApiDocument(app));
     await app.init();
     const redis = app.get(RedisConnection);
 
@@ -282,11 +370,17 @@ export async function createSchedulerTestApp() {
       redis,
       topic,
       metrics: app.get(Metrics),
+      messaging: app
+        .select(OrderConsumerModule)
+        .get(OrderMessaging, { strict: true }),
+      relay: app.get(OutboxRelay),
       scheduler: app.get(ExpireReservationsUseCase),
       close,
-      offsets: () => admin.fetchTopicOffsets(topic),
-      async observe() {
-        const observerGroup = `${group}-observer`;
+      stopRedis,
+      offsets: (observedTopic = topic) =>
+        admin.fetchTopicOffsets(observedTopic),
+      async observe(observedTopic = topic) {
+        const observerGroup = `${group}-observer-${randomUUID()}`;
         const observer = kafka.consumer({ groupId: observerGroup });
 
         connections.push(() => observer.disconnect());
@@ -303,7 +397,7 @@ export async function createSchedulerTestApp() {
         });
 
         await observer.connect();
-        await observer.subscribe({ topic, fromBeginning: true });
+        await observer.subscribe({ topic: observedTopic, fromBeginning: true });
         groups.push(observerGroup);
 
         await observer.run({
@@ -323,6 +417,18 @@ export async function createSchedulerTestApp() {
         }, 'Kafka observer group join');
 
         return messages;
+      },
+      async waitForConsumerOffset(offset: number) {
+        await waitUntil(async () => {
+          const offsets = await admin.fetchOffsets({
+            groupId: group,
+            topics: [topic],
+          });
+
+          const committed = offsets[0]?.partitions[0]?.offset;
+
+          return committed !== undefined && Number(committed) >= offset;
+        }, `consumer offset ${offset}`);
       },
       async startConsumer() {
         let ready = false;
@@ -360,7 +466,7 @@ export async function createSchedulerTestApp() {
 
       throw new AggregateError(
         [error, cleanupError],
-        'Scheduler test setup and teardown failed',
+        'Integration test setup and teardown failed',
         { cause: cleanupError },
       );
 
@@ -371,6 +477,6 @@ export async function createSchedulerTestApp() {
   }
 }
 
-export type SchedulerTestApp = Awaited<
-  ReturnType<typeof createSchedulerTestApp>
+export type RealServicesTestApp = Awaited<
+  ReturnType<typeof createRealServicesTestApp>
 >;

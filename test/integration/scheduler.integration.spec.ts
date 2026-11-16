@@ -1,10 +1,11 @@
 import {
-  createSchedulerTestApp,
-  SchedulerTestApp,
+  createRealServicesTestApp,
+  RealServicesTestApp,
   waitUntil,
-} from './support/scheduler-test-app';
+} from './support/real-services-test-app';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { OrderEntity } from '@app/order/domain/entities';
+import { OrderEntity, OutboxEventEntity } from '@app/order/domain/entities';
 import {
   OrderStatus,
   ProcessingStatus,
@@ -13,6 +14,8 @@ import {
   ORDER_RESERVATION_EXPIRED,
   orderEventSchema,
 } from '@app/order/messaging/order-events';
+import { createEventMeta } from '@app/order/messaging/event.util';
+import { ProcessOrderEventUseCase } from '@app/order/adapters/usecases/process-order-event.use-case';
 import { ProductEntity } from '@app/products/domain/entities';
 import {
   ReservationEntity,
@@ -23,11 +26,11 @@ import { buildCheckoutPayload, newIdempotencyKey } from './support/fixtures';
 import { newProduct, ProductRecord } from './support/in-memory-store';
 
 describe('Scheduler reservation expiration (integration)', () => {
-  let context: SchedulerTestApp | undefined;
+  let context: RealServicesTestApp | undefined;
   let product: ProductRecord;
 
   beforeEach(async () => {
-    context = await createSchedulerTestApp();
+    context = await createRealServicesTestApp();
     product = newProduct({ physicalQuantity: 10 });
     const { physicalQuantity, reservedQuantity, ...details } = product;
 
@@ -45,7 +48,7 @@ describe('Scheduler reservation expiration (integration)', () => {
     context = undefined;
   });
 
-  async function checkout(testApp: SchedulerTestApp, expired: boolean) {
+  async function checkout(testApp: RealServicesTestApp, expired: boolean) {
     const response = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
@@ -66,7 +69,7 @@ describe('Scheduler reservation expiration (integration)', () => {
     return orderId;
   }
 
-  async function snapshot({ database }: SchedulerTestApp) {
+  async function snapshot({ database }: RealServicesTestApp) {
     return {
       orders: await database
         .getRepository(OrderEntity)
@@ -209,5 +212,113 @@ describe('Scheduler reservation expiration (integration)', () => {
     expect(await testApp.metrics.registry.metrics()).toContain(
       `shop_reservations_total{result="expired"} ${baseline + 1}`,
     );
+  });
+
+  it('ignores a premature expiration event without cancelling the order or releasing its reservation', async () => {
+    const testApp = context!;
+    const orderId = await checkout(testApp, false);
+    const before = await snapshot(testApp);
+
+    await testApp.startConsumer();
+
+    await testApp.messaging.publish(testApp.topic, orderId, {
+      kind: ORDER_RESERVATION_EXPIRED,
+      data: { order_id: orderId },
+      meta: createEventMeta(randomUUID()),
+    });
+
+    await testApp.waitForConsumerOffset(1);
+
+    expect(await snapshot(testApp)).toEqual(before);
+  });
+
+  it('handles a duplicate expiration event without releasing stock twice', async () => {
+    const testApp = context!;
+    const expiredId = await checkout(testApp, true);
+    const validId = await checkout(testApp, false);
+    const messages = await testApp.observe();
+
+    await testApp.startConsumer();
+
+    await testApp.scheduler.execute();
+
+    await waitUntil(async () => {
+      const order = await testApp.database
+        .getRepository(OrderEntity)
+        .findOneBy({ id: expiredId });
+
+      return order?.status === OrderStatus.Cancelled && messages.length === 1;
+    }, 'initial expiration');
+
+    const event = orderEventSchema.parse(
+      JSON.parse(messages[0]!.message.value!.toString()),
+    );
+
+    await testApp.messaging.publish(testApp.topic, expiredId, event);
+    await testApp.waitForConsumerOffset(2);
+
+    const after = await snapshot(testApp);
+
+    expect(after.orders.find(({ id }) => id === expiredId)?.status).toBe(
+      OrderStatus.Cancelled,
+    );
+
+    expect(after.orders.find(({ id }) => id === validId)?.status).toBe(
+      OrderStatus.Pending,
+    );
+
+    expect(after.stock[0]).toMatchObject({
+      physicalQuantity: 10,
+      reservedQuantity: 2,
+    });
+
+    expect(
+      after.reservations.find(({ orderId }) => orderId === expiredId)?.status,
+    ).toBe('EXPIRED');
+
+    expect(
+      after.reservations.find(({ orderId }) => orderId === validId)?.status,
+    ).toBe('ACTIVE');
+
+    expect(await testApp.metrics.registry.metrics()).toContain(
+      'shop_reservations_total{result="already_processed"} 1',
+    );
+  });
+
+  it('keeps stock consistent when expiration races activation of an expired reservation', async () => {
+    const testApp = context!;
+    const orderId = await checkout(testApp, true);
+
+    const outbox = await testApp.database
+      .getRepository(OutboxEventEntity)
+      .findOneByOrFail({ orderId });
+
+    const dispatcher = testApp.app.get(ProcessOrderEventUseCase);
+
+    await Promise.all([
+      dispatcher.handle(outbox.payload, {
+        topic: testApp.topic,
+        partition: 0,
+        offset: '0',
+      }),
+      dispatcher.handle(
+        {
+          kind: ORDER_RESERVATION_EXPIRED,
+          data: { order_id: orderId },
+          meta: createEventMeta(randomUUID()),
+        },
+        { topic: testApp.topic, partition: 0, offset: '1' },
+      ),
+    ]);
+
+    const after = await snapshot(testApp);
+
+    expect(after.orders[0]?.status).toBe(OrderStatus.Cancelled);
+    expect(after.reservations[0]?.status).toBe('EXPIRED');
+
+    expect(after.stock[0]).toMatchObject({
+      physicalQuantity: 10,
+      reservedQuantity: 0,
+    });
   });
 });

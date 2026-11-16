@@ -7,6 +7,7 @@ import {
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
 } from '@app/order/messaging/order-events';
+import { PermanentActivationError } from '@app/order/activation/guards/activation-errors';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';
@@ -31,17 +32,14 @@ export class ProcessOrderEventUseCase {
     private readonly metrics: Metrics,
   ) {}
 
-  async handle(payload: unknown, source: EventSource): Promise<void> {
+  async handle(payload: object, source: EventSource): Promise<void> {
     const event = parseOrderEvent(payload);
 
     if (!event) {
 
-      await this.sendToDlq(
-        payload,
-        source,
-        'Invalid event payload',
-        'invalid_dlq',
-      );
+      const reason = 'Invalid event payload';
+
+      await this.sendToDlq({ source, reason }, source, reason, 'invalid_dlq');
 
       return;
 
@@ -70,13 +68,17 @@ export class ProcessOrderEventUseCase {
 
         } catch (error) {
 
-          await this.sendToDlq(
-            event,
-            source,
-            error instanceof Error ? error.message : 'Unknown error',
-            'dlq',
-            orderId,
-          );
+          if (!(error instanceof PermanentActivationError)) {
+
+            this.logger.error('order.event.dispatch.failed', {
+              error_type: error instanceof Error ? error.name : 'UnknownError',
+            });
+
+            throw error;
+
+          }
+
+          await this.sendToDlq(event, source, error.message, 'dlq', orderId);
 
         }
       },
@@ -98,7 +100,7 @@ export class ProcessOrderEventUseCase {
   }
 
   private async sendToDlq(
-    payload: unknown,
+    payload: object,
     source: EventSource,
     reason: string,
     metricResult: 'dlq' | 'invalid_dlq',
@@ -110,7 +112,7 @@ export class ProcessOrderEventUseCase {
     await this.messaging.publish(
       `${this.config.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
       orderId ?? `${source.topic}:${source.partition}:${source.offset}`,
-      this.toDlqPayload(payload),
+      payload,
       {
         'x-correlation-id': correlationId,
         'x-dlq-reason': reason,
@@ -121,19 +123,5 @@ export class ProcessOrderEventUseCase {
     );
 
     this.metrics.processing.inc({ result: metricResult });
-  }
-
-  private toDlqPayload(payload: unknown): Record<string, unknown> {
-    if (
-      typeof payload === 'object' &&
-      payload !== null &&
-      !Array.isArray(payload)
-    ) {
-
-      return payload as Record<string, unknown>;
-
-    }
-
-    return { raw_payload: payload ?? null };
   }
 }

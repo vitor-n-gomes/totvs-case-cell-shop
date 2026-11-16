@@ -57,7 +57,7 @@ const settings: Record<string, unknown> = {
  * Boots the real controllers, use cases, correlation middleware, validation pipe
  * and exception filter of the HTTP app. Only PostgreSQL and Redis are replaced
  * by in-memory fakes; Kafka is never touched by the HTTP side.
- * TODO: swap the fake providers for the real HttpModule once test containers exist.
+ * The real-service suites cover PostgreSQL, Redis and Kafka separately.
  */
 export async function createTestApp(): Promise<TestApp> {
   const store = new InMemoryStore();

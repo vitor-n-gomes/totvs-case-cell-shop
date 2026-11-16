@@ -108,7 +108,7 @@ O contexto de observabilidade (`executionContext`, logs e spans) usa as mesmas c
 Não existem eventos dedicados a erro. Retries e DLQ reenviam o **mesmo evento** com o `kind` original:
 
 - Falha na ativação: `ActivationFailureHandler` reenfileira o `ORDER_CHECKOUT_INITIATED` (via outbox) com `meta.attempt + 1`; ao esgotar as tentativas ou em erro permanente, o mesmo evento vai para `<CHECKOUT_TOPIC>.dlq`. Os detalhes da falha ficam no idempotency log.
-- Payload inválido ou erro no consumer: `ProcessOrderEventUseCase` publica o payload original na DLQ com os headers `x-dlq-reason`, `x-source-topic`, `x-source-partition` e `x-source-offset`.
+- Payload inválido: `ProcessOrderEventUseCase` envia somente a origem e o motivo à DLQ, sem copiar o conteúdo arbitrário. Erros permanentes de eventos válidos preservam o envelope validado. Os headers incluem `x-dlq-reason`, `x-source-topic`, `x-source-partition` e `x-source-offset`. Falhas transitórias de infraestrutura propagam ao Kafka para redelivery, sem avançar o offset.
 
 ---
 
@@ -176,7 +176,7 @@ e do mesmo advisory lock por pedido da ativação (`withActivationLock`), numa
    (`OrderRepository.transitionStatus`).
 3. `affected === 0` → `reservation.expire.skipped` +
    `shop_reservations_total{result="already_processed"}`, sem tocar no estoque.
-4. `affected === 1` → `reservations.release(...)` devolve as reservas ativas.
+4. `affected === 1` → confirma que há uma reserva vencida; se não houver, reverte a transação. Caso contrário, `reservations.release(...)` devolve as reservas ativas.
 
 Após o commit, invalida `storefront:products` no Redis (falha só gera `warn`,
 sem retry no Kafka) e incrementa `reservations{result="expired"}` e

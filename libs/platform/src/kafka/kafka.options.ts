@@ -43,13 +43,25 @@ export function kafkaClientOptions(config: ConfigService): KafkaConfig {
       ({ log }) => {
         const { message, error, groupId } = log as {
           message?: string;
-          error?: string;
+          error?: unknown;
           groupId?: string;
         };
 
-        const entry = { msg: 'kafka.client.error', message, error, groupId };
+        const errorMessage =
+          typeof error === 'string'
+            ? error
+            : error instanceof Error
+              ? error.message
+              : undefined;
 
-        if (error?.includes('rebalancing')) {
+        const entry = {
+          msg: 'kafka.client.error',
+          message,
+          error: errorMessage,
+          groupId,
+        };
+
+        if (errorMessage?.includes('rebalancing')) {
 
           logger.warn(entry);
 

@@ -56,8 +56,7 @@ export interface OutboxRecord {
 
 /**
  * Shared in-memory "database" behind the fake repositories below.
- * TODO: drop these fakes and run the same specs against a real PostgreSQL
- * (testcontainers or the `_test` database) with migrations applied.
+ * Real-service integration tests also exercise the migrated `_test` database.
  */
 export class InMemoryStore {
   readonly products = new Map<string, ProductRecord>();

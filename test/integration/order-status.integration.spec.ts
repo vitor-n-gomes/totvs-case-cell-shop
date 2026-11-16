@@ -58,7 +58,7 @@ describe('GET /orders/:orderId/status (integration)', () => {
   it('reflects the activation after the asynchronous worker processes the order', async () => {
     const orderId = await createOrder();
 
-    // TODO: instead of the stub, let the real consumer process the outbox event.
+    // The real Kafka consumer is covered in real-messaging.integration.spec.ts.
     simulateWorkerProcessing(context.store, orderId);
 
     const response = await request(context.app.getHttpServer())
