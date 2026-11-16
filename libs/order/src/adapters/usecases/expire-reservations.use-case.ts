@@ -20,11 +20,6 @@ import { OrderMessaging } from '../order.messaging';
 export const EXPIRATION_BATCH_SIZE = 50;
 const INTERVAL_NAME = 'scheduler.reservation_expiration';
 
-/**
- * Anemic producer: finds orders whose reservation expired and publishes
- * ORDER_RESERVATION_EXPIRED. It never changes order status or stock; the
- * consumer's ReservationExpiredHandler owns the idempotent release.
- */
 @Injectable()
 export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
   private isRunning = false;
