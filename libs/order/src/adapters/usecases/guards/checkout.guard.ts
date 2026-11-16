@@ -1,13 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7e]{1,128}$/;
 
 @Injectable()
 export class CheckoutGuard {
   validate(
-    checkoutInput: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string | undefined,
   ): asserts idempotencyKey is string {
     if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
@@ -19,25 +19,25 @@ export class CheckoutGuard {
     }
 
     const uniqueProductIds = new Set(
-      checkoutInput.items.map((checkoutItem) => checkoutItem.productId),
+      checkoutDto.items.map((checkoutItem) => checkoutItem.productId),
     );
 
-    if (uniqueProductIds.size !== checkoutInput.items.length) {
+    if (uniqueProductIds.size !== checkoutDto.items.length) {
 
       throw new BadRequestException('Duplicate products are not allowed');
 
     }
   }
 
-  hashPayload(checkoutInput: CheckoutInput): string {
+  hashPayload(checkoutDto: CheckoutDto): string {
     const normalizedPayload = {
-      paymentType: checkoutInput.paymentType,
-      dueDate: checkoutInput.dueDate,
-      mainContact: checkoutInput.mainContact,
-      altContact: checkoutInput.altContact ?? null,
-      paymentMethod: checkoutInput.paymentMethod,
-      environment: checkoutInput.environment,
-      items: [...checkoutInput.items]
+      paymentType: checkoutDto.paymentType,
+      dueDate: checkoutDto.dueDate,
+      mainContact: checkoutDto.mainContact,
+      altContact: checkoutDto.altContact ?? null,
+      paymentMethod: checkoutDto.paymentMethod,
+      environment: checkoutDto.environment,
+      items: [...checkoutDto.items]
         .sort((leftItem, rightItem) =>
           leftItem.productId.localeCompare(rightItem.productId),
         )

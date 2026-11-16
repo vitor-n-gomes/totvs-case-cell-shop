@@ -57,12 +57,12 @@ export class OrderController {
   @ApiConflictResponse({ type: ErrorResponseDto })
   @ApiNotFoundResponse({ type: ErrorResponseDto })
   create(
-    @Body() checkoutInput: CheckoutDto,
+    @Body() checkoutDto: CheckoutDto,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ): Promise<CheckoutAcceptedDto> {
     return this.checkoutUseCase.execute(
-      checkoutInput,
+      checkoutDto,
       idempotencyKey,
       String(response.locals.correlationId),
     );

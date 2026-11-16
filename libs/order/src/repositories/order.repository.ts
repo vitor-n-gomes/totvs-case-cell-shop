@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, QueryRunner, Repository } from 'typeorm';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import { OrderEntity, OrderItemEntity } from '../domain/entities';
 import { OrderStatus } from '../domain/shared/types/order.type';
 
@@ -31,14 +31,14 @@ export class OrderRepository {
   async insertPending(
     entityManager: EntityManager,
     orderId: string,
-    checkoutInput: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<boolean> {
     const orderColumns: OrderColumns = entityManager
       .getRepository(OrderEntity)
-      .create(checkoutInput);
+      .create(checkoutDto);
 
     const orderInsertResult = await entityManager
       .getRepository(OrderEntity)
@@ -46,7 +46,7 @@ export class OrderRepository {
       .insert()
       .values({
         ...orderColumns,
-        altContact: checkoutInput.altContact,
+        altContact: checkoutDto.altContact,
         id: orderId,
         idempotencyKey,
         requestHash,

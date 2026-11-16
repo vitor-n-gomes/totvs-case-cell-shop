@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { CheckoutGuard } from '@app/order/adapters/usecases/guards/checkout.guard';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import {
   Environment,
   PaymentType,
@@ -155,7 +155,7 @@ describe('GetProductsUseCase', () => {
 describe('CheckoutGuard', () => {
   const checkoutGuard = new CheckoutGuard();
 
-  const checkoutInput: CheckoutInput = {
+  const checkoutDto: CheckoutDto = {
     paymentType: PaymentType.PrePaid,
     dueDate: '2026-11-10',
     mainContact: 'customer@example.test',
@@ -171,15 +171,15 @@ describe('CheckoutGuard', () => {
     'rejects invalid idempotency key %p',
     (idempotencyKey) => {
       expect(() =>
-        checkoutGuard.validate(checkoutInput, idempotencyKey),
+        checkoutGuard.validate(checkoutDto, idempotencyKey),
       ).toThrow(BadRequestException);
     },
   );
 
   it('rejects duplicate products in a cart', () => {
     const duplicateProductInput = {
-      ...checkoutInput,
-      items: [checkoutInput.items[0]!, checkoutInput.items[0]!],
+      ...checkoutDto,
+      items: [checkoutDto.items[0]!, checkoutDto.items[0]!],
     };
 
     expect(() =>
@@ -189,31 +189,31 @@ describe('CheckoutGuard', () => {
 
   it('hashes equivalent carts identically regardless of item order or null altContact', () => {
     const reorderedInput = {
-      ...checkoutInput,
+      ...checkoutDto,
       altContact: undefined,
-      items: [...checkoutInput.items].reverse(),
+      items: [...checkoutDto.items].reverse(),
     };
 
     expect(checkoutGuard.hashPayload(reorderedInput)).toBe(
-      checkoutGuard.hashPayload(checkoutInput),
+      checkoutGuard.hashPayload(checkoutDto),
     );
   });
 
   it('changes the hash when any purchase field changes', () => {
     const changedQuantityInput = {
-      ...checkoutInput,
+      ...checkoutDto,
       items: [
-        { ...checkoutInput.items[0]!, quantity: 5 },
-        checkoutInput.items[1]!,
+        { ...checkoutDto.items[0]!, quantity: 5 },
+        checkoutDto.items[1]!,
       ],
     };
 
     expect(checkoutGuard.hashPayload(changedQuantityInput)).not.toBe(
-      checkoutGuard.hashPayload(checkoutInput),
+      checkoutGuard.hashPayload(checkoutDto),
     );
 
     expect(
-      checkoutGuard.hashPayload({ ...checkoutInput, paymentMethod: 'CARD' }),
-    ).not.toBe(checkoutGuard.hashPayload(checkoutInput));
+      checkoutGuard.hashPayload({ ...checkoutDto, paymentMethod: 'CARD' }),
+    ).not.toBe(checkoutGuard.hashPayload(checkoutDto));
   });
 });

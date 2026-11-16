@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import {
   CheckoutInitiatedEvent,
@@ -42,26 +42,26 @@ export class CheckoutUseCase {
   ) {}
 
   async execute(
-    checkoutInput: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string | undefined,
     correlationId = executionContext.getStore()?.correlation_id ?? randomUUID(),
   ): Promise<CheckoutResult> {
     try {
 
-      this.checkoutGuard.validate(checkoutInput, idempotencyKey);
-      const requestHash = this.checkoutGuard.hashPayload(checkoutInput);
+      this.checkoutGuard.validate(checkoutDto, idempotencyKey);
+      const requestHash = this.checkoutGuard.hashPayload(checkoutDto);
 
       const { orderId, replay: isIdempotentReplay } =
         await this.spansService.run('checkout.transaction', () =>
           this.persistCheckout(
-            checkoutInput,
+            checkoutDto,
             idempotencyKey,
             requestHash,
             correlationId,
           ),
         );
 
-      this.recordSuccessMetrics(isIdempotentReplay, checkoutInput.items.length);
+      this.recordSuccessMetrics(isIdempotentReplay, checkoutDto.items.length);
 
       return { orderId, status: OrderStatus.Pending };
 
@@ -75,7 +75,7 @@ export class CheckoutUseCase {
   }
 
   private persistCheckout(
-    checkoutInput: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
@@ -86,7 +86,7 @@ export class CheckoutUseCase {
       const wasOrderInserted = await this.orderRepository.insertPending(
         entityManager,
         orderId,
-        checkoutInput,
+        checkoutDto,
         idempotencyKey,
         requestHash,
         correlationId,
@@ -109,7 +109,7 @@ export class CheckoutUseCase {
       const reservedItems = await this.stockRepository.reserve(
         entityManager,
         orderId,
-        checkoutInput.items,
+        checkoutDto.items,
         reservationTtlSeconds,
       );
 

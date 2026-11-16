@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import {
   OrderStatus,
   ProcessingStatus,
@@ -116,7 +116,7 @@ export class FakeOrderRepository {
   insertPending(
     _entityManager: EntityManager,
     orderId: string,
-    checkoutInput: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
@@ -129,11 +129,11 @@ export class FakeOrderRepository {
 
     this.inMemoryStore.orders.set(orderId, {
       id: orderId,
-      paymentType: checkoutInput.paymentType,
-      dueDate: checkoutInput.dueDate,
-      mainContact: checkoutInput.mainContact,
-      paymentMethod: checkoutInput.paymentMethod,
-      environment: checkoutInput.environment,
+      paymentType: checkoutDto.paymentType,
+      dueDate: checkoutDto.dueDate,
+      mainContact: checkoutDto.mainContact,
+      paymentMethod: checkoutDto.paymentMethod,
+      environment: checkoutDto.environment,
       status: OrderStatus.Pending,
       processingStatus: ProcessingStatus.Pending,
       idempotencyKey,
