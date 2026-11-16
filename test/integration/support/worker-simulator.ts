@@ -18,11 +18,14 @@ export function simulateWorkerProcessing(
 ): void {
   const order = store.orders.get(orderId);
 
-  if (!order) throw new Error(`Order ${orderId} not found`);
+  if (!order) {
+    throw new Error(`Order ${orderId} not found`);
+  }
 
   for (const reservation of store.reservations) {
-    if (reservation.orderId !== orderId || reservation.status !== 'ACTIVE')
+    if (reservation.orderId !== orderId || reservation.status !== 'ACTIVE') {
       continue;
+    }
 
     const product = store.products.get(reservation.productId);
 
@@ -34,8 +37,11 @@ export function simulateWorkerProcessing(
     reservation.status = 'CONSUMED';
   }
 
-  for (const event of store.outbox)
-    if (event.orderId === orderId) event.status = 'PROCESSED';
+  for (const event of store.outbox) {
+    if (event.orderId === orderId) {
+      event.status = 'PROCESSED';
+    }
+  }
 
   order.status = OrderStatus.Active;
   order.processingStatus = ProcessingStatus.Completed;

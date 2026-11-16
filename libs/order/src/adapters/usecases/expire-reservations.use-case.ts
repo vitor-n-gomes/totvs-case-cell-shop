@@ -45,7 +45,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
 
   /** Called by the scheduler entrypoint once logging is bound to the app. */
   start(): void {
-    if (this.registry.doesExist('interval', INTERVAL_NAME)) return;
+    if (this.registry.doesExist('interval', INTERVAL_NAME)) {
+      return;
+    }
 
     const intervalMs = this.config.getOrThrow<number>('SCHEDULER_INTERVAL_MS');
 
@@ -63,7 +65,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
 
   async tick(): Promise<void> {
     // A slow cycle must not overlap the next interval.
-    if (this.stopped || this.isRunning) return;
+    if (this.stopped || this.isRunning) {
+      return;
+    }
 
     this.isRunning = true;
 
@@ -88,16 +92,22 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
       EXPIRATION_BATCH_SIZE,
     );
 
-    if (!orderIds.length) return 0;
+    if (!orderIds.length) {
+      return 0;
+    }
 
     await this.messaging.ensureConnected();
 
     let published = 0;
 
     for (const orderId of orderIds) {
-      if (this.stopped) break;
+      if (this.stopped) {
+        break;
+      }
 
-      if (await this.publishExpiration(orderId)) published++;
+      if (await this.publishExpiration(orderId)) {
+        published++;
+      }
     }
 
     this.logger.info('scheduler.expiration.cycle', {
@@ -144,8 +154,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
   async beforeApplicationShutdown(): Promise<void> {
     this.stopped = true;
 
-    if (this.registry.doesExist('interval', INTERVAL_NAME))
+    if (this.registry.doesExist('interval', INTERVAL_NAME)) {
       this.registry.deleteInterval(INTERVAL_NAME);
+    }
 
     await this.flight;
   }

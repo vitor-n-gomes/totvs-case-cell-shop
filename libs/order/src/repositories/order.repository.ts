@@ -145,13 +145,16 @@ export class OrderRepository {
       return await work(runner);
     } finally {
       try {
-        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        if (runner.isTransactionActive) {
+          await runner.rollbackTransaction();
+        }
 
-        if (locked)
+        if (locked) {
           await runner.query(
             'SELECT pg_advisory_unlock(hashtextextended($1,0))',
             [id],
           );
+        }
       } finally {
         await runner.release();
       }

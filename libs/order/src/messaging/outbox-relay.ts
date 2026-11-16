@@ -25,7 +25,9 @@ export class OutboxRelay implements BeforeApplicationShutdown {
 
   @Interval(1000)
   async tick(): Promise<void> {
-    if (this.stopped || this.flight) return;
+    if (this.stopped || this.flight) {
+      return;
+    }
 
     this.flight = this.execute();
 
@@ -51,9 +53,13 @@ export class OutboxRelay implements BeforeApplicationShutdown {
       events.map(async (event) => {
         const payload = parseOrderEvent(event.payload);
 
-        if (!payload) throw new Error('Invalid order event in outbox');
+        if (!payload) {
+          throw new Error('Invalid order event in outbox');
+        }
 
-        if (!payload.meta) throw new Error('Outbox event without meta');
+        if (!payload.meta) {
+          throw new Error('Outbox event without meta');
+        }
 
         const { correlation_id: correlationId, ...trace } = payload.meta;
 
@@ -84,7 +90,9 @@ export class OutboxRelay implements BeforeApplicationShutdown {
 
     const failure = results.find((result) => result.status === 'rejected');
 
-    if (failure?.status === 'rejected') throw failure.reason;
+    if (failure?.status === 'rejected') {
+      throw failure.reason;
+    }
 
     const backlog = await this.outbox.backlog();
 

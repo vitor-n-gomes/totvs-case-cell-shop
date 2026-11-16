@@ -13,12 +13,15 @@ import { AppLogger } from '../logging/app-logger';
 import { Metrics } from './metrics';
 
 export function sanitizePayload(value: unknown, depth = 0): unknown {
-  if (depth > 6) return '[truncated]';
+  if (depth > 6) {
+    return '[truncated]';
+  }
 
-  if (Array.isArray(value))
+  if (Array.isArray(value)) {
     return value
       .slice(0, 100)
       .map((entry) => sanitizePayload(entry, depth + 1));
+  }
 
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
@@ -73,7 +76,9 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
         .finally(() => {
           this.draining = undefined;
 
-          if (this.queue.length) this.startDrain();
+          if (this.queue.length) {
+            this.startDrain();
+          }
         });
     }
   }
@@ -105,7 +110,9 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
   async beforeApplicationShutdown(): Promise<void> {
     this.closing = true;
 
-    while (this.draining) await this.draining;
+    while (this.draining) {
+      await this.draining;
+    }
   }
 }
 @Injectable()
@@ -131,13 +138,14 @@ export class RequestAuditInterceptor implements NestInterceptor {
       ),
     );
 
-    if (['POST', 'PUT', 'DELETE'].includes(request.method))
+    if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
       this.audit.enqueue({
         url: route,
         method: request.method,
         payload: sanitizePayload(request.body),
         correlationId: String(response.locals.correlationId),
       });
+    }
 
     return next.handle();
   }

@@ -27,19 +27,24 @@ export class IntegrationSimulator {
       setTimeout(resolve, Math.min(delay, timeout)),
     );
 
-    if (delay > timeout)
+    if (delay > timeout) {
       throw new IntegrationTimeoutError('Integration timeout');
+    }
 
-    if (this.config.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') === kind)
+    if (
+      this.config.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') === kind
+    ) {
       throw new PermanentActivationError('Integration rejected request');
+    }
 
     if (
       context.event.meta.attempt <=
       this.config.getOrThrow<number>(
         kind === 'erp' ? 'ERP_FAILURES' : 'EMAIL_FAILURES',
       )
-    )
+    ) {
       throw new Error('Simulated transient integration failure');
+    }
 
     this.logger.info(`integration.${kind}.accepted`, {
       order_id: context.order.id,

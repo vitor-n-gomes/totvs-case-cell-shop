@@ -43,8 +43,9 @@ export class TopicKafkaServer extends ServerKafka {
       consumer.events.CRASH,
       consumer.events.DISCONNECT,
       consumer.events.STOP,
-    ])
+    ]) {
       consumer.on(event, () => this.ready(false));
+    }
   }
 
   override async close(): Promise<void> {

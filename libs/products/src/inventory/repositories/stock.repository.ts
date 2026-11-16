@@ -32,7 +32,9 @@ export class StockRepository {
         .getRepository(ProductEntity)
         .findOneBy({ id: item.productId });
 
-      if (!product) throw new NotFoundException('Product not found');
+      if (!product) {
+        throw new NotFoundException('Product not found');
+      }
 
       const result = await manager
         .getRepository(StockEntity)
@@ -45,7 +47,9 @@ export class StockRepository {
         })
         .execute();
 
-      if (!result.affected) throw new ConflictException('Insufficient stock');
+      if (!result.affected) {
+        throw new ConflictException('Insufficient stock');
+      }
 
       await manager
         .getRepository(ReservationEntity)

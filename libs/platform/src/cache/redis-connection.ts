@@ -23,14 +23,18 @@ export class RedisConnection implements OnModuleInit, OnModuleDestroy {
 
     // Log once per outage instead of on every reconnect attempt.
     this.client.on('error', () => {
-      if (this.unavailable) return;
+      if (this.unavailable) {
+        return;
+      }
 
       this.unavailable = true;
       this.logger.warn('redis.connection.unavailable');
     });
 
     this.client.on('ready', () => {
-      if (!this.unavailable) return;
+      if (!this.unavailable) {
+        return;
+      }
 
       this.unavailable = false;
       this.logger.info('redis.connection.restored');
@@ -45,6 +49,8 @@ export class RedisConnection implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    if (this.client.isOpen) this.client.destroy();
+    if (this.client.isOpen) {
+      this.client.destroy();
+    }
   }
 }

@@ -60,7 +60,9 @@ export class OutboxRepository {
         .setOnLocked('skip_locked')
         .getMany();
 
-      if (!events.length) return [];
+      if (!events.length) {
+        return [];
+      }
 
       const leaseToken = randomUUID();
 

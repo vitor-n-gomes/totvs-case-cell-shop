@@ -65,11 +65,13 @@ export class ReservationRepository {
     if (
       !reservations.length ||
       reservations.some((entry) => entry.status !== 'ACTIVE')
-    )
+    ) {
       throw new InventoryError('No active reservation');
+    }
 
-    if (await this.hasExpired(manager, orderId))
+    if (await this.hasExpired(manager, orderId)) {
       throw new ReservationExpiredError('Reservation expired');
+    }
 
     for (const entry of reservations) {
       const result = await manager
@@ -87,8 +89,9 @@ export class ReservationRepository {
         )
         .execute();
 
-      if (!result.affected)
+      if (!result.affected) {
         throw new InventoryError('Stock invariant violated');
+      }
     }
 
     await manager
@@ -116,8 +119,9 @@ export class ReservationRepository {
         })
         .execute();
 
-      if (!result.affected)
+      if (!result.affected) {
         throw new InventoryError('Stock invariant violated');
+      }
 
       await manager
         .getRepository(ReservationEntity)

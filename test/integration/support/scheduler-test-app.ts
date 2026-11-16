@@ -47,8 +47,9 @@ export async function waitUntil(
   const deadline = Date.now() + 15_000;
 
   while (!(await condition())) {
-    if (Date.now() >= deadline)
+    if (Date.now() >= deadline) {
       throw new Error(`Timed out waiting for ${description}`);
+    }
 
     await delay(25);
   }
@@ -63,15 +64,18 @@ function testEnvironment() {
   };
 
   for (const key of ['DATABASE_URL', 'KAFKA_BROKERS'] as const) {
-    if (process.env[key]) values[key] = process.env[key];
+    if (process.env[key]) {
+      values[key] = process.env[key];
+    }
   }
 
   const database = new URL(values.DATABASE_URL ?? '');
 
-  if (!database.pathname.endsWith('_test'))
+  if (!database.pathname.endsWith('_test')) {
     throw new Error(
       'Scheduler integration requires a dedicated _test database',
     );
+  }
 
   return values;
 }
@@ -94,8 +98,9 @@ export async function createSchedulerTestApp() {
     connections.length = 0;
     resources.length = 0;
 
-    if (errors.length)
+    if (errors.length) {
       throw new AggregateError(errors, 'Scheduler test teardown failed');
+    }
   };
 
   try {
@@ -112,7 +117,9 @@ export async function createSchedulerTestApp() {
     });
 
     resources.push(async () => {
-      if (adminDatabase.isInitialized) await adminDatabase.destroy();
+      if (adminDatabase.isInitialized) {
+        await adminDatabase.destroy();
+      }
     });
 
     await adminDatabase.initialize();
@@ -182,7 +189,9 @@ export async function createSchedulerTestApp() {
     const database = new DataSource(options);
 
     connections.push(async () => {
-      if (database.isInitialized) await database.destroy();
+      if (database.isInitialized) {
+        await database.destroy();
+      }
     });
 
     await database.initialize();
@@ -237,7 +246,9 @@ export async function createSchedulerTestApp() {
     const groups: string[] = [];
 
     resources.push(async () => {
-      if (groups.length) await admin.deleteGroups(groups);
+      if (groups.length) {
+        await admin.deleteGroups(groups);
+      }
     });
 
     return {
@@ -277,7 +288,9 @@ export async function createSchedulerTestApp() {
         });
 
         await waitUntil(async () => {
-          if (failure) throw failure;
+          if (failure) {
+            throw failure;
+          }
 
           return joined;
         }, 'Kafka observer group join');

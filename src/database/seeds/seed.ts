@@ -159,9 +159,13 @@ async function seed(): Promise<void> {
       `Catalog seeded; stock preserved except ${LIMITED_PRODUCT_KEY} (reset to 1 unit); cache invalidated.\n`,
     );
   } finally {
-    if (redis.isOpen) redis.destroy();
+    if (redis.isOpen) {
+      redis.destroy();
+    }
 
-    if (database.isInitialized) await database.destroy();
+    if (database.isInitialized) {
+      await database.destroy();
+    }
   }
 }
 

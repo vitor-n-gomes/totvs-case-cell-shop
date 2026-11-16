@@ -31,16 +31,21 @@ export class HealthService implements BeforeApplicationShutdown {
       kafka: kafka.status === 'fulfilled' ? 'up' : 'down',
     };
 
-    if (this.consumerReady !== undefined)
+    if (this.consumerReady !== undefined) {
       checks.consumer = this.consumerReady ? 'up' : 'down';
+    }
 
-    if (!this.requireKafka) delete checks.kafka;
+    if (!this.requireKafka) {
+      delete checks.kafka;
+    }
 
-    if (this.checkoutConsumerReady !== undefined)
+    if (this.checkoutConsumerReady !== undefined) {
       checks.checkoutConsumer = this.checkoutConsumerReady ? 'up' : 'down';
+    }
 
-    if (this.schedulerReady !== undefined)
+    if (this.schedulerReady !== undefined) {
       checks.scheduler = this.schedulerReady ? 'up' : 'down';
+    }
 
     return {
       ready:
@@ -52,7 +57,9 @@ export class HealthService implements BeforeApplicationShutdown {
 
   async cacheStatus(): Promise<{ redis: 'up' | 'down'; required: false }> {
     try {
-      if (!this.redis.client.isReady) return { redis: 'down', required: false };
+      if (!this.redis.client.isReady) {
+        return { redis: 'down', required: false };
+      }
 
       await this.redis.client
         .withCommandOptions({ abortSignal: AbortSignal.timeout(1000) })

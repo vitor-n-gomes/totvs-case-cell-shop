@@ -52,10 +52,11 @@ async function readStock(database: DataSource): Promise<StockSnapshot> {
 
   const row = rows[0];
 
-  if (!row)
+  if (!row) {
     throw new Error(
       `Product ${PRODUCT_KEY} not found. Run "npm run seed:run".`,
     );
+  }
 
   return {
     productId: row.product_id,
@@ -91,8 +92,9 @@ async function checkout(
   const body: unknown = await response.json().catch(() => ({}));
   const record = (body ?? {}) as { orderId?: string; message?: unknown };
 
-  if (response.status === 202 && record.orderId)
+  if (response.status === 202 && record.orderId) {
     return { kind: 'accepted', request, orderId: record.orderId };
+  }
 
   return {
     kind: 'rejected',
@@ -109,10 +111,11 @@ async function orderStatus(api: string, orderId: string): Promise<string> {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error(
       `GET /orders/${orderId}/status returned ${response.status}`,
     );
+  }
 
   return ((await response.json()) as { status: string }).status;
 }
@@ -130,12 +133,16 @@ async function waitForTerminalStatus(
 
   while (Date.now() < deadline) {
     for (const [id, status] of statuses) {
-      if (status !== OrderStatus.Pending) continue;
+      if (status !== OrderStatus.Pending) {
+        continue;
+      }
 
       statuses.set(id, await orderStatus(api, id));
     }
 
-    if ([...statuses.values()].every((s) => s !== OrderStatus.Pending)) break;
+    if ([...statuses.values()].every((s) => s !== OrderStatus.Pending)) {
+      break;
+    }
 
     await sleep(POLL_INTERVAL_MS);
   }
@@ -256,29 +263,35 @@ async function main(): Promise<number> {
 
     const errors: string[] = [];
 
-    if (pending > 0)
+    if (pending > 0) {
       errors.push(
         `${pending} order(s) still Pending after ${POLL_TIMEOUT_MS / 1000}s. Is the consumer running?`,
       );
+    }
 
-    if (active !== 1)
+    if (active !== 1) {
       errors.push(`Expected exactly 1 Active order, got ${active}.`);
+    }
 
-    if (notSold !== REQUESTS - 1)
+    if (notSold !== REQUESTS - 1) {
       errors.push(
         `Expected ${REQUESTS - 1} Cancelled/rejected, got ${notSold}.`,
       );
+    }
 
-    if (after.available < 0 || after.physical < 0)
+    if (after.available < 0 || after.physical < 0) {
       errors.push(
         `OVERSELLING: negative stock (available=${after.available}).`,
       );
+    }
 
-    if (after.available !== 0)
+    if (after.available !== 0) {
       errors.push(`Expected available_quantity 0, got ${after.available}.`);
+    }
 
-    if (after.reserved !== 0)
+    if (after.reserved !== 0) {
       errors.push(`Expected reserved_quantity 0, got ${after.reserved}.`);
+    }
 
     if (errors.length) {
       process.stderr.write(

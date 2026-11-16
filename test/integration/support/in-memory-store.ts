@@ -68,7 +68,9 @@ export class InMemoryStore {
   catalogQueries = 0;
 
   seedProducts(products: ProductRecord[]): void {
-    for (const product of products) this.products.set(product.id, product);
+    for (const product of products) {
+      this.products.set(product.id, product);
+    }
   }
 }
 
@@ -114,7 +116,9 @@ export class FakeOrderRepository {
     requestHash: string,
     correlationId: string,
   ): Promise<boolean> {
-    if (this.find(idempotencyKey)) return Promise.resolve(false);
+    if (this.find(idempotencyKey)) {
+      return Promise.resolve(false);
+    }
 
     this.store.orders.set(id, {
       id,
@@ -179,7 +183,9 @@ export class FakeStockRepository {
       items.map(({ productId, quantity }) => {
         const product = this.store.products.get(productId);
 
-        if (!product) throw new Error(`Seed product ${productId} first`);
+        if (!product) {
+          throw new Error(`Seed product ${productId} first`);
+        }
 
         product.reservedQuantity += quantity;
 
@@ -215,7 +221,7 @@ export class FakeOutboxRepository {
       (event) => event.deduplicationKey === deduplicationKey,
     );
 
-    if (!duplicate)
+    if (!duplicate) {
       this.store.outbox.push({
         orderId,
         topic,
@@ -223,6 +229,7 @@ export class FakeOutboxRepository {
         deduplicationKey,
         status: 'PENDING',
       });
+    }
 
     return Promise.resolve();
   }

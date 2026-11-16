@@ -19,8 +19,9 @@ export class ConsumeStockReservationStep implements ActivationStep {
         context.order.id,
       );
     } catch (error) {
-      if (error instanceof InventoryError)
+      if (error instanceof InventoryError) {
         throw new PermanentActivationError(error.message, { cause: error });
+      }
 
       throw error;
     }

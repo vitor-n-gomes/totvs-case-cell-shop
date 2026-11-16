@@ -32,11 +32,15 @@ export class ActiveOrderUseCase {
         runner.manager,
       );
 
-      if (decision === 'skip') return;
+      if (decision === 'skip') {
+        return;
+      }
 
       const order = await this.orders.findById(orderId, runner.manager);
 
-      if (!order) return;
+      if (!order) {
+        return;
+      }
 
       const context: ActivationContext = {
         order,

@@ -57,16 +57,19 @@ export class GetProductsUseCase {
   private singleFlight(
     operation: () => Promise<ProductView[]>,
   ): Promise<ProductView[]> {
-    if (!this.flight)
+    if (!this.flight) {
       this.flight = operation().finally(() => {
         this.flight = undefined;
       });
+    }
 
     return this.flight;
   }
 
   private client() {
-    if (!this.redis.client.isReady) throw new Error('Cache unavailable');
+    if (!this.redis.client.isReady) {
+      throw new Error('Cache unavailable');
+    }
 
     return this.redis.client.withCommandOptions({
       abortSignal: AbortSignal.timeout(1000),
@@ -76,7 +79,9 @@ export class GetProductsUseCase {
   private async read(): Promise<ProductView[] | null> {
     const value = await this.client().get(CATALOG_KEY);
 
-    if (!value) return null;
+    if (!value) {
+      return null;
+    }
 
     try {
       return productSchema.parse(JSON.parse(value));
@@ -117,7 +122,9 @@ export class GetProductsUseCase {
       try {
         const cached = await this.read();
 
-        if (cached) return cached;
+        if (cached) {
+          return cached;
+        }
 
         locked = await this.client().set(CATALOG_LOCK, token, {
           NX: true,
@@ -143,7 +150,9 @@ export class GetProductsUseCase {
               },
             );
 
-            if (stored !== 1) continue;
+            if (stored !== 1) {
+              continue;
+            }
           } catch {
             this.logger.warn('catalog.cache.write.failed');
           }

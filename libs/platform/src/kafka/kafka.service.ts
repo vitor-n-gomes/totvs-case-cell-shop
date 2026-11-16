@@ -23,7 +23,9 @@ export class KafkaService implements OnApplicationShutdown {
   ) {}
 
   ensureConnected(): Promise<void> {
-    if (this.closing) return Promise.reject(new Error('Kafka shutting down'));
+    if (this.closing) {
+      return Promise.reject(new Error('Kafka shutting down'));
+    }
 
     if (!this.connecting) {
       this.connecting = this.client

@@ -82,12 +82,13 @@ const environmentSchema = z
         'KAFKA_SASL_USERNAME',
         'KAFKA_SASL_PASSWORD',
       ] as const) {
-        if (!value[key])
+        if (!value[key]) {
           context.addIssue({
             code: 'custom',
             path: [key],
             message: 'Required for Kafka SASL authentication',
           });
+        }
       }
     }
 

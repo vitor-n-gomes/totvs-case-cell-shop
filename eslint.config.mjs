@@ -145,6 +145,7 @@ export default defineConfig(
     files: ['**/*.ts'],
     plugins: { localStyle: localStylePlugin, '@stylistic': stylistic },
     rules: {
+      curly: ['error', 'all'],
       'localStyle/blank-line-between-methods': 'error',
       '@stylistic/padding-line-between-statements': [
         'error',

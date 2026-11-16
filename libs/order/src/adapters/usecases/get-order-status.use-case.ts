@@ -8,7 +8,9 @@ export class GetOrderStatusUseCase {
   async execute(orderId: string) {
     const order = await this.orders.findById(orderId);
 
-    if (!order) throw new NotFoundException('Order not found');
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
 
     const items = await this.orders.findItems(orderId);
 

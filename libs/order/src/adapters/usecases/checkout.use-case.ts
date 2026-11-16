@@ -164,7 +164,9 @@ export class CheckoutUseCase {
   }
 
   private mapExecutionError(error: unknown): unknown {
-    if (error instanceof HttpException) return error;
+    if (error instanceof HttpException) {
+      return error;
+    }
 
     if (isTransientDatabaseFailure(error)) {
       return new ServiceUnavailableException(

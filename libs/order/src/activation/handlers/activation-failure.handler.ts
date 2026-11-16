@@ -137,7 +137,9 @@ export class ActivationFailureHandler {
       await work();
       await runner.commitTransaction();
     } catch (failure) {
-      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      if (runner.isTransactionActive) {
+        await runner.rollbackTransaction();
+      }
 
       throw failure;
     }
