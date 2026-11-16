@@ -12,12 +12,19 @@ Requires Node.js **24.9 or later in the 24.x line**, npm 12.2.2 and Docker Compo
 nvm use
 npm install --global npm@12.2.2
 npm ci
+npm run hooks:install
 cp .env.example .env
 npm run infra:up
 npm run infra:init
 npm run migration:run
 npm run seed
 ```
+
+`npm run hooks:install` enables the local pre-commit hook for this clone. Every
+`git commit` then runs lint, formatting checks, typechecking, the build and unit
+tests in that order, stopping and blocking the commit if a check fails. These
+checks inspect the current working tree, including unstaged changes. Run
+`npm run check` to execute the same checks manually.
 
 Start the applications in separate terminals:
 
