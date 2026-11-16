@@ -1,50 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
-  parseOrderEvent,
   OrderEvent,
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
 } from '@app/order/messaging/order-events';
-import { PermanentActivationError } from '@app/order/activation/guards/activation-errors';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { executionContext } from '@app/platform/observability/context';
-import { Metrics } from '@app/platform/observability/metrics';
-import { OrderMessaging } from '../order.messaging';
 import { CheckoutInitiatedHandler } from './event-handlers/checkout-initiated.handler';
 import { ReservationExpiredHandler } from './event-handlers/reservation-expired.handler';
-
-export interface EventSource {
-  topic: string;
-  partition: number;
-  offset: string;
-}
 
 @Injectable()
 export class ProcessOrderEventUseCase {
   constructor(
     private readonly checkoutInitiated: CheckoutInitiatedHandler,
     private readonly reservationExpired: ReservationExpiredHandler,
-    private readonly messaging: OrderMessaging,
-    private readonly config: ConfigService,
     private readonly logger: AppLogger,
-    private readonly metrics: Metrics,
   ) {}
 
-  async handle(payload: object, source: EventSource): Promise<void> {
-    const event = parseOrderEvent(payload);
-
-    if (!event) {
-
-      const reason = 'Invalid event payload';
-
-      await this.sendToDlq({ source, reason }, source, reason, 'invalid_dlq');
-
-      return;
-
-    }
-
+  async handle(event: OrderEvent): Promise<void> {
     const orderId = event.data.order_id;
     const correlationId = event.meta?.correlation_id ?? randomUUID();
 
@@ -68,17 +42,11 @@ export class ProcessOrderEventUseCase {
 
         } catch (error) {
 
-          if (!(error instanceof PermanentActivationError)) {
+          this.logger.error('order.event.dispatch.failed', {
+            error_type: error instanceof Error ? error.name : 'UnknownError',
+          });
 
-            this.logger.error('order.event.dispatch.failed', {
-              error_type: error instanceof Error ? error.name : 'UnknownError',
-            });
-
-            throw error;
-
-          }
-
-          await this.sendToDlq(event, source, error.message, 'dlq', orderId);
+          throw error;
 
         }
       },
@@ -97,31 +65,5 @@ export class ProcessOrderEventUseCase {
         break;
 
     }
-  }
-
-  private async sendToDlq(
-    payload: object,
-    source: EventSource,
-    reason: string,
-    metricResult: 'dlq' | 'invalid_dlq',
-    orderId?: string,
-  ): Promise<void> {
-    const correlationId =
-      executionContext.getStore()?.correlation_id ?? randomUUID();
-
-    await this.messaging.publish(
-      `${this.config.getOrThrow<string>('CHECKOUT_TOPIC')}.dlq`,
-      orderId ?? `${source.topic}:${source.partition}:${source.offset}`,
-      payload,
-      {
-        'x-correlation-id': correlationId,
-        'x-dlq-reason': reason,
-        'x-source-topic': source.topic,
-        'x-source-partition': String(source.partition),
-        'x-source-offset': source.offset,
-      },
-    );
-
-    this.metrics.processing.inc({ result: metricResult });
   }
 }

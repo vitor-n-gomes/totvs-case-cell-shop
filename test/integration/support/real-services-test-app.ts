@@ -20,6 +20,7 @@ import { OrderModule } from '@app/order/order.module';
 import { OrderConsumerModule } from '@app/order/order-consumer.module';
 import { OrderSchedulerModule } from '@app/order/order-scheduler.module';
 import { OrderMessaging } from '@app/order/adapters/order.messaging';
+import { OrderConsumerExceptionFilter } from '@app/order/adapters/consumer/order-consumer-exception.filter';
 import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations.use-case';
 import { OutboxRelay } from '@app/order/messaging/outbox-relay';
 import { RedisConnection } from '@app/platform/cache/redis-connection';
@@ -446,9 +447,12 @@ export async function createRealServicesTestApp(
         // Drain Kafka handlers before Nest destroys their database/Redis providers.
         connections.push(() => server.close());
 
-        app.connectMicroservice<MicroserviceOptions>({
-          strategy: server,
-        });
+        app.useGlobalFilters(app.get(OrderConsumerExceptionFilter));
+
+        app.connectMicroservice<MicroserviceOptions>(
+          { strategy: server },
+          { inheritAppConfig: true },
+        );
 
         await app.startAllMicroservices();
         groups.push(group);

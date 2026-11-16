@@ -296,19 +296,12 @@ describe('Scheduler reservation expiration (integration)', () => {
     const dispatcher = testApp.app.get(ProcessOrderEventUseCase);
 
     await Promise.all([
-      dispatcher.handle(outbox.payload, {
-        topic: testApp.topic,
-        partition: 0,
-        offset: '0',
+      dispatcher.handle(orderEventSchema.parse(outbox.payload)),
+      dispatcher.handle({
+        kind: ORDER_RESERVATION_EXPIRED,
+        data: { order_id: orderId },
+        meta: createEventMeta(randomUUID()),
       }),
-      dispatcher.handle(
-        {
-          kind: ORDER_RESERVATION_EXPIRED,
-          data: { order_id: orderId },
-          meta: createEventMeta(randomUUID()),
-        },
-        { topic: testApp.topic, partition: 0, offset: '1' },
-      ),
     ]);
 
     const after = await snapshot(testApp);

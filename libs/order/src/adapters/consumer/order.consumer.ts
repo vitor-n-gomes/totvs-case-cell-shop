@@ -3,21 +3,18 @@ import {
   Ctx,
   EventPattern,
   KafkaContext,
-  KafkaRetriableException,
   Payload,
+  RpcException,
 } from '@nestjs/microservices';
 import {
   ORDER_EVENT_PATTERN,
   ORDER_KAFKA_TRANSPORT,
 } from '@app/platform/kafka/kafka.topics';
-import { AppLogger } from '@app/platform/logging/app-logger';
+import { parseOrderEvent } from '@app/order/messaging/order-events';
 import { ProcessOrderEventUseCase } from '../usecases/process-order-event.use-case';
 @Controller()
 export class OrderConsumer {
-  constructor(
-    private readonly process: ProcessOrderEventUseCase,
-    private readonly logger: AppLogger,
-  ) {}
+  constructor(private readonly process: ProcessOrderEventUseCase) {}
 
   @EventPattern(ORDER_EVENT_PATTERN, ORDER_KAFKA_TRANSPORT)
   async orderEvent(
@@ -32,17 +29,15 @@ export class OrderConsumer {
 
     try {
 
-      await this.process.handle(payload, {
-        topic: context.getTopic(),
-        partition: context.getPartition(),
-        offset: context.getMessage().offset,
-      });
+      const event = parseOrderEvent(payload);
 
-    } catch {
+      if (!event) {
 
-      this.logger.error('checkout.consumer.failed');
+        throw new RpcException('Invalid event payload');
 
-      throw new KafkaRetriableException('Checkout processing failed');
+      }
+
+      await this.process.handle(event);
 
     } finally {
 

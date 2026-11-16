@@ -5,6 +5,7 @@ import {
   waitUntil,
 } from './support/real-services-test-app';
 import { randomUUID } from 'node:crypto';
+import { KafkaJSError } from 'kafkajs';
 import { PinoLogger } from 'nestjs-pino';
 import request from 'supertest';
 import {
@@ -22,9 +23,12 @@ import { ActivateOrderStep } from '@app/order/activation/steps/database-steps';
 import { IntegrationSimulator } from '@app/order/activation/steps/integration-steps';
 import {
   ORDER_CHECKOUT_INITIATED,
+  ORDER_RESERVATION_EXPIRED,
   orderEventSchema,
 } from '@app/order/messaging/order-events';
 import { createEventMeta } from '@app/order/messaging/event.util';
+import { CheckoutInitiatedHandler } from '@app/order/adapters/usecases/event-handlers/checkout-initiated.handler';
+import { ReservationExpiredHandler } from '@app/order/adapters/usecases/event-handlers/reservation-expired.handler';
 import { OutboxRepository } from '@app/order/repositories/outbox.repository';
 import {
   ReservationEntity,
@@ -594,9 +598,11 @@ describe('Checkout messaging with PostgreSQL, Redis and Kafka (integration)', ()
     const errors = jest.spyOn(PinoLogger.prototype, 'error');
     const failureHandler = testApp.app.get(ActivationFailureHandler);
 
-    const failure = jest
-      .spyOn(failureHandler, 'handle')
-      .mockRejectedValueOnce(new Error('simulated database outage'));
+    const failure = jest.spyOn(failureHandler, 'handle').mockRejectedValueOnce(
+      Object.assign(new Error('simulated database outage'), {
+        code: '57P01',
+      }),
+    );
 
     const deadLetters = await testApp.observe(`${testApp.topic}.dlq`);
 
@@ -627,6 +633,25 @@ describe('Checkout messaging with PostgreSQL, Redis and Kafka (integration)', ()
     await makeAvailable(testApp, retry.id);
     await testApp.relay.execute();
     await waitForOrder(testApp, orderId, ProcessingStatus.Completed, 2);
+    expect(deadLetters).toHaveLength(0);
+  });
+
+  it('redelivers a message after a transient Kafka failure in its handler', async () => {
+    const testApp = await setup({ SIMULATOR_DELAY_MS: 0 });
+    const deadLetters = await testApp.observe(`${testApp.topic}.dlq`);
+
+    const handler = jest
+      .spyOn(testApp.app.get(CheckoutInitiatedHandler), 'execute')
+      .mockRejectedValueOnce(new KafkaJSError('simulated broker outage'));
+
+    await testApp.startConsumer();
+    const { orderId } = await checkout(testApp);
+
+    await testApp.relay.execute();
+    await waitForOrder(testApp, orderId, ProcessingStatus.Completed, 1);
+    await testApp.waitForConsumerOffset(1);
+
+    expect(handler).toHaveBeenCalledTimes(2);
     expect(deadLetters).toHaveLength(0);
   });
 
@@ -672,14 +697,98 @@ describe('Checkout messaging with PostgreSQL, Redis and Kafka (integration)', ()
     expect(message.headers?.['x-source-partition']?.toString()).toBe('0');
     expect(message.headers?.['x-source-offset']?.toString()).toBe('0');
 
+    expect(message.headers?.['x-event-kind']?.toString()).toBe('UNKNOWN');
+
     expect(JSON.parse(body)).toEqual({
+      kind: 'UNKNOWN',
       source: { topic: testApp.topic, partition: 0, offset: '0' },
       reason: 'Invalid event payload',
     });
 
     expect(body).not.toContain('private-test-value');
     expect(body).not.toContain('secret');
+
+    await testApp.messaging.publish(testApp.topic, 'invalid-known-kind', {
+      kind: ORDER_RESERVATION_EXPIRED,
+      data: { order_id: 'invalid-id' },
+      secret: 'private-test-value',
+    });
+
+    await waitUntil(async () => deadLetters.length === 2, 'second invalid DLQ');
+    await testApp.waitForConsumerOffset(2);
+    const second = deadLetters[1]!.message;
+
+    expect(second.headers?.['x-event-kind']?.toString()).toBe(
+      ORDER_RESERVATION_EXPIRED,
+    );
+
+    expect(JSON.parse(second.value!.toString())).toEqual({
+      kind: ORDER_RESERVATION_EXPIRED,
+      source: { topic: testApp.topic, partition: 0, offset: '1' },
+      reason: 'Invalid event payload',
+    });
+
+    expect(second.value!.toString()).not.toContain('private-test-value');
   });
+
+  it.each([ORDER_CHECKOUT_INITIATED, ORDER_RESERVATION_EXPIRED])(
+    'dead-letters an unexpected %s handler error with its kind and payload',
+    async (kind) => {
+      const testApp = await setup();
+      const deadLetters = await testApp.observe(`${testApp.topic}.dlq`);
+
+      if (kind === ORDER_CHECKOUT_INITIATED) {
+
+        jest
+          .spyOn(testApp.app.get(CheckoutInitiatedHandler), 'execute')
+          .mockRejectedValueOnce(new TypeError('simulated programming error'));
+
+      } else {
+
+        jest
+          .spyOn(testApp.app.get(ReservationExpiredHandler), 'handle')
+          .mockRejectedValueOnce(new TypeError('simulated programming error'));
+
+      }
+
+      await testApp.startConsumer();
+      const { orderId } = await checkout(testApp);
+
+      const event = {
+        kind,
+        data: { order_id: orderId },
+        meta:
+          kind === ORDER_CHECKOUT_INITIATED
+            ? { ...createEventMeta(randomUUID()), attempt: 1 }
+            : createEventMeta(randomUUID()),
+      };
+
+      await testApp.messaging.publish(testApp.topic, orderId, event);
+      await waitUntil(async () => deadLetters.length === 1, 'unexpected DLQ');
+      await testApp.waitForConsumerOffset(1);
+
+      const message = deadLetters[0]!.message;
+
+      expect(message.key?.toString()).toBe(orderId);
+
+      expect(message.headers?.['x-dlq-reason']?.toString()).toBe(
+        'Unexpected TypeError',
+      );
+
+      expect(message.headers?.['x-event-kind']?.toString()).toBe(kind);
+      expect(message.headers?.['x-error-type']?.toString()).toBe('TypeError');
+      expect(JSON.parse(message.value!.toString())).toEqual(event);
+
+      expect(
+        await testApp.database.getRepository(OrderEntity).findOneByOrFail({
+          id: orderId,
+        }),
+      ).toMatchObject({
+        status: OrderStatus.Pending,
+        processingStatus: ProcessingStatus.Pending,
+      });
+    },
+  );
 
   it('dead-letters a valid event that refers to an unknown order as a permanent error', async () => {
     const testApp = await setup();

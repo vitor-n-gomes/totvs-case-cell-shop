@@ -6,6 +6,7 @@ import { KafkaModule } from '@app/platform/kafka/kafka.module';
 import { CacheModule } from '@app/platform/cache/cache.module';
 import { OrderPersistenceModule } from './order-persistence.module';
 import { OrderConsumer } from './adapters/consumer/order.consumer';
+import { OrderConsumerExceptionFilter } from './adapters/consumer/order-consumer-exception.filter';
 import { OrderMessaging } from './adapters/order.messaging';
 import { ProcessOrderEventUseCase } from './adapters/usecases/process-order-event.use-case';
 import { ActiveOrderUseCase } from './activation/active-order.use-case';
@@ -41,6 +42,7 @@ import { OrderActivatedHandler } from './adapters/handlers/order-activated.handl
   controllers: [OrderConsumer],
   providers: [
     OrderMessaging,
+    OrderConsumerExceptionFilter,
     ProcessOrderEventUseCase,
     ActiveOrderUseCase,
     ConsumeStockReservationStep,

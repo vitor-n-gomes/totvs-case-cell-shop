@@ -135,7 +135,9 @@ A failed attempt atomically records the failure, processing state and next outbo
 
 The relay runs every second. It claims up to 20 rows with `SKIP LOCKED` and a 30-second lease, publishes with `acks=-1` and `order_id` as key, then marks them processed only when its lease token still matches. Expired leases can be reclaimed. Crashing after Kafka acknowledgment but before the database update can duplicate publication; consumers must remain idempotent. A log statement alone does not implement retries or DLQ delivery.
 
-Malformed events are sent to the DLQ before completing their handler. Their DLQ record contains source topic/partition/offset and a reason, not an arbitrary raw payload. Original Kafka records remain the source for investigation, subject to broker retention.
+The Kafka consumer validates each incoming message before passing the typed event to the use case. A global exception filter sends unhandled permanent or unexpected processing errors to the DLQ with the validated event and headers for kind, error type, reason and source topic/partition/offset. Recognized transient database/network codes, Kafka errors and timeouts remain eligible for broker redelivery; a failed DLQ publication also prevents offset advancement. Unclassified errors are treated as unexpected and sent to the DLQ. Activation-step retries and terminal DLQ events still use the transactional outbox.
+
+Malformed events are sent to the DLQ with their recognized kind, source topic/partition/offset and a reason, not their arbitrary raw payload. Original Kafka records remain the source for investigation, subject to broker retention. Direct DLQ publication can be duplicated if the process stops before its offset is committed. An unexpected error outside the activation failure workflow can leave the order `Pending` or `Processing`; investigate and recover it using the runbook. The filter handles Kafka handler exceptions, not process crashes, startup failures or errors before the transport invokes a handler.
 
 Reservation expiry is split between two apps. The anemic `scheduler` app (no HTTP server) polls every `SCHEDULER_INTERVAL_MS` (default 10 s, never overlapping cycles) for up to 50 `Pending` orders with an expired active reservation, oldest `expires_at` first, and publishes one `ORDER_RESERVATION_EXPIRED` event per order to `CHECKOUT_TOPIC` keyed by `order_id`; it never changes orders or stock. The consumer's `ReservationExpiredHandler` takes the same per-order advisory lock as activation, skips orders whose processing completed, and in one transaction runs a conditional `Pending → Cancelled` update; only when it affects a row does it release the active reservations. Duplicate events (the scheduler republishes until the order is handled) are counted as `already_processed`. After commit it invalidates `storefront:products`; a Redis failure is only logged. Concurrent expiry/activation cannot both consume and release the same stock.
 
@@ -171,6 +173,25 @@ Suggested initial objectives, to validate under representative load: 99.9% valid
 
 A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache hit ratio and fallback count, accepted purchases versus worker completions, outbox age/backlog, retry/DLQ rate and ERP duration. Example alerts: oldest pending event >60 seconds for five minutes; any DLQ event; HTTP 5xx >1% for five minutes; audit drops >0; stock invariant mismatch >0. Pair long-window SLO burn with a short-window alert before paging on latency alone.
 
+### Dashboard, alert and query examples
+
+Prometheus queries (Datadog uses the same metric names through its OpenMetrics check):
+
+| Panel / alert          | Query                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Cache hit ratio        | `sum(rate(shop_cache_requests_total{result="hit"}[5m])) / sum(rate(shop_cache_requests_total{result=~"hit\|miss"}[5m]))`   |
+| Catalog p95 latency    | `histogram_quantile(0.95, sum by (le) (rate(shop_http_duration_seconds_bucket{route="/products"}[5m])))`                   |
+| Checkout p95 latency   | `histogram_quantile(0.95, sum by (le) (rate(shop_http_duration_seconds_bucket{route="/checkout"}[5m])))`                   |
+| HTTP 5xx ratio         | `sum(rate(shop_http_duration_seconds_count{status=~"5.."}[5m])) / sum(rate(shop_http_duration_seconds_count[5m]))`         |
+| Accepted vs. completed | `sum(rate(shop_checkout_total{result="accepted"}[5m]))` against `sum(rate(shop_processing_total{result="completed"}[5m]))` |
+| Retry / DLQ rate       | `sum(rate(shop_processing_total{result=~"retry\|dlq\|invalid_dlq"}[5m]))`                                                  |
+| Outbox backlog age     | `max(shop_outbox_oldest_seconds)`                                                                                          |
+| ERP step p95           | `histogram_quantile(0.95, sum by (le) (rate(shop_step_duration_seconds_bucket{step="UpdateErpStep"}[5m])))`                |
+
+Example monitors: oldest outbox event `> 60` seconds for 5 minutes (page); `increase(shop_processing_total{result="dlq"}[5m]) > 0` (page); 5xx ratio `> 0.01` for 5 minutes (page); cache hit ratio `< 0.8` for 15 minutes (ticket). Suggested dashboard rows: _Customer funnel_ (accepted to completed, latency), _Catalog cache_ (hit ratio, unavailable fallbacks), _Async pipeline_ (outbox age, retries, DLQ, ERP p95) and _Inventory_ (reservation transitions, rejections).
+
+To measure the cache benefit, compare `GET /products` p95 and database load with Redis up and stopped (for example with `autocannon`). No benchmark results are recorded here; the targets above are proposals.
+
 ### Runbooks
 
 **Slow catalog:** compare cache hit/miss/unavailable rates and database latency; check `/health/cache`, Redis connectivity and the lock TTL. Do not delete a live owner's lock arbitrarily. Scale database fallback capacity or shed load during Redis outages. Never serve cached availability as a checkout guarantee.
@@ -182,6 +203,19 @@ A Datadog/Prometheus dashboard should compare endpoint latency/error rate, cache
 **Terminal active order:** verify invoice/email state using the stable provider key before any manual action. Complete missing remote work with that key, then record its verified success through a reviewed database transaction and mark processing complete only after all four success records exist. Preserve successful steps and stock history. There is deliberately no automatic terminal-reset endpoint: creating a new retry cycle requires an explicit administrative design, not resetting `last_attempt` in isolation.
 
 **Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For Failed active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
+
+## Simplifications, trade-offs and limitations
+
+- **ERP and email are simulations.** Real invoicing needs provider idempotency keys or lookup and an ERP reconciliation job; neither exists here.
+- **Stock is storefront-owned.** No overselling is guaranteed only for the inventory allocated to this database. Selling the same units through the ERP or another channel needs an allocation agreement.
+- **Catalog freshness is TTL-bounded (300 s)** plus invalidation after seeds and expirations. Prices are snapshotted at checkout without a customer-approved quote.
+- **Tracing is a log-based simulation** (`trace.span`); there is no OpenTelemetry/Datadog exporter or W3C propagation.
+- **No authentication or rate limiting.** Idempotency keys are global; production needs per-customer scoping.
+- **Payments are metadata only.** `PrePaid`/`PostPaid` do not call a gateway.
+- **Single PostgreSQL, Kafka broker and Redis**, with no HA or DR exercises. Hot products serialize on their stock row.
+- **Reconciliation is manual** for stock balances, invoices and DLQ messages (there is no replay tool); the automatic job only expires abandoned reservations.
+- **No benchmark or SLO validation** was performed.
+- The trade-offs behind the outbox, reservations and cache-aside choices are in [docs/conceptual-answers.md](docs/conceptual-answers.md).
 
 ## Manual validation
 

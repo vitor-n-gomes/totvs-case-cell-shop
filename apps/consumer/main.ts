@@ -8,6 +8,7 @@ import { AppLogger } from '@app/platform/logging/app-logger';
 import { HealthService } from '@app/platform/health/health.service';
 import { kafkaConsumerOptions } from '@app/platform/kafka/kafka.options';
 import { TopicKafkaServer } from '@app/platform/kafka/topic-kafka.server';
+import { OrderConsumerExceptionFilter } from '@app/order/adapters/consumer/order-consumer-exception.filter';
 import {
   ORDER_EVENT_PATTERN,
   ORDER_KAFKA_TRANSPORT,
@@ -27,6 +28,7 @@ async function bootstrap(): Promise<void> {
     logger.setApp('consumer');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
+    app.useGlobalFilters(app.get(OrderConsumerExceptionFilter));
     const config = app.get(ConfigService);
     const health = app.get(HealthService);
 

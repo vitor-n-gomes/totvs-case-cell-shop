@@ -92,6 +92,8 @@ Refactor the project to use Zod instead of `class-validator`.
 
 ## Idempotent seed and overselling concurrency test request
 
+> Prompts below are recorded verbatim. Names such as `sku` and `available_quantity` were adjusted during implementation to the actual schema (`product_key`, `physical_quantity`).
+
 Create an idempotent database seed and a concurrency test script to validate zero-overselling under simultaneous checkout requests.
 
 Follow the project conventions (`snake_case` database columns, integer cents for prices, TypeORM entities, and PascalCase enums).
@@ -159,3 +161,7 @@ Outcome and review notes:
   constant (the environment variable remains) and unused event types.
 - Typecheck, both builds and Prettier pass. Lint reports the same 18 errors as
   before the change, and the jest suite was not run because `test/` does not exist.
+
+## Consumer event handling
+
+The user asked why Kafka payloads were `unknown` and requested central DLQ handling with the event kind and payload. The agreed approach validates at the consumer boundary, passes the typed event union to the use case, retries transient failures and includes the complete payload only for validated events. Invalid messages retain only safe kind and source metadata.
