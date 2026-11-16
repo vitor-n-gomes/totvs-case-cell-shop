@@ -10,7 +10,7 @@ import {
   OrderStatus,
   PaymentType,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '../libs/orders/src/domain/shared/types/order.type';
 import { validateEnvironment } from '@app/platform/config/environment';
 import { databaseOptions } from '@app/platform/database/options';
 

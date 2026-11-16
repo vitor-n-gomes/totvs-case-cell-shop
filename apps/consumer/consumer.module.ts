@@ -5,7 +5,7 @@ import { DatabaseModule } from '@app/platform/database/database.module';
 import { LoggingModule } from '@app/platform/logging/logging.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import { HealthModule } from '@app/platform/health/health.module';
-import { OrderConsumerModule } from '@app/order/order-consumer.module';
+import { OrderConsumerModule } from '../../libs/orders/src/order-consumer.module';
 @Module({
   imports: [
     ConfigurationModule,

@@ -9,7 +9,7 @@ import {
   type Relation,
   UpdateDateColumn,
 } from 'typeorm';
-import { OrderEntity } from '@app/order/domain/entities';
+import { OrderEntity } from '../../../../../orders/src/domain/entities';
 import { ProductEntity } from '@app/products/domain/entities/product.entity';
 
 @Entity('stock_reservation')

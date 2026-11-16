@@ -149,12 +149,12 @@ Delete `libs/contracts`, move its DTOs, enums and similar types into the `order`
 During planning I decided:
 
 - All event-related code (event envelope, event schemas, `ORDER_*` kinds and
-  `normalizeOrderEvent`) lives in `libs/order/src/messaging`, not in `platform`.
+  `normalizeOrderEvent`) lives in `libs/orders/src/messaging`, not in `platform`.
 - The legacy flat-event format stays supported, so the move does not change behavior.
 
 Outcome and review notes:
 
-- The order enums now live in `libs/order`, `CheckoutInput` is inferred from the
+- The order enums now live in `libs/orders`, `CheckoutInput` is inferred from the
   checkout Zod schema, and `ProductView` is local to `libs/shop`. `shop` receives a
   plain items type, so it does not import from `order`.
 - Unused code was removed: the demo message schemas and topic, the `CHECKOUT_TOPIC`

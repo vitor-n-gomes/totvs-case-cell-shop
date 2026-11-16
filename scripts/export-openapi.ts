@@ -1,8 +1,8 @@
 import { ProductsController } from '@app/products/adapters/http/products.controller';
-import { OrderController } from '@app/order/adapters/http/order.controller';
+import { OrderController } from '../libs/orders/src/adapters/http/order.controller';
 import { GetProductsUseCase } from '@app/products/adapters/usecases/get-products.use-case';
-import { CheckoutUseCase } from '@app/order/adapters/usecases/checkout.use-case';
-import { GetOrderStatusUseCase } from '@app/order/adapters/usecases/get-order-status.use-case';
+import { CheckoutUseCase } from '../libs/orders/src/adapters/usecases/checkout.use-case';
+import { GetOrderStatusUseCase } from '../libs/orders/src/adapters/usecases/get-order-status.use-case';
 import 'reflect-metadata';
 import { writeFile } from 'node:fs/promises';
 import { Test } from '@nestjs/testing';

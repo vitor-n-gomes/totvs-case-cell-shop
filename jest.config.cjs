@@ -27,7 +27,16 @@ module.exports = {
   ],
   collectCoverageFrom: [
     'libs/platform/src/config/*.ts',
-    'libs/order/src/**/*.ts',
+    'libs/orders/src/**/*.ts',
+    '!**/*.module.ts',
   ],
   coverageDirectory: 'coverage',
+  coverageThreshold: {
+    global: {
+      statements: 80,
+      branches: 80,
+      functions: 80,
+      lines: 80,
+    },
+  },
 };

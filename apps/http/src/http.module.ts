@@ -1,6 +1,6 @@
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ProductsModule } from '@app/products/products.module';
-import { OrderModule } from '@app/order/order.module';
+import { OrderModule } from '../../../libs/orders/src/order.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import {
   RequestAuditInterceptor,

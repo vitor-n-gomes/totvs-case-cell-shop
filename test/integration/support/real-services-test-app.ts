@@ -16,13 +16,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { parse } from 'dotenv';
 import { Kafka, KafkaMessage } from 'kafkajs';
 import { DataSource } from 'typeorm';
-import { OrderModule } from '@app/order/order.module';
-import { OrderConsumerModule } from '@app/order/order-consumer.module';
-import { OrderSchedulerModule } from '@app/order/order-scheduler.module';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
-import { OrderConsumerExceptionFilter } from '@app/order/adapters/consumer/order-consumer-exception.filter';
-import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations.use-case';
-import { OutboxRelay } from '@app/order/messaging/outbox-relay';
+import { OrderModule } from '@app/orders/order.module';
+import { OrderConsumerModule } from '@app/orders/order-consumer.module';
+import { OrderSchedulerModule } from '@app/orders/order-scheduler.module';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
+import { OrderConsumerExceptionFilter } from '@app/orders/adapters/consumer/order-consumer-exception.filter';
+import { ExpireReservationsUseCase } from '@app/orders/adapters/usecases/expire-reservations.use-case';
+import { OutboxRelay } from '@app/orders/messaging/outbox-relay';
 import { RedisConnection } from '@app/platform/cache/redis-connection';
 import {
   Environment,

@@ -9,8 +9,8 @@ configuration also used a deprecated helper. All ten uses were replaced:
 
 | Location                                                | Deprecated API          | Replacement                              | Uses |
 | ------------------------------------------------------- | ----------------------- | ---------------------------------------- | ---- |
-| `libs/order/src/messaging/order-events.ts`              | `z.string().uuid()`     | `z.uuid()`                               | 2    |
-| `libs/order/src/messaging/order-events.ts`              | `z.string().datetime()` | `z.iso.datetime()`                       | 2    |
+| `libs/orders/src/messaging/order-events.ts`             | `z.string().uuid()`     | `z.uuid()`                               | 2    |
+| `libs/orders/src/messaging/order-events.ts`             | `z.string().datetime()` | `z.iso.datetime()`                       | 2    |
 | `libs/platform/src/config/environment.ts`               | `z.string().url()`      | `z.url()`                                | 2    |
 | `libs/platform/src/config/environment.ts`               | `z.ZodIssueCode.custom` | `'custom'`                               | 1    |
 | `libs/platform/src/logging/correlation.middleware.ts`   | `z.string().uuid()`     | `z.uuid()`                               | 1    |

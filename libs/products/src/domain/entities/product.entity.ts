@@ -8,7 +8,7 @@ import {
   type Relation,
   UpdateDateColumn,
 } from 'typeorm';
-import { OrderItemEntity } from '@app/order/domain/entities';
+import { OrderItemEntity } from '../../../../orders/src/domain/entities';
 import {
   ReservationEntity,
   StockEntity,

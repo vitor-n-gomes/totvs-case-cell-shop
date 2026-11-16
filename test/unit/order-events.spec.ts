@@ -3,10 +3,10 @@ import {
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
   parseOrderEvent,
-} from '@app/order/messaging/order-events';
+} from '@app/orders/messaging/order-events';
 import { executionContext } from '@app/platform/observability/context';
 import { Spans } from '@app/platform/observability/spans';
-import { createEventMeta } from '@app/order/messaging/event.util';
+import { createEventMeta } from '@app/orders/messaging/event.util';
 
 const correlationId = randomUUID();
 const orderId = randomUUID();

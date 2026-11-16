@@ -8,7 +8,7 @@ import { AppLogger } from '@app/platform/logging/app-logger';
 import { HealthService } from '@app/platform/health/health.service';
 import { kafkaConsumerOptions } from '@app/platform/kafka/kafka.options';
 import { TopicKafkaServer } from '@app/platform/kafka/topic-kafka.server';
-import { OrderConsumerExceptionFilter } from '@app/order/adapters/consumer/order-consumer-exception.filter';
+import { OrderConsumerExceptionFilter } from '../../libs/orders/src/adapters/consumer/order-consumer-exception.filter';
 import {
   ORDER_EVENT_PATTERN,
   ORDER_KAFKA_TRANSPORT,

@@ -5,17 +5,17 @@ import {
 } from './support/real-services-test-app';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { OrderEntity, OutboxEventEntity } from '@app/order/domain/entities';
+import { OrderEntity, OutboxEventEntity } from '@app/orders/domain/entities';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 import {
   ORDER_RESERVATION_EXPIRED,
   orderEventSchema,
-} from '@app/order/messaging/order-events';
-import { createEventMeta } from '@app/order/messaging/event.util';
-import { ProcessOrderEventUseCase } from '@app/order/adapters/usecases/process-order-event.use-case';
+} from '@app/orders/messaging/order-events';
+import { createEventMeta } from '@app/orders/messaging/event.util';
+import { ProcessOrderEventUseCase } from '@app/orders/adapters/usecases/process-order-event.use-case';
 import { ProductEntity } from '@app/products/domain/entities';
 import {
   ReservationEntity,

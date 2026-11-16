@@ -4,7 +4,49 @@ A NestJS storefront API and Kafka worker implementing cached catalog reads, idem
 
 The five conceptual answers are in [docs/conceptual-answers.md](docs/conceptual-answers.md). [docs/tasks.md](docs/tasks.md) contains the implementation requirements; [PROMPTS.md](PROMPTS.md) records AI assistance and review decisions.
 
+## Table of contents
+
+- [Quick start](#quick-start)
+- [Run locally](#run-locally)
+- [Try the purchase flow](#try-the-purchase-flow)
+- [Architecture and consistency](#architecture-and-consistency)
+  - [Checkout and inventory](#checkout-and-inventory)
+  - [Activation and recovery](#activation-and-recovery)
+  - [Cache policy](#cache-policy)
+- [Observability and operations](#observability-and-operations)
+  - [Dashboard, alert and query examples](#dashboard-alert-and-query-examples)
+  - [Runbooks](#runbooks)
+- [Architecture decision: why Apache Kafka?](#architecture-decision-why-apache-kafka)
+  - [Trade-offs and how they are handled](#trade-offs-and-how-they-are-handled)
+- [Simplifications, trade-offs and limitations](#simplifications-trade-offs-and-limitations)
+- [Manual validation](#manual-validation)
+- [Automated tests](#automated-tests)
+
+## Quick start
+
+The fastest path is Docker only (Docker Compose v2 required, no Node.js needed on the host):
+
+```bash
+cp .env.example .env
+docker compose up -d --build --wait http consumer scheduler
+docker compose run --rm migrate npm run seed
+```
+
+Compose starts PostgreSQL, Redis, Kafka (single KRaft broker), creates the Kafka topics, runs the migrations and then starts the three applications. Once everything is healthy:
+
+| Service       | URL                                                                      |
+| ------------- | ------------------------------------------------------------------------ |
+| HTTP API      | [http://localhost:3000](http://localhost:3000)                           |
+| Swagger UI    | [http://localhost:3000/api-docs](http://localhost:3000/api-docs)         |
+| Worker ops    | [http://localhost:3001/health/ready](http://localhost:3001/health/ready) |
+| Kafka UI      | [http://localhost:8080](http://localhost:8080)                           |
+| Redis Insight | [http://localhost:5540](http://localhost:5540)                           |
+
+Then follow [Try the purchase flow](#try-the-purchase-flow), or run `npm run test:smoke` / `npm run test:happy-path` (the latter needs the Node.js setup below). Stop everything with `docker compose down` (data volumes are kept; add `-v` to wipe them).
+
 ## Run locally
+
+Use this path for development with hot reload (the applications run on the host; infrastructure runs in Docker).
 
 Requires Node.js **24.9 or later in the 24.x line**, npm 12.2.2 and Docker Compose v2. Use `nvm use` in each terminal; an existing shell may otherwise continue using Node 20. Jest uses Node's VM modules support for the ESM scheduling package.
 
@@ -12,12 +54,19 @@ Requires Node.js **24.9 or later in the 24.x line**, npm 12.2.2 and Docker Compo
 nvm use
 npm install --global npm@12.2.2
 npm ci
+npm run hooks:install
 cp .env.example .env
 npm run infra:up
 npm run infra:init
 npm run migration:run
 npm run seed
 ```
+
+`npm run hooks:install` enables the local pre-commit hook for this clone. Every
+`git commit` then runs lint, formatting checks, typechecking, the build and unit
+tests in that order, stopping and blocking the commit if a check fails. These
+checks inspect the current working tree, including unstaged changes. Run
+`npm run check` to execute the same checks manually.
 
 Start the applications in separate terminals:
 
@@ -108,7 +157,7 @@ flowchart LR
     Cleanup[Worker expiration job] --> DB
 ```
 
-`libs/order` owns checkout, order queries, activation, retries, the transactional outbox and expiration orchestration. `libs/products` owns the catalog (products module) and, in its `inventory` sub-module, stock and reservations; the inventory module exports reservation operations without importing Orders. Like `libs/order`, it is laid out as `domain/` (entities, dto), `adapters/` (http, usecases), `repositories/` and a persistence module. Feature controllers live with their modules. `apps/http` serves the public API, while `apps/consumer` runs two Nest Kafka transports (preserving the demo group and the `-checkout` group), scheduled jobs and an operations HTTP server. HTTP imports no consumer or scheduler module. Event schemas live in `libs/order/src/messaging` and are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
+`libs/orders` owns checkout, order queries, activation, retries, the transactional outbox and expiration orchestration. `libs/products` owns the catalog (products module) and, in its `inventory` sub-module, stock and reservations; the inventory module exports reservation operations without importing Orders. Like `libs/orders`, it is laid out as `domain/` (entities, dto), `adapters/` (http, usecases), `repositories/` and a persistence module. Feature controllers live with their modules. `apps/http` serves the public API, while `apps/consumer` runs two Nest Kafka transports (preserving the demo group and the `-checkout` group), scheduled jobs and an operations HTTP server. HTTP imports no consumer or scheduler module. Event schemas live in `libs/orders/src/messaging` and are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
 
 ### Checkout and inventory
 
@@ -203,6 +252,24 @@ To measure the cache benefit, compare `GET /products` p95 and database load with
 **Terminal active order:** verify invoice/email state using the stable provider key before any manual action. Complete missing remote work with that key, then record its verified success through a reviewed database transaction and mark processing complete only after all four success records exist. Preserve successful steps and stock history. There is deliberately no automatic terminal-reset endpoint: creating a new retry cycle requires an explicit administrative design, not resetting `last_attempt` in isolation.
 
 **Inventory reconciliation:** compare each stock row's `reserved_quantity` to the sum of its ACTIVE reservations and compare consumed quantities to accepted orders. Investigate mismatches before changing balances. Reconcile invoices by order/provider key against the ERP. For Failed active orders, compensation/restocking requires a business decision and proof that fulfillment did not occur. The automatic job here only reconciles expired local reservations.
+
+## Architecture decision: why Apache Kafka?
+
+**Status:** accepted. Apache Kafka was chosen deliberately over traditional queue-oriented brokers (RabbitMQ, SQS) to meet this domain's requirements for resilience, ordering and observability.
+
+1. **Per-aggregate ordering (`order_id` as partition key).** An order goes through several events in sequence (`ORDER_CHECKOUT_INITIATED`, activation retries and `ORDER_RESERVATION_EXPIRED`). Every event is published with `key = order_id`, so Kafka routes all events of one order to the same partition and the consumer sees them in strict order. This reduces race conditions before the database locks (row locks and the per-order advisory lock) are even reached.
+2. **Immutable log with native replay / redrive.** Unlike destructive queues, where a message disappears after the `ACK`, Kafka retains events for a configurable period. For schema-valid events, the `.dlq` topic receives the original payload intact and the error metadata (kind, error type, reason, source topic/partition/offset) travels in the headers. Failed events can be reprocessed (redrive) and state can be rebuilt after a bug fix without losing history. Malformed messages are the exception: they carry only their recognized kind, source coordinates and a reason, never the raw payload (see [Activation and recovery](#activation-and-recovery)).
+3. **Decoupling from future consumers.** Independent consumer groups can read the same event stream (`{ kind, data, meta }`). New services (audit, analytics, notifications, anti-fraud) can subscribe to the orders topic later without changing a line in the producers (`http` or `scheduler`).
+4. **High throughput for bursts (flash sales / Black Friday).** When checkout spikes meet a slow ERP, Kafka acts as a durable, high-write-rate buffer that absorbs the burst coming from the transactional outbox relay. Consumers process at the pace the database and ERP can sustain, with no backpressure on the HTTP API, which only commits to PostgreSQL and answers `202`.
+
+### Trade-offs and how they are handled
+
+Kafka has no native per-message delayed delivery and no automatic per-event retry with backoff. Sleeping inside the consumer would block the whole partition (and every other order on it), so this project combines Kafka with the **transactional outbox** and the anemic **scheduler**:
+
+- A failed activation attempt writes the next attempt to the outbox in the same transaction as its failure record, with a delay of `2 ** (attempt - 1)` seconds (1, 2, 4 and 8 s) stored in `available_at`. The relay only publishes rows whose `available_at` has passed, so the partition is never blocked.
+- Terminal failures are written to the outbox for `<checkout topic>.dlq` the same way.
+- Reservation expiry is driven by the scheduler, which republishes `ORDER_RESERVATION_EXPIRED` until the order is handled; handlers are idempotent.
+- Costs accepted in exchange: higher operational weight than a simple queue (broker, partitions, consumer groups, offsets), at-least-once delivery that forces idempotent consumers, and ordering guaranteed only within a partition (hence the `order_id` key). The local setup uses a single broker and three partitions per topic, with no HA (see the limitations below).
 
 ## Simplifications, trade-offs and limitations
 
