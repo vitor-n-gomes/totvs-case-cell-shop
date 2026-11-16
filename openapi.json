@@ -41,7 +41,9 @@
           }
         },
         "summary": "",
-        "tags": ["storefront"]
+        "tags": [
+          "storefront"
+        ]
       }
     },
     "/checkout": {
@@ -130,7 +132,9 @@
           }
         },
         "summary": "",
-        "tags": ["storefront"]
+        "tags": [
+          "storefront"
+        ]
       }
     },
     "/orders/{orderId}/status": {
@@ -198,7 +202,9 @@
           }
         },
         "summary": "",
-        "tags": ["storefront"]
+        "tags": [
+          "storefront"
+        ]
       }
     }
   },
@@ -239,7 +245,12 @@
             "format": "uuid"
           }
         },
-        "required": ["statusCode", "error", "message", "correlationId"]
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "correlationId"
+        ]
       },
       "ProductDto": {
         "type": "object",
@@ -255,19 +266,21 @@
             "type": "string"
           },
           "netPrice": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 2990,
-            "description": "Price in integer cents (minor currency units)"
+            "type": "number",
+            "example": 2990
           },
           "listPrice": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 3990,
-            "description": "Price in integer cents (minor currency units)"
+            "type": "number",
+            "example": 3990
           }
         },
-        "required": ["id", "name", "productKey", "netPrice", "listPrice"]
+        "required": [
+          "id",
+          "name",
+          "productKey",
+          "netPrice",
+          "listPrice"
+        ]
       },
       "CheckoutItemDto": {
         "type": "object",
@@ -282,14 +295,20 @@
             "maximum": 1000000
           }
         },
-        "required": ["productId", "quantity"]
+        "required": [
+          "productId",
+          "quantity"
+        ]
       },
       "CheckoutDto": {
         "type": "object",
         "properties": {
           "paymentType": {
             "type": "string",
-            "enum": ["PrePaid", "PostPaid"]
+            "enum": [
+              "PrePaid",
+              "PostPaid"
+            ]
           },
           "dueDate": {
             "type": "string",
@@ -310,7 +329,11 @@
           },
           "environment": {
             "type": "string",
-            "enum": ["Local", "PreProd", "Prod"]
+            "enum": [
+              "Local",
+              "PreProd",
+              "Prod"
+            ]
           },
           "items": {
             "minItems": 1,
@@ -339,10 +362,15 @@
           },
           "status": {
             "type": "string",
-            "enum": ["Pending"]
+            "enum": [
+              "Pending"
+            ]
           }
         },
-        "required": ["orderId", "status"]
+        "required": [
+          "orderId",
+          "status"
+        ]
       },
       "OrderItemDto": {
         "type": "object",
@@ -357,19 +385,20 @@
             "maximum": 1000000
           },
           "netPrice": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 2990,
-            "description": "Price in integer cents (minor currency units)"
+            "type": "number",
+            "example": 2990
           },
           "listPrice": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 3990,
-            "description": "Price in integer cents (minor currency units)"
+            "type": "number",
+            "example": 3990
           }
         },
-        "required": ["productId", "quantity", "netPrice", "listPrice"]
+        "required": [
+          "productId",
+          "quantity",
+          "netPrice",
+          "listPrice"
+        ]
       },
       "OrderStatusDto": {
         "type": "object",
@@ -380,15 +409,28 @@
           },
           "status": {
             "type": "string",
-            "enum": ["Pending", "Active", "Cancelled"]
+            "enum": [
+              "Pending",
+              "Active",
+              "Cancelled"
+            ]
           },
           "processingStatus": {
             "type": "string",
-            "enum": ["Pending", "Processing", "Retrying", "Completed", "Failed"]
+            "enum": [
+              "Pending",
+              "Processing",
+              "Retrying",
+              "Completed",
+              "Failed"
+            ]
           },
           "paymentType": {
             "type": "string",
-            "enum": ["PrePaid", "PostPaid"]
+            "enum": [
+              "PrePaid",
+              "PostPaid"
+            ]
           },
           "paymentMethod": {
             "type": "string"
@@ -399,7 +441,11 @@
           },
           "environment": {
             "type": "string",
-            "enum": ["Local", "PreProd", "Prod"]
+            "enum": [
+              "Local",
+              "PreProd",
+              "Prod"
+            ]
           },
           "createdAt": {
             "type": "string",
