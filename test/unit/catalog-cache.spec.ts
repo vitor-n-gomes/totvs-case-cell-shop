@@ -170,9 +170,9 @@ describe('CheckoutGuard', () => {
   it.each([undefined, '', 'has space', 'x'.repeat(129)])(
     'rejects invalid idempotency key %p',
     (idempotencyKey) => {
-      expect(() =>
-        checkoutGuard.validate(checkoutDto, idempotencyKey),
-      ).toThrow(BadRequestException);
+      expect(() => checkoutGuard.validate(checkoutDto, idempotencyKey)).toThrow(
+        BadRequestException,
+      );
     },
   );
 
@@ -202,10 +202,7 @@ describe('CheckoutGuard', () => {
   it('changes the hash when any purchase field changes', () => {
     const changedQuantityInput = {
       ...checkoutDto,
-      items: [
-        { ...checkoutDto.items[0]!, quantity: 5 },
-        checkoutDto.items[1]!,
-      ],
+      items: [{ ...checkoutDto.items[0]!, quantity: 5 }, checkoutDto.items[1]!],
     };
 
     expect(checkoutGuard.hashPayload(changedQuantityInput)).not.toBe(
