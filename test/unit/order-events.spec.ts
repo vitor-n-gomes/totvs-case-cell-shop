@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { createEventMeta } from '@app/order/messaging/order-event';
 import {
-  ORDER_CHECKOUT_FAILED,
   ORDER_CHECKOUT_INITIATED,
-  ORDER_EVENT_INVALID,
   ORDER_RESERVATION_EXPIRED,
   parseOrderEvent,
 } from '@app/order/messaging/order-events';
 import { executionContext } from '@app/platform/observability/context';
 import { Spans } from '@app/platform/observability/spans';
+import { createEventMeta } from '@app/order/messaging/event.util';
 
 const correlationId = randomUUID();
 const orderId = randomUUID();
@@ -34,34 +32,6 @@ describe('order events (snake_case envelope)', () => {
       { data: { order_id: orderId }, meta: { ...meta, attempt: 1 } },
     ],
     [ORDER_RESERVATION_EXPIRED, { data: { order_id: orderId }, meta }],
-    [
-      ORDER_CHECKOUT_FAILED,
-      {
-        data: {
-          order_id: orderId,
-          failure: {
-            error_type: 'Error',
-            attempt: 1,
-            event_id: randomUUID(),
-          },
-          failed_step: 'UpdateErpStep',
-        },
-        meta: { ...meta, attempt: 1 },
-      },
-    ],
-    [
-      ORDER_EVENT_INVALID,
-      {
-        data: {
-          source_topic: 'topic',
-          partition: 0,
-          offset: '1',
-          reason: 'bad',
-          order_id: orderId,
-        },
-        meta,
-      },
-    ],
   ])('accepts a valid %s event', (kind, rest) => {
     expect(parseOrderEvent({ kind, ...rest })).toEqual({ kind, ...rest });
   });

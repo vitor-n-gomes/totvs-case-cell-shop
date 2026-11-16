@@ -99,13 +99,16 @@ O contexto de observabilidade (`executionContext`, logs e spans) usa as mesmas c
 
 ## 4. Tipos de Eventos Implementados
 
-| Evento                        | Kind                        | Emitido Por                             | Descrição                                    |
-| ----------------------------- | --------------------------- | --------------------------------------- | -------------------------------------------- |
-| **ORDER_CHECKOUT_INITIATED**  | `ORDER_CHECKOUT_INITIATED`  | `CheckoutUseCase`                       | Novo checkout iniciado (entrada do consumer) |
-| **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou                     |
-| **ORDER_ACTIVATED**           | `ORDER_ACTIVATED`           | `OnlineActivationStrategy`              | Order ativada (somente in-process, EventBus) |
-| **ORDER_CHECKOUT_FAILED**     | `ORDER_CHECKOUT_FAILED`     | `ActiveOrderUseCase` (via outbox, DLQ)  | Checkout falhou definitivamente              |
-| **ORDER_EVENT_INVALID**       | `ORDER_EVENT_INVALID`       | `ProcessOrderEventUseCase` (DLQ)        | Evento inválido ou erro no processamento     |
+| Evento                        | Kind                        | Emitido Por                             | Descrição                                                    |
+| ----------------------------- | --------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| **ORDER_CHECKOUT_INITIATED**  | `ORDER_CHECKOUT_INITIATED`  | `CheckoutUseCase`                       | Novo checkout iniciado (entrada do consumer)                 |
+| **ORDER_RESERVATION_EXPIRED** | `ORDER_RESERVATION_EXPIRED` | `ExpireReservationsUseCase` (scheduler) | Reserva de stock expirou                                     |
+| **ORDER_ACTIVATED**           | `ORDER_ACTIVATED`           | `OnlineActivationStrategy`              | Order ativada (somente in-process, EventBus, best effort)    |
+
+Não existem eventos dedicados a erro. Retries e DLQ reenviam o **mesmo evento** com o `kind` original:
+
+- Falha na ativação: `ActivationFailureHandler` reenfileira o `ORDER_CHECKOUT_INITIATED` (via outbox) com `meta.attempt + 1`; ao esgotar as tentativas ou em erro permanente, o mesmo evento vai para `<CHECKOUT_TOPIC>.dlq`. Os detalhes da falha ficam no idempotency log.
+- Payload inválido ou erro no consumer: `ProcessOrderEventUseCase` publica o payload original na DLQ com os headers `x-dlq-reason`, `x-source-topic`, `x-source-partition` e `x-source-offset`.
 
 ---
 

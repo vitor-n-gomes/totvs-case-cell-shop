@@ -3,9 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { QueryRunner } from 'typeorm';
 import {
-  CheckoutFailedEvent,
   CheckoutInitiatedEvent,
-  ORDER_CHECKOUT_FAILED,
   ORDER_CHECKOUT_INITIATED,
 } from '@app/order/messaging/order-events';
 import {
@@ -103,21 +101,12 @@ export class ActivationFailureHandler {
       occurred_at: new Date().toISOString(),
       attempt: terminal ? attempt : attempt + 1,
     };
-    const nextEvent: CheckoutInitiatedEvent | CheckoutFailedEvent = terminal
-      ? {
-          kind: ORDER_CHECKOUT_FAILED,
-          data: {
-            order_id: order.id,
-            failure: reference,
-            failed_step: context.currentStep,
-          },
-          meta: nextMeta,
-        }
-      : {
-          kind: ORDER_CHECKOUT_INITIATED,
-          data: { order_id: order.id },
-          meta: nextMeta,
-        };
+    // Terminal failures dead-letter the same checkout event; failure details live in the journal.
+    const nextEvent: CheckoutInitiatedEvent = {
+      kind: ORDER_CHECKOUT_INITIATED,
+      data: { order_id: order.id },
+      meta: nextMeta,
+    };
     await this.outbox.append(
       manager,
       order.id,

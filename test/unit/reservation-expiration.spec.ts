@@ -12,7 +12,7 @@ import {
   OrderStatus,
   ProcessingStatus,
 } from '@app/order/domain/shared/types/order.type';
-import { createEventMeta } from '@app/order/messaging/order-event';
+import { createEventMeta } from '@app/order/messaging/event.util';
 import {
   ORDER_RESERVATION_EXPIRED,
   parseOrderEvent,

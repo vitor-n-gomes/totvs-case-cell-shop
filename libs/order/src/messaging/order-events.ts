@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const ORDER_CHECKOUT_INITIATED = 'ORDER_CHECKOUT_INITIATED';
 export const ORDER_RESERVATION_EXPIRED = 'ORDER_RESERVATION_EXPIRED';
+export const ORDER_ACTIVATED = 'ORDER_ACTIVATED';
 
 const eventMetaSchema = z.strictObject({
   schema_version: z.literal(1),
@@ -22,7 +23,7 @@ const checkoutEventSchema = z.strictObject({
   data: z.strictObject({
     order_id: z.uuid(),
   }),
-  meta: checkoutEventMetaSchema.optional(),
+  meta: checkoutEventMetaSchema,
 });
 export type CheckoutInitiatedEvent = z.infer<typeof checkoutEventSchema>;
 
@@ -42,6 +43,15 @@ export const orderEventSchema = z.discriminatedUnion('kind', [
   reservationExpiredEventSchema,
 ]);
 export type OrderEvent = z.infer<typeof orderEventSchema>;
+
+// In-process only (EventBus, best effort): never published to Kafka.
+export interface OrderActivatedEvent {
+  kind: typeof ORDER_ACTIVATED;
+  data: { order_id: string };
+  meta?: EventMeta;
+}
+
+export type DomainEvent = OrderEvent | OrderActivatedEvent;
 
 export function parseOrderEvent(payload: unknown): OrderEvent | null {
   const parsed = orderEventSchema.safeParse(payload);
