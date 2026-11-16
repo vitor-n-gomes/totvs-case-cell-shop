@@ -255,14 +255,12 @@
             "type": "string"
           },
           "netPrice": {
-            "type": "string",
-            "example": "29.90",
-            "pattern": "^\\d+\\.\\d{2}$"
+            "type": "number",
+            "example": 2990
           },
           "listPrice": {
-            "type": "string",
-            "example": "39.90",
-            "pattern": "^\\d+\\.\\d{2}$"
+            "type": "number",
+            "example": 3990
           }
         },
         "required": ["id", "name", "productKey", "netPrice", "listPrice"]

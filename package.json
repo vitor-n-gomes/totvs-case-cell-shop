@@ -26,6 +26,7 @@
     "seed:run": "npm run seed",
     "test:overselling": "npm run seed:run && ts-node -r tsconfig-paths/register scripts/test-concurrency.ts",
     "test:happy-path": "npm run seed:run && ts-node -r tsconfig-paths/register scripts/test-happy-path.ts",
+    "test:duplicate-checkout-event": "npm run seed:run && ts-node -r tsconfig-paths/register scripts/test-duplicate-checkout-event.ts",
     "test:smoke": "node scripts/smoke.mjs",
     "build:http": "nest build http",
     "build:consumer": "nest build consumer",
