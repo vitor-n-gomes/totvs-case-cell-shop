@@ -47,11 +47,15 @@ export async function waitUntil(
   const deadline = Date.now() + 15_000;
 
   while (!(await condition())) {
+
     if (Date.now() >= deadline) {
+
       throw new Error(`Timed out waiting for ${description}`);
+
     }
 
     await delay(25);
+
   }
 }
 
@@ -64,17 +68,23 @@ function testEnvironment() {
   };
 
   for (const key of ['DATABASE_URL', 'KAFKA_BROKERS'] as const) {
+
     if (process.env[key]) {
+
       values[key] = process.env[key];
+
     }
+
   }
 
   const database = new URL(values.DATABASE_URL ?? '');
 
   if (!database.pathname.endsWith('_test')) {
+
     throw new Error(
       'Scheduler integration requires a dedicated _test database',
     );
+
   }
 
   return values;
@@ -88,22 +98,31 @@ export async function createSchedulerTestApp() {
     const errors: unknown[] = [];
 
     for (const cleanup of [...connections.reverse(), ...resources.reverse()]) {
+
       try {
+
         await cleanup();
+
       } catch (error) {
+
         errors.push(error);
+
       }
+
     }
 
     connections.length = 0;
     resources.length = 0;
 
     if (errors.length) {
+
       throw new AggregateError(errors, 'Scheduler test teardown failed');
+
     }
   };
 
   try {
+
     const values = testEnvironment();
     const suffix = randomUUID().replaceAll('-', '');
     const schema = `scheduler_${suffix}`;
@@ -118,7 +137,9 @@ export async function createSchedulerTestApp() {
 
     resources.push(async () => {
       if (adminDatabase.isInitialized) {
+
         await adminDatabase.destroy();
+
       }
     });
 
@@ -190,7 +211,9 @@ export async function createSchedulerTestApp() {
 
     connections.push(async () => {
       if (database.isInitialized) {
+
         await database.destroy();
+
       }
     });
 
@@ -247,7 +270,9 @@ export async function createSchedulerTestApp() {
 
     resources.push(async () => {
       if (groups.length) {
+
         await admin.deleteGroups(groups);
+
       }
     });
 
@@ -289,7 +314,9 @@ export async function createSchedulerTestApp() {
 
         await waitUntil(async () => {
           if (failure) {
+
             throw failure;
+
           }
 
           return joined;
@@ -322,18 +349,25 @@ export async function createSchedulerTestApp() {
         await waitUntil(async () => ready, 'order consumer group join');
       },
     };
+
   } catch (error) {
+
     try {
+
       await close();
+
     } catch (cleanupError) {
+
       throw new AggregateError(
         [error, cleanupError],
         'Scheduler test setup and teardown failed',
         { cause: cleanupError },
       );
+
     }
 
     throw error;
+
   }
 }
 

@@ -23,6 +23,7 @@ export function isTransientDatabaseFailure(error: unknown): boolean {
   let current: unknown = error;
 
   while (isRecord(current) && !seen.has(current)) {
+
     seen.add(current);
     const code = current.code;
 
@@ -32,10 +33,13 @@ export function isTransientDatabaseFailure(error: unknown): boolean {
         code.startsWith('53') ||
         TRANSIENT_DB_CODES.has(code))
     ) {
+
       return true;
+
     }
 
     current = current.driverError ?? current.cause;
+
   }
 
   return false;

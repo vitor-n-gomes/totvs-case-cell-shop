@@ -6,6 +6,80 @@ import globals from 'globals';
 
 const localStylePlugin = {
   rules: {
+    'padded-control-flow-blocks': {
+      meta: {
+        type: 'layout',
+        docs: {
+          description: 'Require blank lines inside control-flow blocks',
+        },
+        fixable: 'whitespace',
+        schema: [],
+        messages: {
+          padding:
+            'Separate control-flow block braces from their contents with a blank line.',
+        },
+      },
+      create(context) {
+        const sourceCode = context.sourceCode;
+
+        function checkPadding(node) {
+          if (!(node.body?.length || node.cases?.length)) return;
+
+          const opening =
+            node.type === 'SwitchStatement'
+              ? sourceCode.getTokenBefore(node.cases[0])
+              : sourceCode.getFirstToken(node);
+          const closing = sourceCode.getLastToken(node);
+          const first = sourceCode.getTokenAfter(opening, {
+            includeComments: true,
+          });
+          const last = sourceCode.getTokenBefore(closing, {
+            includeComments: true,
+          });
+          const indentation =
+            sourceCode.lines[opening.loc.start.line - 1].match(/^\s*/)[0];
+
+          for (const [before, after, fallbackIndentation] of [
+            [opening, first, `${indentation}  `],
+            [last, closing, indentation],
+          ]) {
+            if (after.loc.start.line - before.loc.end.line >= 2) continue;
+
+            const nextIndentation =
+              after.loc.start.line === opening.loc.start.line
+                ? fallbackIndentation
+                : sourceCode.lines[after.loc.start.line - 1].match(/^\s*/)[0];
+
+            context.report({
+              node,
+              messageId: 'padding',
+              fix(fixer) {
+                return fixer.replaceTextRange(
+                  [before.range[1], after.range[0]],
+                  `\n\n${nextIndentation}`,
+                );
+              },
+            });
+          }
+        }
+
+        const blocks = [
+          'IfStatement > BlockStatement',
+          'ForStatement > BlockStatement',
+          'ForOfStatement > BlockStatement',
+          'ForInStatement > BlockStatement',
+          'WhileStatement > BlockStatement',
+          'DoWhileStatement > BlockStatement',
+          'TryStatement > BlockStatement',
+          'CatchClause > BlockStatement',
+        ].join(', ');
+
+        return {
+          [blocks]: checkPadding,
+          SwitchStatement: checkPadding,
+        };
+      },
+    },
     'blank-line-between-methods': {
       meta: {
         type: 'layout',
@@ -146,6 +220,7 @@ export default defineConfig(
     plugins: { localStyle: localStylePlugin, '@stylistic': stylistic },
     rules: {
       curly: ['error', 'all'],
+      'localStyle/padded-control-flow-blocks': 'error',
       'localStyle/blank-line-between-methods': 'error',
       '@stylistic/padding-line-between-statements': [
         'error',

@@ -28,13 +28,17 @@ export class IntegrationSimulator {
     );
 
     if (delay > timeout) {
+
       throw new IntegrationTimeoutError('Integration timeout');
+
     }
 
     if (
       this.config.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') === kind
     ) {
+
       throw new PermanentActivationError('Integration rejected request');
+
     }
 
     if (
@@ -43,7 +47,9 @@ export class IntegrationSimulator {
         kind === 'erp' ? 'ERP_FAILURES' : 'EMAIL_FAILURES',
       )
     ) {
+
       throw new Error('Simulated transient integration failure');
+
     }
 
     this.logger.info(`integration.${kind}.accepted`, {

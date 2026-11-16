@@ -14,16 +14,22 @@ export class ConsumeStockReservationStep implements ActivationStep {
 
   async exec(context: ActivationContext): Promise<void> {
     try {
+
       context.consumedReservations = await this.reservations.consume(
         context.manager,
         context.order.id,
       );
+
     } catch (error) {
+
       if (error instanceof InventoryError) {
+
         throw new PermanentActivationError(error.message, { cause: error });
+
       }
 
       throw error;
+
     }
   }
 }

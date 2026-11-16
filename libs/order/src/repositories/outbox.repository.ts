@@ -61,7 +61,9 @@ export class OutboxRepository {
         .getMany();
 
       if (!events.length) {
+
         return [];
+
       }
 
       const leaseToken = randomUUID();

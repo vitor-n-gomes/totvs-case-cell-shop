@@ -32,19 +32,27 @@ export class HealthService implements BeforeApplicationShutdown {
     };
 
     if (this.consumerReady !== undefined) {
+
       checks.consumer = this.consumerReady ? 'up' : 'down';
+
     }
 
     if (!this.requireKafka) {
+
       delete checks.kafka;
+
     }
 
     if (this.checkoutConsumerReady !== undefined) {
+
       checks.checkoutConsumer = this.checkoutConsumerReady ? 'up' : 'down';
+
     }
 
     if (this.schedulerReady !== undefined) {
+
       checks.scheduler = this.schedulerReady ? 'up' : 'down';
+
     }
 
     return {
@@ -57,8 +65,11 @@ export class HealthService implements BeforeApplicationShutdown {
 
   async cacheStatus(): Promise<{ redis: 'up' | 'down'; required: false }> {
     try {
+
       if (!this.redis.client.isReady) {
+
         return { redis: 'down', required: false };
+
       }
 
       await this.redis.client
@@ -66,8 +77,11 @@ export class HealthService implements BeforeApplicationShutdown {
         .ping();
 
       return { redis: 'up', required: false };
+
     } catch {
+
       return { redis: 'down', required: false };
+
     }
   }
 

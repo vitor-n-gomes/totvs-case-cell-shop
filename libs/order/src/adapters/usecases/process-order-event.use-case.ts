@@ -35,6 +35,7 @@ export class ProcessOrderEventUseCase {
     const event = parseOrderEvent(payload);
 
     if (!event) {
+
       await this.sendToDlq(
         payload,
         source,
@@ -43,6 +44,7 @@ export class ProcessOrderEventUseCase {
       );
 
       return;
+
     }
 
     const orderId = event.data.order_id;
@@ -63,8 +65,11 @@ export class ProcessOrderEventUseCase {
         });
 
         try {
+
           await this.dispatchByKind(event);
+
         } catch (error) {
+
           await this.sendToDlq(
             event,
             source,
@@ -72,6 +77,7 @@ export class ProcessOrderEventUseCase {
             'dlq',
             orderId,
           );
+
         }
       },
     );
@@ -79,6 +85,7 @@ export class ProcessOrderEventUseCase {
 
   private async dispatchByKind(event: OrderEvent): Promise<void> {
     switch (event.kind) {
+
       case ORDER_CHECKOUT_INITIATED:
         await this.checkoutInitiated.execute(event);
         break;
@@ -86,6 +93,7 @@ export class ProcessOrderEventUseCase {
       case ORDER_RESERVATION_EXPIRED:
         await this.reservationExpired.handle(event);
         break;
+
     }
   }
 
@@ -121,7 +129,9 @@ export class ProcessOrderEventUseCase {
       payload !== null &&
       !Array.isArray(payload)
     ) {
+
       return payload as Record<string, unknown>;
+
     }
 
     return { raw_payload: payload ?? null };

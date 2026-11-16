@@ -77,27 +77,35 @@ const environmentSchema = z
       value.KAFKA_SASL_USERNAME ||
       value.KAFKA_SASL_PASSWORD
     ) {
+
       for (const key of [
         'KAFKA_SASL_MECHANISM',
         'KAFKA_SASL_USERNAME',
         'KAFKA_SASL_PASSWORD',
       ] as const) {
+
         if (!value[key]) {
+
           context.addIssue({
             code: 'custom',
             path: [key],
             message: 'Required for Kafka SASL authentication',
           });
+
         }
+
       }
+
     }
 
     if (value.API_PORT === value.WORKER_PORT) {
+
       context.addIssue({
         code: 'custom',
         path: ['WORKER_PORT'],
         message: 'App ports must differ',
       });
+
     }
   });
 
@@ -109,10 +117,12 @@ export function validateEnvironment(
   const result = environmentSchema.safeParse(input);
 
   if (!result.success) {
+
     // Validation errors describe keys and constraints, never credential values.
     throw new Error(
       `Invalid configuration: ${result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`,
     );
+
   }
 
   return result.data;

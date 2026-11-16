@@ -195,7 +195,7 @@ For the checks applicable to this stage:
 npm run typecheck:app
 npm run build
 npx eslint apps libs scripts
-npx prettier --check apps libs scripts package.json nest-cli.json compose.yaml
+npm run format:check
 ```
 
 ## Earlier verification workflow

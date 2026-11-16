@@ -20,18 +20,24 @@ export class OrderActivationGuard {
     const order = await this.orders.findById(orderId, manager);
 
     if (!order) {
+
       throw new PermanentActivationError('Unknown order');
+
     }
 
     if (
       FINAL_STATUSES.includes(order.processingStatus) ||
       attempt <= order.lastAttempt
     ) {
+
       return 'skip';
+
     }
 
     if (attempt !== order.lastAttempt + 1) {
+
       throw new PermanentActivationError('Out-of-sequence attempt');
+
     }
 
     return 'proceed';

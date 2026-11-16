@@ -66,14 +66,19 @@ export class ReservationRepository {
       !reservations.length ||
       reservations.some((entry) => entry.status !== 'ACTIVE')
     ) {
+
       throw new InventoryError('No active reservation');
+
     }
 
     if (await this.hasExpired(manager, orderId)) {
+
       throw new ReservationExpiredError('Reservation expired');
+
     }
 
     for (const entry of reservations) {
+
       const result = await manager
         .getRepository(StockEntity)
         .createQueryBuilder()
@@ -90,8 +95,11 @@ export class ReservationRepository {
         .execute();
 
       if (!result.affected) {
+
         throw new InventoryError('Stock invariant violated');
+
       }
+
     }
 
     await manager
@@ -108,6 +116,7 @@ export class ReservationRepository {
     for (const entry of reservations.filter(
       (item) => item.status === 'ACTIVE',
     )) {
+
       const result = await manager
         .getRepository(StockEntity)
         .createQueryBuilder()
@@ -120,7 +129,9 @@ export class ReservationRepository {
         .execute();
 
       if (!result.affected) {
+
         throw new InventoryError('Stock invariant violated');
+
       }
 
       await manager
@@ -128,6 +139,7 @@ export class ReservationRepository {
         .update({ id: entry.id }, { status: 'EXPIRED' });
 
       released++;
+
     }
 
     return released;

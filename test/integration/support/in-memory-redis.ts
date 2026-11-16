@@ -29,7 +29,9 @@ export class InMemoryRedisClient {
     options: SetOptions = {},
   ): Promise<'OK' | null> {
     if (options.NX && this.read(key)) {
+
       return Promise.resolve(null);
+
     }
 
     this.entries.set(key, { value, expiresAt: this.expiry(options) });
@@ -46,16 +48,22 @@ export class InMemoryRedisClient {
     const [token, payload] = args;
 
     if (!lockKey || this.read(lockKey)?.value !== token) {
+
       return Promise.resolve(0);
+
     }
 
     if (script.includes("redis.call('set'") && targetKey && payload) {
+
       this.entries.set(targetKey, {
         value: payload,
         expiresAt: Date.now() + 300_000,
       });
+
     } else if (script.includes("redis.call('del'")) {
+
       this.entries.delete(lockKey);
+
     }
 
     return Promise.resolve(1);
@@ -77,9 +85,11 @@ export class InMemoryRedisClient {
     const entry = this.entries.get(key);
 
     if (entry?.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
+
       this.entries.delete(key);
 
       return undefined;
+
     }
 
     return entry;
@@ -87,11 +97,15 @@ export class InMemoryRedisClient {
 
   private expiry({ PX, EX }: SetOptions): number | undefined {
     if (PX !== undefined) {
+
       return Date.now() + PX;
+
     }
 
     if (EX !== undefined) {
+
       return Date.now() + EX * 1000;
+
     }
 
     return undefined;

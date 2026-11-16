@@ -86,6 +86,7 @@ describe('ExpireReservationsUseCase (scheduler producer)', () => {
     expect(published.map((p) => p.key)).toEqual(ids);
 
     for (const { topic, key, payload } of published) {
+
       expect(topic).toBe('order.checkout.initiated');
       const event = parseOrderEvent(payload);
 
@@ -93,6 +94,7 @@ describe('ExpireReservationsUseCase (scheduler producer)', () => {
       expect(event?.data.order_id).toBe(key);
       expect(event?.meta?.trace_id).toMatch(/^[a-f0-9]{32}$/);
       expect(event?.meta?.parent_span_id).toMatch(/^[a-f0-9]{16}$/);
+
     }
   });
 

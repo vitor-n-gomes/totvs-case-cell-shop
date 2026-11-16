@@ -14,16 +14,21 @@ import { Metrics } from './metrics';
 
 export function sanitizePayload(value: unknown, depth = 0): unknown {
   if (depth > 6) {
+
     return '[truncated]';
+
   }
 
   if (Array.isArray(value)) {
+
     return value
       .slice(0, 100)
       .map((entry) => sanitizePayload(entry, depth + 1));
+
   }
 
   if (value !== null && typeof value === 'object') {
+
     return Object.fromEntries(
       Object.entries(value)
         .slice(0, 100)
@@ -36,6 +41,7 @@ export function sanitizePayload(value: unknown, depth = 0): unknown {
             : sanitizePayload(entry, depth + 1),
         ]),
     );
+
   }
 
   return typeof value === 'string' ? value.slice(0, 500) : (value ?? null);
@@ -60,9 +66,11 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
 
   enqueue(entry: AuditEntry): void {
     if (this.closing || this.queue.length >= 1000) {
+
       this.metrics.audit.inc({ result: 'dropped' });
 
       return;
+
     }
 
     this.queue.push(entry);
@@ -71,23 +79,29 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
 
   private startDrain(): void {
     if (!this.draining) {
+
       this.draining = new Promise<void>((resolve) => setImmediate(resolve))
         .then(() => this.drain())
         .finally(() => {
           this.draining = undefined;
 
           if (this.queue.length) {
+
             this.startDrain();
+
           }
         });
+
     }
   }
 
   private async drain(): Promise<void> {
     while (this.queue.length) {
+
       const entry = this.queue.shift()!;
 
       try {
+
         await this.database.query(
           'INSERT INTO request_log (id,url,method,payload,correlation_id) VALUES ($1,$2,$3,$4,$5)',
           [
@@ -100,10 +114,14 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
         );
 
         this.metrics.audit.inc({ result: 'saved' });
+
       } catch {
+
         this.metrics.audit.inc({ result: 'failed' });
         this.logger.warn('request.audit.failed');
+
       }
+
     }
   }
 
@@ -111,7 +129,9 @@ export class RequestAuditRepository implements BeforeApplicationShutdown {
     this.closing = true;
 
     while (this.draining) {
+
       await this.draining;
+
     }
   }
 }
@@ -139,12 +159,14 @@ export class RequestAuditInterceptor implements NestInterceptor {
     );
 
     if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
+
       this.audit.enqueue({
         url: route,
         method: request.method,
         payload: sanitizePayload(request.body),
         correlationId: String(response.locals.correlationId),
       });
+
     }
 
     return next.handle();

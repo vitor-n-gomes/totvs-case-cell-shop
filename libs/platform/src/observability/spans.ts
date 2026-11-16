@@ -17,12 +17,17 @@ export class Spans {
       let outcome = 'success';
 
       try {
+
         return await operation();
+
       } catch (error) {
+
         outcome = 'error';
 
         throw error;
+
       } finally {
+
         this.logger.info('trace.span', {
           name,
           span_id: spanId,
@@ -30,6 +35,7 @@ export class Spans {
           duration_ms: performance.now() - started,
           outcome,
         });
+
       }
     };
 

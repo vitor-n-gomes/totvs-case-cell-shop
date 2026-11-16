@@ -66,6 +66,7 @@ export class ActivationFailureHandler {
     error: unknown,
     terminal: boolean,
   ): Promise<void> {
+    
     const { manager } = runner;
     const { event } = context;
     const { attempt } = event.meta;
@@ -87,11 +88,13 @@ export class ActivationFailureHandler {
     );
 
     if (terminal && current.status === OrderStatus.Pending) {
+
       await this.reservations.release(manager, order.id);
 
       await this.orders.update(manager, order.id, {
         status: OrderStatus.Cancelled,
       });
+
     }
 
     await this.orders.update(manager, order.id, {
@@ -134,14 +137,20 @@ export class ActivationFailureHandler {
     await runner.startTransaction();
 
     try {
+
       await work();
       await runner.commitTransaction();
+
     } catch (failure) {
+
       if (runner.isTransactionActive) {
+
         await runner.rollbackTransaction();
+
       }
 
       throw failure;
+
     }
   }
 }

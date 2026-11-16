@@ -15,6 +15,7 @@ async function bootstrap(): Promise<void> {
   });
 
   try {
+
     const logger = app.get(AppLogger);
 
     logger.setApp('http');
@@ -27,10 +28,13 @@ async function bootstrap(): Promise<void> {
       app.get(ConfigService).getOrThrow<number>('API_PORT'),
       '0.0.0.0',
     );
+
   } catch (error) {
+
     await app.close();
 
     throw error;
+
   }
 }
 

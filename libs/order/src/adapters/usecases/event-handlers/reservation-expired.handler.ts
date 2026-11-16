@@ -45,16 +45,21 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
       );
 
       if (outcome.result === 'not_found' || outcome.result === 'not_expired') {
+
         this.logger.warn('reservation.expire.ignored', {
           reason: outcome.result,
         });
 
         return;
+
       }
 
       if (outcome.result !== 'expired') {
+
         if (outcome.result === 'already_processed') {
+
           this.metrics.reservations.inc({ result: 'already_processed' });
+
         }
 
         this.logger.info('reservation.expire.skipped', {
@@ -62,6 +67,7 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
         });
 
         return;
+
       }
 
       await this.invalidateCatalog();
@@ -81,22 +87,32 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
     await runner.startTransaction();
 
     try {
+
       const outcome = await this.expire(runner.manager, orderId);
 
       // Only a real expiry commits; every skip leaves the database untouched.
       if (outcome.result === 'expired') {
+
         await runner.commitTransaction();
+
       } else {
+
         await runner.rollbackTransaction();
+
       }
 
       return outcome;
+
     } catch (error) {
+
       if (runner.isTransactionActive) {
+
         await runner.rollbackTransaction();
+
       }
 
       throw error;
+
     }
   }
 
@@ -107,11 +123,15 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
     const order = await this.orders.lock(manager, orderId);
 
     if (!order) {
+
       return { result: 'not_found' };
+
     }
 
     if (order.processingStatus === ProcessingStatus.Completed) {
+
       return { result: 'completed' };
+
     }
 
     const affected = await this.orders.transitionStatus(
@@ -122,12 +142,16 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
     );
 
     if (affected === 0) {
+
       return { result: 'already_processed' };
+
     }
 
     // Guards against a premature or forged event; the status change is rolled back.
     if (!(await this.reservations.hasExpired(manager, orderId))) {
+
       return { result: 'not_expired' };
+
     }
 
     const released = await this.reservations.release(manager, orderId);
@@ -137,16 +161,22 @@ export class ReservationExpiredHandler implements EventHandler<ReservationExpire
 
   private async invalidateCatalog(): Promise<void> {
     try {
+
       if (!this.redis.client.isReady) {
+
         throw new Error('Cache unavailable');
+
       }
 
       await this.redis.client
         .withCommandOptions({ abortSignal: AbortSignal.timeout(1000) })
         .del(CATALOG_KEY);
+
     } catch {
+
       // Stock is already committed; a cache miss must not trigger a Kafka retry.
       this.logger.warn('reservation.expire.cache_invalidation_failed');
+
     }
   }
 }

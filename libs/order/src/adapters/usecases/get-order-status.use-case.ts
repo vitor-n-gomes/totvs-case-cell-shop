@@ -9,7 +9,9 @@ export class GetOrderStatusUseCase {
     const order = await this.orders.findById(orderId);
 
     if (!order) {
+
       throw new NotFoundException('Order not found');
+
     }
 
     const items = await this.orders.findItems(orderId);

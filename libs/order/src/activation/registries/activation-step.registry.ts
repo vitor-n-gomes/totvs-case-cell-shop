@@ -24,17 +24,23 @@ export class ActivationStepRegistry {
     const reflector = new Reflector();
 
     for (const step of [consume, activate, erp, email]) {
+
       const name = reflector.get<StepName>(ACTIVATION_STEP, step.constructor);
 
       if (!name || this.steps.has(name)) {
+
         throw new Error('Invalid activation step registration');
+
       }
 
       this.steps.set(name, step);
+
     }
 
     if (this.steps.size !== Object.values(StepName).length) {
+
       throw new Error('Missing activation step');
+
     }
   }
 

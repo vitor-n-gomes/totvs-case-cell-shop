@@ -33,13 +33,17 @@ export class ActiveOrderUseCase {
       );
 
       if (decision === 'skip') {
+
         return;
+
       }
 
       const order = await this.orders.findById(orderId, runner.manager);
 
       if (!order) {
+
         return;
+
       }
 
       const context: ActivationContext = {
@@ -51,6 +55,7 @@ export class ActiveOrderUseCase {
       };
 
       try {
+
         await this.spans.run('order.activation', () =>
           this.strategy.execute(context, runner),
         );
@@ -61,8 +66,11 @@ export class ActiveOrderUseCase {
         });
 
         this.metrics.processing.inc({ result: 'completed' });
+
       } catch (error) {
+
         await this.failureHandler.handle(runner, order, context, error);
+
       }
     });
   }

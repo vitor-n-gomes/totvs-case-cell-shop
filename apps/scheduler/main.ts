@@ -15,16 +15,20 @@ async function bootstrap(): Promise<void> {
   });
 
   try {
+
     const logger = app.get(AppLogger);
 
     logger.setApp('scheduler');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     app.get(ExpireReservationsUseCase).start();
+
   } catch (error) {
+
     await app.close();
 
     throw error;
+
   }
 }
 

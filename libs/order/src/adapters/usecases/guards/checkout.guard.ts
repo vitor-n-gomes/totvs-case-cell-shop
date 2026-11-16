@@ -11,15 +11,19 @@ export class CheckoutGuard {
     idempotencyKey: string | undefined,
   ): asserts idempotencyKey is string {
     if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+
       throw new BadRequestException(
         'Idempotency-Key must contain 1-128 visible ASCII characters',
       );
+
     }
 
     const uniqueProducts = new Set(input.items.map((item) => item.productId));
 
     if (uniqueProducts.size !== input.items.length) {
+
       throw new BadRequestException('Duplicate products are not allowed');
+
     }
   }
 

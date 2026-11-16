@@ -31,17 +31,23 @@ export class OrderConsumer {
     }, 1000);
 
     try {
+
       await this.process.handle(payload, {
         topic: context.getTopic(),
         partition: context.getPartition(),
         offset: context.getMessage().offset,
       });
+
     } catch {
+
       this.logger.error('checkout.consumer.failed');
 
       throw new KafkaRetriableException('Checkout processing failed');
+
     } finally {
+
       clearInterval(timer);
+
     }
   }
 }

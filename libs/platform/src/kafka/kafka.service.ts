@@ -24,10 +24,13 @@ export class KafkaService implements OnApplicationShutdown {
 
   ensureConnected(): Promise<void> {
     if (this.closing) {
+
       return Promise.reject(new Error('Kafka shutting down'));
+
     }
 
     if (!this.connecting) {
+
       this.connecting = this.client
         .connect()
         .then(() => undefined)
@@ -38,6 +41,7 @@ export class KafkaService implements OnApplicationShutdown {
 
           throw error;
         });
+
     }
 
     return this.connecting;
@@ -62,6 +66,7 @@ export class KafkaService implements OnApplicationShutdown {
     await this.ensureConnected();
 
     if (!this.adminConnecting) {
+
       const admin = this.client.unwrap<Kafka>().admin();
 
       this.adminConnecting = admin
@@ -73,6 +78,7 @@ export class KafkaService implements OnApplicationShutdown {
 
           throw error;
         });
+
     }
 
     const admin = await this.adminConnecting;

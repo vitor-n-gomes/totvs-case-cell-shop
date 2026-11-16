@@ -21,6 +21,7 @@ async function bootstrap(): Promise<void> {
   });
 
   try {
+
     const logger = app.get(AppLogger);
 
     logger.setApp('consumer');
@@ -50,10 +51,13 @@ async function bootstrap(): Promise<void> {
 
     await app.startAllMicroservices();
     await app.listen(config.getOrThrow<number>('WORKER_PORT'), '0.0.0.0');
+
   } catch (error) {
+
     await app.close();
 
     throw error;
+
   }
 }
 

@@ -26,17 +26,25 @@ export class OutboxRelay implements BeforeApplicationShutdown {
   @Interval(1000)
   async tick(): Promise<void> {
     if (this.stopped || this.flight) {
+
       return;
+
     }
 
     this.flight = this.execute();
 
     try {
+
       await this.flight;
+
     } catch {
+
       this.logger.error('outbox.relay.failed');
+
     } finally {
+
       this.flight = undefined;
+
     }
   }
 
@@ -54,11 +62,15 @@ export class OutboxRelay implements BeforeApplicationShutdown {
         const payload = parseOrderEvent(event.payload);
 
         if (!payload) {
+
           throw new Error('Invalid order event in outbox');
+
         }
 
         if (!payload.meta) {
+
           throw new Error('Outbox event without meta');
+
         }
 
         const { correlation_id: correlationId, ...trace } = payload.meta;
@@ -72,6 +84,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
 
         await executionContext.run(context, async () => {
           try {
+
             await this.spans.run('outbox.publish', () =>
               this.messaging.publish(event.topic, event.orderId, payload, {
                 'x-correlation-id': correlationId,
@@ -80,9 +93,12 @@ export class OutboxRelay implements BeforeApplicationShutdown {
 
             await this.outbox.acknowledge(event);
             this.metrics.processing.inc({ result: 'published' });
+
           } catch {
+
             await this.outbox.release(event);
             this.logger.warn('outbox.publish.failed');
+
           }
         });
       }),
@@ -91,7 +107,9 @@ export class OutboxRelay implements BeforeApplicationShutdown {
     const failure = results.find((result) => result.status === 'rejected');
 
     if (failure?.status === 'rejected') {
+
       throw failure.reason;
+
     }
 
     const backlog = await this.outbox.backlog();

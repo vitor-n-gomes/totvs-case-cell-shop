@@ -55,16 +55,20 @@ export class EventBus implements IEventBus {
     const kind = handler.kind;
 
     if (!this.handlers.has(kind)) {
+
       this.handlers.set(kind, []);
+
     }
 
     const existingHandlers = this.handlers.get(kind)!;
 
     if (existingHandlers.length > 0) {
+
       this.logger.warn(`Handler already registered for event kind: ${kind}`, {
         event_kind: kind,
         handler_count: existingHandlers.length + 1,
       });
+
     }
 
     existingHandlers.push(handler);
@@ -84,11 +88,13 @@ export class EventBus implements IEventBus {
     const handlers = this.handlers.get(event.kind);
 
     if (!handlers || handlers.length === 0) {
+
       this.logger.warn(`No handlers registered for event kind: ${event.kind}`, {
         event_kind: event.kind,
       });
 
       return;
+
     }
 
     this.logger.info(`Dispatching event to ${handlers.length} handler(s)`, {

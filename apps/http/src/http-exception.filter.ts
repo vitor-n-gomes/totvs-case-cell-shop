@@ -30,10 +30,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
           : 'Internal server error';
 
     if (statusCode >= 500) {
+
       this.logger.info('http.request.failed', {
         correlation_id: correlationId,
         status_code: statusCode,
       });
+
     }
 
     response.status(statusCode).json({

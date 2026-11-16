@@ -41,13 +41,17 @@ export class HandlersRegistry implements OnModuleInit {
 
     handlers.forEach((handler) => {
       try {
+
         eventBus.register(handler);
         registeredCount++;
+
       } catch (error) {
+
         this.logger.warn('handlers.registry.registration_failed', {
           handler_name: handler.constructor.name,
           error: error instanceof Error ? error.message : String(error),
         });
+
       }
     });
 
@@ -57,11 +61,13 @@ export class HandlersRegistry implements OnModuleInit {
     });
 
     if (registeredCount !== handlers.length) {
+
       this.logger.warn('handlers.registry.incomplete_registration', {
         registered_handlers: registeredCount,
         total_handlers: handlers.length,
         failed_handlers: handlers.length - registeredCount,
       });
+
     }
   }
 }

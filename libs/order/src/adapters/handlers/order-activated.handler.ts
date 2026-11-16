@@ -32,11 +32,13 @@ export class OrderActivatedHandler implements EventHandler<OrderActivatedEvent> 
     const order = await this.orderRepository.findById(orderId);
 
     if (!order) {
+
       this.logger.error('order.activated.handler.order_not_found', {
         order_id: orderId,
       });
 
       return;
+
     }
 
     this.metrics.reservations.inc({ result: 'activated' });

@@ -23,12 +23,16 @@ async function exportDocument(): Promise<void> {
   const app = module.createNestApplication();
 
   try {
+
     await writeFile(
       'openapi.json',
       `${JSON.stringify(createOpenApiDocument(app), null, 2)}\n`,
     );
+
   } finally {
+
     await app.close();
+
   }
 }
 

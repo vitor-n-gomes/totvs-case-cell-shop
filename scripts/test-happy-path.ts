@@ -91,6 +91,7 @@ async function waitForCompletion(
   let lastState = 'unknown';
 
   while (Date.now() < deadline) {
+
     const order = await request<OrderSnapshot>(
       `${api}/orders/${orderId}/status`,
     );
@@ -106,12 +107,15 @@ async function waitForCompletion(
     );
 
     if (order.processingStatus === ProcessingStatus.Completed) {
+
       assert.equal(order.status, OrderStatus.Active);
 
       return order;
+
     }
 
     await sleep(POLL_INTERVAL_MS);
+
   }
 
   throw new Error(
@@ -138,6 +142,7 @@ async function main(): Promise<void> {
   await database.initialize();
 
   try {
+
     const before = await readProduct(database);
 
     assert.equal(before.physical, 1, 'Expected seeded stock of 1 unit');
@@ -227,8 +232,11 @@ async function main(): Promise<void> {
     process.stdout.write(
       'PASSED: checkout completed, stock consumed once, reservation consumed, all four steps succeeded, and replay returned the same order.\n',
     );
+
   } finally {
+
     await database.destroy();
+
   }
 }
 

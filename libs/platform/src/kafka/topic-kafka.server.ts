@@ -44,7 +44,9 @@ export class TopicKafkaServer extends ServerKafka {
       consumer.events.DISCONNECT,
       consumer.events.STOP,
     ]) {
+
       consumer.on(event, () => this.ready(false));
+
     }
   }
 

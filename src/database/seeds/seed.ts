@@ -116,12 +116,14 @@ async function seed(): Promise<void> {
   redis.on('error', () => undefined);
 
   try {
+
     // Require invalidation availability before changing catalog data.
     await redis.connect();
     await database.initialize();
 
     await database.transaction(async (manager) => {
       for (const product of catalog) {
+
         const productId = await upsertProduct(manager, product);
 
         // Re-running a seed must never replenish sold or reserved stock.
@@ -129,6 +131,7 @@ async function seed(): Promise<void> {
           'INSERT INTO stock (id,product_id,physical_quantity) VALUES ($1,$2,100) ON CONFLICT (product_id) DO NOTHING',
           [randomUUID(), productId],
         );
+
       }
 
       // The restricted-inventory product is reset on every run so the
@@ -158,14 +161,21 @@ async function seed(): Promise<void> {
     process.stdout.write(
       `Catalog seeded; stock preserved except ${LIMITED_PRODUCT_KEY} (reset to 1 unit); cache invalidated.\n`,
     );
+
   } finally {
+
     if (redis.isOpen) {
+
       redis.destroy();
+
     }
 
     if (database.isInitialized) {
+
       await database.destroy();
+
     }
+
   }
 }
 

@@ -39,13 +39,16 @@ export class OnlineActivationStrategy {
     await runner.startTransaction();
 
     try {
+
       context.order = await this.orders.lockOrFail(
         runner.manager,
         context.order.id,
       );
 
       if (context.order.status === OrderStatus.Cancelled) {
+
         throw new OrderCancelledError('Order cancelled');
+
       }
 
       await this.orders.update(runner.manager, context.order.id, {
@@ -59,24 +62,33 @@ export class OnlineActivationStrategy {
       );
 
       for (const name of this.stepNames.slice(0, 2)) {
+
         await this.runStep(name, context);
+
       }
 
       await runner.commitTransaction();
 
       if (!consumedBefore) {
+
         this.metrics.reservations.inc(
           { result: 'consumed' },
           context.consumedReservations ?? 0,
         );
+
       }
+
     } catch (error) {
+
       // The transaction is already closed if the failure came after the commit.
       if (runner.isTransactionActive) {
+
         await runner.rollbackTransaction();
+
       }
 
       throw error;
+
     }
 
     // Best-effort notification: EventBus swallows handler errors.
@@ -89,7 +101,9 @@ export class OnlineActivationStrategy {
     await this.eventBus.dispatch(activated);
 
     for (const name of this.stepNames.slice(2)) {
+
       await this.runStep(name, context);
+
     }
   }
 
@@ -102,16 +116,21 @@ export class OnlineActivationStrategy {
     const step = this.registry.get(name);
 
     if (step.shouldExecute && !step.shouldExecute(context)) {
+
       return;
+
     }
 
     if (await this.journal.succeeded(context.manager, context.order.id, name)) {
+
       return;
+
     }
 
     const end = this.metrics.steps.startTimer({ step: name });
 
     try {
+
       await this.spans.run(name, () => step.exec(context));
 
       await this.journal.record(
@@ -124,10 +143,13 @@ export class OnlineActivationStrategy {
       );
 
       end({ result: 'success' });
+
     } catch (error) {
+
       end({ result: 'failure' });
 
       throw error;
+
     }
   }
 }

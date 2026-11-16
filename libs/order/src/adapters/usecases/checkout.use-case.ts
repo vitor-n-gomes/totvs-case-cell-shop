@@ -47,6 +47,7 @@ export class CheckoutUseCase {
     correlationId = executionContext.getStore()?.correlation_id ?? randomUUID(),
   ): Promise<CheckoutResult> {
     try {
+
       this.guard.validate(input, idempotencyKey);
       const requestHash = this.guard.hashPayload(input);
 
@@ -64,10 +65,13 @@ export class CheckoutUseCase {
       this.recordSuccessMetrics(replay, input.items.length);
 
       return { orderId, status: OrderStatus.Pending };
+
     } catch (error) {
+
       this.metrics.checkout.inc({ result: 'rejected' });
 
       throw this.mapExecutionError(error);
+
     }
   }
 
@@ -90,11 +94,13 @@ export class CheckoutUseCase {
       );
 
       if (!inserted) {
+
         return this.resolveIdempotentReplay(
           manager,
           idempotencyKey,
           requestHash,
         );
+
       }
 
       const ttlSeconds = this.config.getOrThrow<number>(
@@ -123,13 +129,17 @@ export class CheckoutUseCase {
     const existing = await this.orders.findByKey(manager, idempotencyKey);
 
     if (!existing) {
+
       throw new Error('Order insert failed');
+
     }
 
     if (existing.requestHash !== requestHash) {
+
       throw new ConflictException(
         'Idempotency key already used with different content',
       );
+
     }
 
     return { orderId: existing.id, replay: true };
@@ -159,20 +169,26 @@ export class CheckoutUseCase {
     this.metrics.checkout.inc({ result: replay ? 'replayed' : 'accepted' });
 
     if (!replay) {
+
       this.metrics.reservations.inc({ result: 'reserved' }, itemCount);
+
     }
   }
 
   private mapExecutionError(error: unknown): unknown {
     if (error instanceof HttpException) {
+
       return error;
+
     }
 
     if (isTransientDatabaseFailure(error)) {
+
       return new ServiceUnavailableException(
         'Checkout temporarily unavailable; retry with the same idempotency key',
         { cause: error },
       );
+
     }
 
     return error;

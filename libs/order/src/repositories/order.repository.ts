@@ -134,6 +134,7 @@ export class OrderRepository {
     let locked = false;
 
     try {
+
       await runner.connect();
 
       await runner.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [
@@ -143,21 +144,32 @@ export class OrderRepository {
       locked = true;
 
       return await work(runner);
+
     } finally {
+
       try {
+
         if (runner.isTransactionActive) {
+
           await runner.rollbackTransaction();
+
         }
 
         if (locked) {
+
           await runner.query(
             'SELECT pg_advisory_unlock(hashtextextended($1,0))',
             [id],
           );
+
         }
+
       } finally {
+
         await runner.release();
+
       }
+
     }
   }
 }

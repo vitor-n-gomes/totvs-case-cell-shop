@@ -46,7 +46,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
   /** Called by the scheduler entrypoint once logging is bound to the app. */
   start(): void {
     if (this.registry.doesExist('interval', INTERVAL_NAME)) {
+
       return;
+
     }
 
     const intervalMs = this.config.getOrThrow<number>('SCHEDULER_INTERVAL_MS');
@@ -66,7 +68,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
   async tick(): Promise<void> {
     // A slow cycle must not overlap the next interval.
     if (this.stopped || this.isRunning) {
+
       return;
+
     }
 
     this.isRunning = true;
@@ -93,7 +97,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
     );
 
     if (!orderIds.length) {
+
       return 0;
+
     }
 
     await this.messaging.ensureConnected();
@@ -101,13 +107,19 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
     let published = 0;
 
     for (const orderId of orderIds) {
+
       if (this.stopped) {
+
         break;
+
       }
 
       if (await this.publishExpiration(orderId)) {
+
         published++;
+
       }
+
     }
 
     this.logger.info('scheduler.expiration.cycle', {
@@ -128,6 +140,7 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
 
     return executionContext.run(context, async () => {
       try {
+
         await this.spans.run('scheduler.publish_expiration', () => {
           const event: ReservationExpiredEvent = {
             kind: ORDER_RESERVATION_EXPIRED,
@@ -141,12 +154,15 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
         });
 
         return true;
+
       } catch (error) {
+
         this.logger.warn('scheduler.expiration.publish_failed', {
           error_type: error instanceof Error ? error.name : 'UnknownError',
         });
 
         return false;
+
       }
     });
   }
@@ -155,7 +171,9 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
     this.stopped = true;
 
     if (this.registry.doesExist('interval', INTERVAL_NAME)) {
+
       this.registry.deleteInterval(INTERVAL_NAME);
+
     }
 
     await this.flight;
