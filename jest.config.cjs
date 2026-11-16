@@ -1,6 +1,6 @@
 const { pathsToModuleNameMapper } = require('ts-jest');
 const { compilerOptions } = require('./tsconfig.json');
-const shared = {
+const sharedJestConfig = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: '<rootDir>/test/tsconfig.json' }],
   },
@@ -15,12 +15,12 @@ module.exports = {
   testTimeout: 60000,
   projects: [
     {
-      ...shared,
+      ...sharedJestConfig,
       displayName: 'unit',
       testMatch: ['<rootDir>/test/unit/**/*.spec.ts'],
     },
     {
-      ...shared,
+      ...sharedJestConfig,
       displayName: 'integration',
       testMatch: ['<rootDir>/test/integration/**/*.spec.ts'],
     },

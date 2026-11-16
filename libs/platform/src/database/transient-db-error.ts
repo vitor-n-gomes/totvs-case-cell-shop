@@ -19,23 +19,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isTransientDatabaseFailure(error: unknown): boolean {
-  const seen = new Set<object>();
-  let current: unknown = error;
+  const visitedErrors = new Set<object>();
+  let currentError: unknown = error;
 
-  while (isRecord(current) && !seen.has(current)) {
-    seen.add(current);
-    const code = current.code;
+  while (isRecord(currentError) && !visitedErrors.has(currentError)) {
+
+    visitedErrors.add(currentError);
+    const databaseErrorCode = currentError.code;
 
     if (
-      typeof code === 'string' &&
-      (code.startsWith('08') ||
-        code.startsWith('53') ||
-        TRANSIENT_DB_CODES.has(code))
+      typeof databaseErrorCode === 'string' &&
+      (databaseErrorCode.startsWith('08') ||
+        databaseErrorCode.startsWith('53') ||
+        TRANSIENT_DB_CODES.has(databaseErrorCode))
     ) {
+
       return true;
+
     }
 
-    current = current.driverError ?? current.cause;
+    currentError = currentError.driverError ?? currentError.cause;
+
   }
 
   return false;

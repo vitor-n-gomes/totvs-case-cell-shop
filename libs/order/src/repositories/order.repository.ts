@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, QueryRunner, Repository } from 'typeorm';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import { OrderEntity, OrderItemEntity } from '../domain/entities';
+import { OrderStatus } from '../domain/shared/types/order.type';
 
 type OrderItemInput = Pick<
   OrderItemEntity,
@@ -20,32 +21,33 @@ type OrderChanges = Partial<
 @Injectable()
 export class OrderRepository {
   constructor(
-    private readonly database: DataSource,
+    private readonly dataSource: DataSource,
     @InjectRepository(OrderEntity)
-    private readonly orders: Repository<OrderEntity>,
+    private readonly orderTypeOrmRepository: Repository<OrderEntity>,
     @InjectRepository(OrderItemEntity)
-    private readonly items: Repository<OrderItemEntity>,
+    private readonly orderItemTypeOrmRepository: Repository<OrderItemEntity>,
   ) {}
 
   async insertPending(
-    manager: EntityManager,
-    id: string,
-    input: CheckoutInput,
+    entityManager: EntityManager,
+    orderId: string,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<boolean> {
-    const details: OrderColumns = manager
+    const orderColumns: OrderColumns = entityManager
       .getRepository(OrderEntity)
-      .create(input);
-    const result = await manager
+      .create(checkoutDto);
+
+    const orderInsertResult = await entityManager
       .getRepository(OrderEntity)
       .createQueryBuilder()
       .insert()
       .values({
-        ...details,
-        altContact: input.altContact,
-        id,
+        ...orderColumns,
+        altContact: checkoutDto.altContact,
+        id: orderId,
         idempotencyKey,
         requestHash,
         correlationId,
@@ -53,81 +55,145 @@ export class OrderRepository {
       .orIgnore()
       .returning(['id'])
       .execute();
-    return (result.raw as { id: string }[]).length > 0;
+
+    return (orderInsertResult.raw as { id: string }[]).length > 0;
   }
 
   findByKey(
-    manager: EntityManager,
+    entityManager: EntityManager,
     idempotencyKey: string,
   ): Promise<OrderEntity | null> {
-    return manager.getRepository(OrderEntity).findOneBy({ idempotencyKey });
+    return entityManager
+      .getRepository(OrderEntity)
+      .findOneBy({ idempotencyKey });
   }
 
-  findById(id: string, manager?: EntityManager): Promise<OrderEntity | null> {
-    return (manager?.getRepository(OrderEntity) ?? this.orders).findOneBy({
-      id,
+  findById(
+    orderId: string,
+    entityManager?: EntityManager,
+  ): Promise<OrderEntity | null> {
+    return (
+      entityManager?.getRepository(OrderEntity) ?? this.orderTypeOrmRepository
+    ).findOneBy({
+      id: orderId,
     });
   }
 
   findItems(orderId: string): Promise<OrderItemEntity[]> {
-    return this.items.find({ where: { orderId }, order: { productId: 'ASC' } });
+    return this.orderItemTypeOrmRepository.find({
+      where: { orderId },
+      order: { productId: 'ASC' },
+    });
   }
 
-  lock(manager: EntityManager, id: string): Promise<OrderEntity | null> {
-    return manager
+  lock(
+    entityManager: EntityManager,
+    orderId: string,
+  ): Promise<OrderEntity | null> {
+    return entityManager
       .getRepository(OrderEntity)
-      .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      .findOne({ where: { id: orderId }, lock: { mode: 'pessimistic_write' } });
   }
 
-  async lockOrFail(manager: EntityManager, id: string): Promise<OrderEntity> {
-    return manager
-      .getRepository(OrderEntity)
-      .findOneOrFail({ where: { id }, lock: { mode: 'pessimistic_write' } });
+  async lockOrFail(
+    entityManager: EntityManager,
+    orderId: string,
+  ): Promise<OrderEntity> {
+    return entityManager.getRepository(OrderEntity).findOneOrFail({
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
+    });
   }
 
   async addItems(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
-    items: OrderItemInput[],
+    orderItems: OrderItemInput[],
   ): Promise<void> {
-    await manager
-      .getRepository(OrderItemEntity)
-      .insert(items.map((item) => ({ ...item, orderId, id: randomUUID() })));
+    await entityManager.getRepository(OrderItemEntity).insert(
+      orderItems.map((orderItem) => ({
+        ...orderItem,
+        orderId,
+        id: randomUUID(),
+      })),
+    );
   }
 
   async update(
-    manager: EntityManager,
-    id: string,
-    changes: OrderChanges,
+    entityManager: EntityManager,
+    orderId: string,
+    orderChanges: OrderChanges,
   ): Promise<void> {
-    await manager.getRepository(OrderEntity).update({ id }, changes);
+    await entityManager
+      .getRepository(OrderEntity)
+      .update({ id: orderId }, orderChanges);
+  }
+
+  /** Conditional status transition; returns the affected row count (0 when `allowedStatuses` no longer matches). */
+  async transitionStatus(
+    entityManager: EntityManager,
+    orderId: string,
+    allowedStatuses: readonly OrderStatus[],
+    targetStatus: OrderStatus,
+  ): Promise<number> {
+    const statusUpdateResult = await entityManager
+      .getRepository(OrderEntity)
+      .createQueryBuilder()
+      .update()
+      .set({ status: targetStatus })
+      .where('id = :id', { id: orderId })
+      .andWhere('status IN (:...from)', { from: [...allowedStatuses] })
+      .execute();
+
+    return statusUpdateResult.affected ?? 0;
   }
 
   // A session lock spans the local transaction and the external activation steps.
   async withActivationLock<T>(
-    id: string,
-    work: (runner: QueryRunner) => Promise<T>,
+    orderId: string,
+    activationOperation: (queryRunner: QueryRunner) => Promise<T>,
   ): Promise<T> {
-    const runner = this.database.createQueryRunner();
-    let locked = false;
+    const queryRunner = this.dataSource.createQueryRunner();
+    let isActivationLockHeld = false;
+
     try {
-      await runner.connect();
-      await runner.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [
-        id,
-      ]);
-      locked = true;
-      return await work(runner);
+
+      await queryRunner.connect();
+
+      await queryRunner.query(
+        'SELECT pg_advisory_lock(hashtextextended($1,0))',
+        [orderId],
+      );
+
+      isActivationLockHeld = true;
+
+      return await activationOperation(queryRunner);
+
     } finally {
+
       try {
-        if (runner.isTransactionActive) await runner.rollbackTransaction();
-        if (locked)
-          await runner.query(
+
+        if (queryRunner.isTransactionActive) {
+
+          await queryRunner.rollbackTransaction();
+
+        }
+
+        if (isActivationLockHeld) {
+
+          await queryRunner.query(
             'SELECT pg_advisory_unlock(hashtextextended($1,0))',
-            [id],
+            [orderId],
           );
+
+        }
+
       } finally {
-        await runner.release();
+
+        await queryRunner.release();
+
       }
+
     }
   }
 }

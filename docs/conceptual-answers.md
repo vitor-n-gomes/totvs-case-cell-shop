@@ -113,13 +113,13 @@ Tests must run against the actual database, not only mocked repositories: many b
 
 Publishing before saving can create a ghost message for an order that rolls back. Saving before publishing can leave a committed order without its message. A transactional outbox stores the business change and publication intent together; a relay retries publication independently. A crash after publication but before marking the outbox processed yields a duplicate, so consumers must be idempotent.
 
-Kafka messages are keyed by order ID. Partition ordering is useful but does not provide global ordering or exactly-once external effects. Retried attempts are explicitly numbered; the worker rejects incompatible events and ignores recorded attempts. Successful handling or durably recording a retry/DLQ intent precedes offset advancement.
+Kafka messages are keyed by order ID. Partition ordering is useful but does not provide global ordering or exactly-once external effects. Retried attempts are explicitly numbered; the worker rejects incompatible events and ignores recorded attempts. Successful handling, durably recording a retry/DLQ intent, or acknowledged direct DLQ publication precedes offset advancement.
 
 Transient business/integration failures get bounded exponential delays. Permanent failures go directly to a DLQ; exhausted transient attempts do likewise. A broker outage must not discard DLQ intent. Infrastructure failures that prevent recording any outcome keep the original message unresolved. Avoid an endless tight retry loop and retain heartbeats during dependency recovery.
 
 A DLQ requires ownership, alerts, diagnostic context, retention and a deliberate replay process. Do not automatically replay terminal failures forever. Confirm whether the ERP already invoiced before retrying an ambiguous timeout. Reconcile stock reservations and invoice state periodically, using stable external IDs and a clear compensation policy.
 
-OpenAPI is generated from the actual DTOs/controllers and checked for drift in CI. It documents success/error schemas, header requirements, validation limits, decimal string prices and the difference between accepted, active and fully processed orders. A versioned, strict event schema protects the worker boundary. Additive migrations preserve the existing demo tables and APIs; deploy migrations and topics before new application versions.
+OpenAPI is generated from the actual DTOs/controllers and checked for drift in CI. It documents success/error schemas, header requirements, validation limits, integer-cent prices and the difference between accepted, active and fully processed orders. A versioned, strict event schema protects the worker boundary. Additive migrations preserve the existing demo tables and APIs; deploy migrations and topics before new application versions.
 
 Tests combine isolated unit behavior with real HTTP/PostgreSQL/Redis/Kafka integration, including failure injection and race conditions. Container smoke checks validate actual entry points and runtime dependency packaging. Setup and verification results are recorded without labeling unavailable or failed checks as successful.
 

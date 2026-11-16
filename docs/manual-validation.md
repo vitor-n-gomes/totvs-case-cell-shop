@@ -1,6 +1,6 @@
 # Validação manual da refatoração de Orders
 
-Esta etapa não executa nem corrige testes unitários ou de integração. O roteiro abaixo é para validação manual em ambiente local. Os comandos de compra consomem estoque desse ambiente. Use uma chave nova em cada cenário, exceto nos cenários explícitos de replay.
+Este roteiro é para validação manual em ambiente local; os testes automatizados estão descritos no [README](../README.md#automated-tests). Os comandos de compra consomem estoque desse ambiente. Use uma chave nova em cada cenário, exceto nos cenários explícitos de replay.
 
 ## Preparação
 
@@ -16,17 +16,18 @@ npm run typecheck:app
 npm run build
 ```
 
-Inicie em dois terminais:
+Inicie em três terminais:
 
 ```bash
 npm run start:dev
 npm run consumer:debug
+npm run scheduler:debug
 ```
 
 Alternativa com containers:
 
 ```bash
-docker compose up -d --build --wait http consumer
+docker compose up -d --build --wait http consumer scheduler
 docker compose run --rm migrate npm run seed
 ```
 
@@ -48,7 +49,7 @@ curl -i http://localhost:3000/checkout \
 curl -s http://localhost:3000/orders/ORDER_ID/status
 ```
 
-O POST deve retornar `202` com `{ "orderId": "…", "status": "Pending" }`. A consulta deve mostrar os itens com preços em strings decimais e evoluir para `Active` / `Completed`. Ela não expõe os contatos.
+O POST deve retornar `202` com `{ "orderId": "…", "status": "Pending" }`. A consulta deve mostrar os itens com preços em centavos inteiros e evoluir para `Active` / `Completed`. Ela não expõe os contatos.
 
 Repita exatamente a requisição: deve retornar o mesmo ID e a mesma resposta de aceite, mesmo após a ativação. Repita a chave alterando a quantidade: deve retornar `409`. Envie a mesma chave e conteúdo simultaneamente em dois terminais: ambos devem obter o mesmo pedido, com uma única reserva por produto.
 
@@ -97,7 +98,7 @@ Para conferir especificamente o job de limpeza, deixe o consumer na configuraç�
 docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --create --if-not-exists --topic order.checkout.manual-expiration --partitions 1 --replication-factor 1
 ```
 
-Reinicie somente a API com `CHECKOUT_TOPIC=order.checkout.manual-expiration RESERVATION_TTL_SECONDS=1 npm run start:dev`. Crie um pedido e aguarde o ciclo de cinco minutos do scheduler: o relay publicará o evento no tópico temporário, enquanto o job deverá cancelar o pedido e liberar a reserva uma única vez. O consumer continua inscrito apenas no tópico normal. Depois, reinicie a API na configuração padrão, com TTL de 900 segundos. Não reutilize o tópico temporário para pedidos normais.
+Reinicie somente a API com `CHECKOUT_TOPIC=order.checkout.manual-expiration RESERVATION_TTL_SECONDS=1 npm run start:dev`. Crie um pedido: o relay publicará o checkout no tópico temporário, então o pedido permanece `Pending` com a reserva expirada. No próximo ciclo (`SCHEDULER_INTERVAL_MS`, padrão 10 s) o scheduler publica `ORDER_RESERVATION_EXPIRED` no tópico normal, e o consumer cancela o pedido e libera a reserva uma única vez; republicações seguintes aparecem como `reservation.expire.skipped` e `shop_reservations_total{result="already_processed"}`. Depois, reinicie a API na configuração padrão, com TTL de 900 segundos. Não reutilize o tópico temporário para pedidos normais.
 
 ## Recuperação e logs
 

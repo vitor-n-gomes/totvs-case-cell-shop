@@ -4,44 +4,48 @@ import { Injectable, LoggerService } from '@nestjs/common';
 
 @Injectable()
 export class AppLogger implements LoggerService {
-  private app = 'bootstrap';
-  constructor(private readonly output: PinoLogger) {}
+  private appName = 'bootstrap';
+  constructor(private readonly pinoLogger: PinoLogger) {}
 
-  setApp(app: 'http' | 'consumer' | 'scheduler'): void {
-    this.app = app;
+  setApp(appName: 'http' | 'consumer' | 'scheduler'): void {
+    this.appName = appName;
   }
 
-  info(message: string, fields: Record<string, unknown> = {}): void {
-    this.write('info', message, fields);
+  info(message: string, logFields: Record<string, unknown> = {}): void {
+    this.write('info', message, logFields);
   }
 
-  log(message: unknown, ...context: unknown[]): void {
-    this.write('info', message, { context });
+  log(message: unknown, ...logContext: unknown[]): void {
+    this.write('info', message, { context: logContext });
   }
 
-  warn(message: unknown, ...context: unknown[]): void {
-    this.write('warn', message, { context });
+  warn(message: unknown, ...logContext: unknown[]): void {
+    this.write('warn', message, { context: logContext });
   }
 
-  error(message: unknown, ...context: unknown[]): void {
-    this.write('error', message, { context });
+  error(message: unknown, ...logContext: unknown[]): void {
+    this.write('error', message, { context: logContext });
   }
 
-  debug(message: unknown, ...context: unknown[]): void {
-    this.write('debug', message, { context });
+  debug(message: unknown, ...logContext: unknown[]): void {
+    this.write('debug', message, { context: logContext });
   }
 
-  verbose(message: unknown, ...context: unknown[]): void {
-    this.write('debug', message, { context });
+  verbose(message: unknown, ...logContext: unknown[]): void {
+    this.write('debug', message, { context: logContext });
   }
 
-  fatal(message: unknown, ...context: unknown[]): void {
-    this.write('fatal', message, { context });
+  fatal(message: unknown, ...logContext: unknown[]): void {
+    this.write('fatal', message, { context: logContext });
   }
 
-  startupFailure(app: 'http' | 'consumer' | 'scheduler', error: unknown): void {
-    this.setApp(app);
-    this.info(`${app}.startup.failed`, {
+  startupFailure(
+    appName: 'http' | 'consumer' | 'scheduler',
+    error: unknown,
+  ): void {
+    this.setApp(appName);
+
+    this.info(`${appName}.startup.failed`, {
       error:
         error instanceof Error &&
         error.message.startsWith('Invalid configuration:')
@@ -53,15 +57,15 @@ export class AppLogger implements LoggerService {
   }
 
   private write(
-    level: string,
+    logLevel: string,
     message: unknown,
-    fields: Record<string, unknown>,
+    logFields: Record<string, unknown>,
   ): void {
-    this.output[level as 'info' | 'warn' | 'error' | 'debug' | 'fatal'](
+    this.pinoLogger[logLevel as 'info' | 'warn' | 'error' | 'debug' | 'fatal'](
       {
-        app: this.app,
+        app: this.appName,
         ...executionContext.getStore(),
-        ...fields,
+        ...logFields,
       },
       message instanceof Error
         ? message.name

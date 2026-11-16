@@ -12,7 +12,7 @@ import {
   ORDER_ACTIVATED,
   OrderActivatedEvent,
 } from '@app/order/messaging/order-events';
-import { createEventMeta } from '@app/order/messaging/order-event';
+import { createEventMeta } from '@app/order/messaging/event.util';
 import { StepName } from '../constants/step-names';
 import { OrderCancelledError } from '../guards/activation-errors';
 import { IdempotencyLogRepository } from '../../repositories/idempotency-log.repository';
@@ -22,82 +22,153 @@ import { ActivationContext } from '../steps/activation-step';
 @Injectable()
 export class OnlineActivationStrategy {
   readonly stepNames = Object.values(StepName);
+
   constructor(
-    private readonly registry: ActivationStepRegistry,
-    private readonly orders: OrderRepository,
-    private readonly journal: IdempotencyLogRepository,
-    private readonly metrics: Metrics,
-    private readonly spans: Spans,
+    private readonly activationStepRegistry: ActivationStepRegistry,
+    private readonly orderRepository: OrderRepository,
+    private readonly idempotencyLogRepository: IdempotencyLogRepository,
+    private readonly metricsService: Metrics,
+    private readonly spansService: Spans,
     private readonly eventBus: EventBus,
   ) {}
 
   async execute(
-    context: ActivationContext,
-    runner: QueryRunner,
+    activationContext: ActivationContext,
+    queryRunner: QueryRunner,
   ): Promise<void> {
-    await runner.startTransaction();
+    await queryRunner.startTransaction();
+
     try {
-      context.order = await this.orders.lockOrFail(
-        runner.manager,
-        context.order.id,
+
+      activationContext.order = await this.orderRepository.lockOrFail(
+        queryRunner.manager,
+        activationContext.order.id,
       );
-      if (context.order.status === OrderStatus.Cancelled)
+
+      if (activationContext.order.status === OrderStatus.Cancelled) {
+
         throw new OrderCancelledError('Order cancelled');
-      await this.orders.update(runner.manager, context.order.id, {
-        processingStatus: ProcessingStatus.Processing,
-      });
-      const consumedBefore = await this.journal.succeeded(
-        context.manager,
-        context.order.id,
-        StepName.ConsumeStockReservationStep,
+
+      }
+
+      await this.orderRepository.update(
+        queryRunner.manager,
+        activationContext.order.id,
+        {
+          processingStatus: ProcessingStatus.Processing,
+        },
       );
-      for (const name of this.stepNames.slice(0, 2))
-        await this.runStep(name, context);
-      await runner.commitTransaction();
-      if (!consumedBefore)
-        this.metrics.reservations.inc(
-          { result: 'consumed' },
-          context.consumedReservations ?? 0,
+
+      const wasReservationConsumed =
+        await this.idempotencyLogRepository.succeeded(
+          activationContext.entityManager,
+          activationContext.order.id,
+          StepName.ConsumeStockReservationStep,
         );
-      const activated: OrderActivatedEvent = {
-        kind: ORDER_ACTIVATED,
-        data: { order_id: context.order.id },
-        meta: createEventMeta(context.correlationId),
-      };
-      await this.eventBus.dispatch(activated);
+
+      for (const stepName of this.stepNames.slice(0, 2)) {
+
+        await this.runStep(stepName, activationContext);
+
+      }
+
+      await queryRunner.commitTransaction();
+
+      if (!wasReservationConsumed) {
+
+        this.metricsService.reservationTransitionsCounter.inc(
+          { result: 'consumed' },
+          activationContext.consumedReservationCount ?? 0,
+        );
+
+      }
+
     } catch (error) {
+
       // The transaction is already closed if the failure came after the commit.
-      if (runner.isTransactionActive) await runner.rollbackTransaction();
+      if (queryRunner.isTransactionActive) {
+
+        await queryRunner.rollbackTransaction();
+
+      }
+
       throw error;
+
     }
-    for (const name of this.stepNames.slice(2))
-      await this.runStep(name, context);
+
+    // Best-effort notification: EventBus swallows handler errors.
+    const orderActivatedEvent: OrderActivatedEvent = {
+      kind: ORDER_ACTIVATED,
+      data: { order_id: activationContext.order.id },
+      meta: createEventMeta(activationContext.correlationId),
+    };
+
+    await this.eventBus.dispatch(orderActivatedEvent);
+
+    for (const stepName of this.stepNames.slice(2)) {
+
+      await this.runStep(stepName, activationContext);
+
+    }
   }
 
   private async runStep(
-    name: StepName,
-    context: ActivationContext,
+    stepName: StepName,
+    activationContext: ActivationContext,
   ): Promise<void> {
-    context.currentStep = name;
-    const step = this.registry.get(name);
-    if (step.shouldExecute && !step.shouldExecute(context)) return;
-    if (await this.journal.succeeded(context.manager, context.order.id, name))
+    activationContext.currentStep = stepName;
+
+    const activationStep = this.activationStepRegistry.get(stepName);
+
+    if (
+      activationStep.shouldExecute &&
+      !activationStep.shouldExecute(activationContext)
+    ) {
+
       return;
-    const end = this.metrics.steps.startTimer({ step: name });
+
+    }
+
+    if (
+      await this.idempotencyLogRepository.succeeded(
+        activationContext.entityManager,
+        activationContext.order.id,
+        stepName,
+      )
+    ) {
+
+      return;
+
+    }
+
+    const stopStepTimer =
+      this.metricsService.activationStepDurationHistogram.startTimer({
+        step: stepName,
+      });
+
     try {
-      await this.spans.run(name, () => step.exec(context));
-      await this.journal.record(
-        context.manager,
-        context.order.id,
-        name,
+
+      await this.spansService.run(stepName, () =>
+        activationStep.exec(activationContext),
+      );
+
+      await this.idempotencyLogRepository.record(
+        activationContext.entityManager,
+        activationContext.order.id,
+        stepName,
         true,
-        { attempt: context.event.meta.attempt },
+        { attempt: activationContext.event.meta.attempt },
         'Step completed',
       );
-      end({ result: 'success' });
+
+      stopStepTimer({ result: 'success' });
+
     } catch (error) {
-      end({ result: 'failure' });
+
+      stopStepTimer({ result: 'failure' });
+
       throw error;
+
     }
   }
 }

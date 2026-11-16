@@ -18,6 +18,7 @@ const PRODUCT_KEY = 'CASE-LIMITED-001';
 const REQUEST_TIMEOUT_MS = 5_000;
 const POLL_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
+
 const EXPECTED_STEPS = [
   'ConsumeStockReservationStep',
   'ActivateOrderStep',
@@ -27,8 +28,8 @@ const EXPECTED_STEPS = [
 
 interface ProductSnapshot {
   productId: string;
-  netPrice: string;
-  listPrice: string;
+  netPrice: number;
+  listPrice: number;
   physical: number;
   reserved: number;
 }
@@ -43,30 +44,32 @@ interface OrderSnapshot extends Acceptance {
   items: {
     productId: string;
     quantity: number;
-    netPrice: string;
-    listPrice: string;
+    netPrice: number;
+    listPrice: number;
   }[];
 }
 
 async function request<T>(
   url: string,
   expectedStatus = 200,
-  options: RequestInit = {},
+  requestOptions: RequestInit = {},
 ): Promise<T> {
   const response = await fetch(url, {
-    ...options,
+    ...requestOptions,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
+
   assert.equal(
     response.status,
     expectedStatus,
-    `${options.method ?? 'GET'} ${url}: expected HTTP ${expectedStatus}, got ${response.status}`,
+    `${requestOptions.method ?? 'GET'} ${url}: expected HTTP ${expectedStatus}, got ${response.status}`,
   );
+
   return (await response.json()) as T;
 }
 
-async function readProduct(database: DataSource): Promise<ProductSnapshot> {
-  const rows: ProductSnapshot[] = await database.query(
+async function readProduct(dataSource: DataSource): Promise<ProductSnapshot> {
+  const productRows: ProductSnapshot[] = await dataSource.query(
     `SELECT p.id AS "productId", p.net_price AS "netPrice",
             p.list_price AS "listPrice", s.physical_quantity AS physical,
             s.reserved_quantity AS reserved
@@ -74,58 +77,85 @@ async function readProduct(database: DataSource): Promise<ProductSnapshot> {
       WHERE p.product_key = $1`,
     [PRODUCT_KEY],
   );
-  assert.ok(rows[0], `Product ${PRODUCT_KEY} missing. Run npm run seed:run.`);
-  return rows[0];
+
+  assert.ok(
+    productRows[0],
+    `Product ${PRODUCT_KEY} missing. Run npm run seed:run.`,
+  );
+
+  return productRows[0];
 }
 
 async function waitForCompletion(
-  api: string,
+  apiBaseUrl: string,
   orderId: string,
 ): Promise<OrderSnapshot> {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  const pollDeadlineMs = Date.now() + POLL_TIMEOUT_MS;
   let lastState = 'unknown';
-  while (Date.now() < deadline) {
+
+  while (Date.now() < pollDeadlineMs) {
+
     const order = await request<OrderSnapshot>(
-      `${api}/orders/${orderId}/status`,
+      `${apiBaseUrl}/orders/${orderId}/status`,
     );
+
     assert.equal(order.orderId, orderId, 'Unexpected order returned');
     lastState = `${order.status} / ${order.processingStatus}`;
     assert.notEqual(order.status, OrderStatus.Cancelled, 'Order cancelled');
+
     assert.notEqual(
       order.processingStatus,
       ProcessingStatus.Failed,
       'Order processing failed',
     );
+
     if (order.processingStatus === ProcessingStatus.Completed) {
+
       assert.equal(order.status, OrderStatus.Active);
+
       return order;
+
     }
+
     await sleep(POLL_INTERVAL_MS);
+
   }
+
   throw new Error(
     `Order ${orderId} did not complete within ${POLL_TIMEOUT_MS / 1000}s (last state: ${lastState}). Check the consumer.`,
   );
 }
 
 async function main(): Promise<void> {
-  const root = resolve(__dirname, '..');
+  const projectRoot = resolve(__dirname, '..');
+
   config({
     path:
       process.env.ENV_FILE ??
-      ['.env.local', '.env'].map((file) => resolve(root, file)),
+      ['.env.local', '.env'].map((environmentFile) =>
+        resolve(projectRoot, environmentFile),
+      ),
   });
+
   const environment = validateEnvironment(process.env);
-  const api = process.env.API_URL ?? `http://localhost:${environment.API_PORT}`;
-  await request(`${api}/health/ready`);
 
-  const database = new DataSource(databaseOptions(environment.DATABASE_URL));
-  await database.initialize();
+  const apiBaseUrl =
+    process.env.API_URL ?? `http://localhost:${environment.API_PORT}`;
+
+  await request(`${apiBaseUrl}/health/ready`);
+
+  const dataSource = new DataSource(databaseOptions(environment.DATABASE_URL));
+
+  await dataSource.initialize();
+
   try {
-    const before = await readProduct(database);
-    assert.equal(before.physical, 1, 'Expected seeded stock of 1 unit');
-    assert.equal(before.reserved, 0, 'Expected no existing reservations');
 
-    const purchase: RequestInit = {
+    const initialStock = await readProduct(dataSource);
+
+    assert.equal(initialStock.physical, 1, 'Expected seeded stock of 1 unit');
+    assert.equal(initialStock.reserved, 0, 'Expected no existing reservations');
+
+    const checkoutRequestOptions: RequestInit = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -138,68 +168,98 @@ async function main(): Promise<void> {
         mainContact: 'happy-path@example.test',
         paymentMethod: 'PIX',
         environment: Environment.Local,
-        items: [{ productId: before.productId, quantity: 1 }],
+        items: [{ productId: initialStock.productId, quantity: 1 }],
       }),
     };
-    const accepted = await request<Acceptance>(
-      `${api}/checkout`,
+
+    const checkoutAcceptance = await request<Acceptance>(
+      `${apiBaseUrl}/checkout`,
       202,
-      purchase,
+      checkoutRequestOptions,
     );
-    assert.equal(accepted.status, OrderStatus.Pending);
+
+    assert.equal(checkoutAcceptance.status, OrderStatus.Pending);
+
     assert.match(
-      accepted.orderId,
+      checkoutAcceptance.orderId,
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
       'Checkout must return an order UUID',
     );
-    process.stdout.write(`Checkout accepted: ${accepted.orderId}\n`);
 
-    const order = await waitForCompletion(api, accepted.orderId);
+    process.stdout.write(`Checkout accepted: ${checkoutAcceptance.orderId}\n`);
+
+    const order = await waitForCompletion(
+      apiBaseUrl,
+      checkoutAcceptance.orderId,
+    );
+
     assert.deepEqual(order.items, [
       {
-        productId: before.productId,
+        productId: initialStock.productId,
         quantity: 1,
-        netPrice: before.netPrice,
-        listPrice: before.listPrice,
+        netPrice: initialStock.netPrice,
+        listPrice: initialStock.listPrice,
       },
     ]);
+
     process.stdout.write('Order reached Active / Completed.\n');
 
     // A replay after completion must preserve the original acceptance response.
-    const replay = await request<Acceptance>(`${api}/checkout`, 202, purchase);
-    assert.deepEqual(replay, accepted, 'Replay must return the same order');
+    const replayAcceptance = await request<Acceptance>(
+      `${apiBaseUrl}/checkout`,
+      202,
+      checkoutRequestOptions,
+    );
 
-    const after = await readProduct(database);
-    assert.equal(after.physical, 0, 'Expected exactly 1 unit consumed');
-    assert.equal(after.reserved, 0, 'Expected no remaining reserved stock');
+    assert.deepEqual(
+      replayAcceptance,
+      checkoutAcceptance,
+      'Replay must return the same order',
+    );
 
-    const reservations: {
+    const finalStock = await readProduct(dataSource);
+
+    assert.equal(finalStock.physical, 0, 'Expected exactly 1 unit consumed');
+
+    assert.equal(
+      finalStock.reserved,
+      0,
+      'Expected no remaining reserved stock',
+    );
+
+    const reservationRows: {
       productId: string;
       quantity: number;
       status: string;
-    }[] = await database.query(
+    }[] = await dataSource.query(
       `SELECT product_id AS "productId", quantity, status
            FROM stock_reservation WHERE order_id = $1`,
-      [accepted.orderId],
+      [checkoutAcceptance.orderId],
     );
-    assert.deepEqual(reservations, [
-      { productId: before.productId, quantity: 1, status: 'CONSUMED' },
+
+    assert.deepEqual(reservationRows, [
+      { productId: initialStock.productId, quantity: 1, status: 'CONSUMED' },
     ]);
 
-    const steps: { step: string }[] = await database.query(
+    const successfulStepRows: { step: string }[] = await dataSource.query(
       'SELECT step FROM idempotency_log WHERE order_id = $1 AND success = true',
-      [accepted.orderId],
+      [checkoutAcceptance.orderId],
     );
+
     assert.deepEqual(
-      steps.map(({ step }) => step).sort(),
+      successfulStepRows.map(({ step }) => step).sort(),
       [...EXPECTED_STEPS].sort(),
       'Expected exactly one success for each of the four activation steps',
     );
+
     process.stdout.write(
       'PASSED: checkout completed, stock consumed once, reservation consumed, all four steps succeeded, and replay returned the same order.\n',
     );
+
   } finally {
-    await database.destroy();
+
+    await dataSource.destroy();
+
   }
 }
 
@@ -207,5 +267,6 @@ void main().catch((error: unknown) => {
   process.stderr.write(
     `FAILED: ${error instanceof Error ? error.message : String(error)}\n`,
   );
+
   process.exitCode = 1;
 });

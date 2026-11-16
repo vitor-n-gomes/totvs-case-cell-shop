@@ -30,11 +30,11 @@ import { HealthModule } from '@app/platform/health/health.module';
   ],
 })
 export class HttpModule implements NestModule {
-  constructor(health: HealthService) {
-    health.requireKafka = false;
+  constructor(healthService: HealthService) {
+    healthService.requireKafka = false;
   }
 
-  configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(CorrelationMiddleware).forRoutes('*');
+  configure(middlewareConsumer: MiddlewareConsumer): void {
+    middlewareConsumer.apply(CorrelationMiddleware).forRoutes('*');
   }
 }

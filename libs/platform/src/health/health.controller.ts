@@ -6,7 +6,7 @@ import { HealthService } from './health.service';
 @ApiExcludeController()
 @Controller('health')
 export class HealthController {
-  constructor(private readonly health: HealthService) {}
+  constructor(private readonly healthService: HealthService) {}
 
   @Get('live') live(): { status: string } {
     return { status: 'up' };
@@ -14,12 +14,14 @@ export class HealthController {
 
   @Get('ready')
   async ready(@Res({ passthrough: true }) response: Response) {
-    const result = await this.health.readiness();
-    response.status(result.ready ? 200 : 503);
-    return result;
+    const readinessResult = await this.healthService.readiness();
+
+    response.status(readinessResult.ready ? 200 : 503);
+
+    return readinessResult;
   }
 
   @Get('cache') cache() {
-    return this.health.cacheStatus();
+    return this.healthService.cacheStatus();
   }
 }

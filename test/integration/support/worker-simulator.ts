@@ -13,23 +13,48 @@ import { InMemoryStore } from './in-memory-store';
  * relay against a Kafka testcontainer, then poll GET /orders/:id/status.
  */
 export function simulateWorkerProcessing(
-  store: InMemoryStore,
+  inMemoryStore: InMemoryStore,
   orderId: string,
 ): void {
-  const order = store.orders.get(orderId);
-  if (!order) throw new Error(`Order ${orderId} not found`);
-  for (const reservation of store.reservations) {
-    if (reservation.orderId !== orderId || reservation.status !== 'ACTIVE')
+  const order = inMemoryStore.orders.get(orderId);
+
+  if (!order) {
+
+    throw new Error(`Order ${orderId} not found`);
+
+  }
+
+  for (const reservation of inMemoryStore.reservations) {
+
+    if (reservation.orderId !== orderId || reservation.status !== 'ACTIVE') {
+
       continue;
-    const product = store.products.get(reservation.productId);
+
+    }
+
+    const product = inMemoryStore.products.get(reservation.productId);
+
     if (product) {
+
       product.physicalQuantity -= reservation.quantity;
       product.reservedQuantity -= reservation.quantity;
+
     }
+
     reservation.status = 'CONSUMED';
+
   }
-  for (const event of store.outbox)
-    if (event.orderId === orderId) event.status = 'PROCESSED';
+
+  for (const event of inMemoryStore.outbox) {
+
+    if (event.orderId === orderId) {
+
+      event.status = 'PROCESSED';
+
+    }
+
+  }
+
   order.status = OrderStatus.Active;
   order.processingStatus = ProcessingStatus.Completed;
 }

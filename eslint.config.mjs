@@ -1,10 +1,85 @@
 import js from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
 const localStylePlugin = {
   rules: {
+    'padded-control-flow-blocks': {
+      meta: {
+        type: 'layout',
+        docs: {
+          description: 'Require blank lines inside control-flow blocks',
+        },
+        fixable: 'whitespace',
+        schema: [],
+        messages: {
+          padding:
+            'Separate control-flow block braces from their contents with a blank line.',
+        },
+      },
+      create(context) {
+        const sourceCode = context.sourceCode;
+
+        function checkPadding(node) {
+          if (!(node.body?.length || node.cases?.length)) return;
+
+          const opening =
+            node.type === 'SwitchStatement'
+              ? sourceCode.getTokenBefore(node.cases[0])
+              : sourceCode.getFirstToken(node);
+          const closing = sourceCode.getLastToken(node);
+          const first = sourceCode.getTokenAfter(opening, {
+            includeComments: true,
+          });
+          const last = sourceCode.getTokenBefore(closing, {
+            includeComments: true,
+          });
+          const indentation =
+            sourceCode.lines[opening.loc.start.line - 1].match(/^\s*/)[0];
+
+          for (const [before, after, fallbackIndentation] of [
+            [opening, first, `${indentation}  `],
+            [last, closing, indentation],
+          ]) {
+            if (after.loc.start.line - before.loc.end.line >= 2) continue;
+
+            const nextIndentation =
+              after.loc.start.line === opening.loc.start.line
+                ? fallbackIndentation
+                : sourceCode.lines[after.loc.start.line - 1].match(/^\s*/)[0];
+
+            context.report({
+              node,
+              messageId: 'padding',
+              fix(fixer) {
+                return fixer.replaceTextRange(
+                  [before.range[1], after.range[0]],
+                  `\n\n${nextIndentation}`,
+                );
+              },
+            });
+          }
+        }
+
+        const blocks = [
+          'IfStatement > BlockStatement',
+          'ForStatement > BlockStatement',
+          'ForOfStatement > BlockStatement',
+          'ForInStatement > BlockStatement',
+          'WhileStatement > BlockStatement',
+          'DoWhileStatement > BlockStatement',
+          'TryStatement > BlockStatement',
+          'CatchClause > BlockStatement',
+        ].join(', ');
+
+        return {
+          [blocks]: checkPadding,
+          SwitchStatement: checkPadding,
+        };
+      },
+    },
     'blank-line-between-methods': {
       meta: {
         type: 'layout',
@@ -142,8 +217,52 @@ export default defineConfig(
   },
   {
     files: ['**/*.ts'],
-    plugins: { localStyle: localStylePlugin },
-    rules: { 'localStyle/blank-line-between-methods': 'error' },
+    plugins: { localStyle: localStylePlugin, '@stylistic': stylistic },
+    rules: {
+      curly: ['error', 'all'],
+      'localStyle/padded-control-flow-blocks': 'error',
+      'localStyle/blank-line-between-methods': 'error',
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        // Blank line around control flow / multiline statements...
+        {
+          blankLine: 'always',
+          prev: '*',
+          next: [
+            'block-like',
+            'if',
+            'for',
+            'while',
+            'multiline-expression',
+            'multiline-const',
+            'multiline-let',
+            'return',
+            'throw',
+          ],
+        },
+        {
+          blankLine: 'always',
+          prev: [
+            'block-like',
+            'if',
+            'for',
+            'while',
+            'multiline-expression',
+            'multiline-const',
+            'multiline-let',
+            'const',
+            'let',
+          ],
+          next: '*',
+        },
+        // ...but keep runs of single-line declarations together.
+        {
+          blankLine: 'any',
+          prev: ['singleline-const', 'singleline-let'],
+          next: ['singleline-const', 'singleline-let'],
+        },
+      ],
+    },
   },
   {
     files: ['**/*entity.ts', '**/entities.ts', '**/*dto.ts', '**/dto.ts'],

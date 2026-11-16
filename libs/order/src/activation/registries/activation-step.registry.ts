@@ -14,25 +14,45 @@ import {
 
 @Injectable()
 export class ActivationStepRegistry {
-  private readonly steps = new Map<StepName, ActivationStep>();
+  private readonly activationSteps = new Map<StepName, ActivationStep>();
   constructor(
-    consume: ConsumeStockReservationStep,
-    activate: ActivateOrderStep,
-    erp: UpdateErpStep,
-    email: EmailNotificationStep,
+    consumeStockReservationStep: ConsumeStockReservationStep,
+    activateOrderStep: ActivateOrderStep,
+    updateErpStep: UpdateErpStep,
+    emailNotificationStep: EmailNotificationStep,
   ) {
     const reflector = new Reflector();
-    for (const step of [consume, activate, erp, email]) {
-      const name = reflector.get<StepName>(ACTIVATION_STEP, step.constructor);
-      if (!name || this.steps.has(name))
+
+    for (const activationStep of [
+      consumeStockReservationStep,
+      activateOrderStep,
+      updateErpStep,
+      emailNotificationStep,
+    ]) {
+
+      const stepName = reflector.get<StepName>(
+        ACTIVATION_STEP,
+        activationStep.constructor,
+      );
+
+      if (!stepName || this.activationSteps.has(stepName)) {
+
         throw new Error('Invalid activation step registration');
-      this.steps.set(name, step);
+
+      }
+
+      this.activationSteps.set(stepName, activationStep);
+
     }
-    if (this.steps.size !== Object.values(StepName).length)
+
+    if (this.activationSteps.size !== Object.values(StepName).length) {
+
       throw new Error('Missing activation step');
+
+    }
   }
 
-  get(name: StepName): ActivationStep {
-    return this.steps.get(name)!;
+  get(stepName: StepName): ActivationStep {
+    return this.activationSteps.get(stepName)!;
   }
 }

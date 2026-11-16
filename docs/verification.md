@@ -1,10 +1,21 @@
 # Complete challenge verification
 
-Updated on November 11, 2026. Verification used Node.js 24.22.2 and Docker Engine 28.5.1. Local verification scripts ran with npm 11.19.1; clean container builds, migrations and seed used the pinned npm 12.2.2. This supersedes the earlier foundation-only verification record.
+## Current real-service integration coverage
 
-## Orders refactor status
+The current suites use Node.js 24 and Docker-backed PostgreSQL, Kafka and Redis. The [README](../README.md#automated-tests) contains prerequisites, isolation details and commands. The tests exercise the real HTTP controllers, repositories, relay, Kafka transport and consumer, with official migrations in a unique `_test` database schema.
 
-The verification record below describes the version before the Orders refactor. Its passing test and container results do not verify the refactored applications. Production TypeScript, the `http` / `consumer` builds, changed-file lint/formatting and OpenAPI generation passed on Node 24.22.2. An offline TypeORM metadata inspection found nine distinct tables, no duplicate order columns and resolved query bindings; no database connection was opened. Unit and integration suites are intentionally unchanged and were not run; their imports still point at the previous structure. Infrastructure behavior is awaiting the user's manual validation using [manual-validation.md](manual-validation.md).
+| Documented requirement           | Current automated evidence                                                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Catalog, cache and observability | Redis TTL and expiration, malformed entries, two-instance stampede protection, abandoned lock recovery, Redis outage fallback, metrics and correlation/trace context.                                                                             |
+| Checkout and contracts           | HTTP/OpenAPI success and errors, audit redaction, 20 buyers competing for five units, concurrent and reordered-cart idempotency, stock and outbox rollback.                                                                                       |
+| Async resilience                 | Kafka-keyed checkout, duplicate delivery, activation rollback, ERP/email simulation, retries and terminal DLQ, outbox recovery, consumer redelivery and sanitized invalid-event DLQ. Both event kinds are tested for unexpected handler failures. |
+| Reservation reconciliation       | Scheduler publication, cancellation and cache invalidation, premature and duplicate events, expiration racing activation.                                                                                                                         |
+
+An earlier full integration run passed 34 tests before subsequent changes. After the consumer error-handling changes, the messaging, scheduler, correlation and real-checkout suites passed 26 tests with `--detectOpenHandles`; `npm test` passed 25 unit tests. `npm run typecheck` and `npm run build:consumer` also passed on Node 24.22.2.
+
+Tests invoke relay/scheduler cycles explicitly. They advance selected retry and reservation timestamps to keep scenarios deterministic, and inject some adapter failures; they stop only their disposable Redis container, not the shared Kafka/PostgreSQL services. They do not prove Docker application startup, real ERP/email behavior, remote exactly-once effects, production performance/SLOs, or an external tracing backend. The older in-memory HTTP tests remain in the suite.
+
+The following sections are historical records from before the Orders refactor; their test counts, paths and container results do not verify the current applications.
 
 ## Earlier automated verification
 
@@ -105,7 +116,7 @@ npm run build
 npm run infra:up
 cp .env.test.example .env.test.local
 npm run test:integration
-docker compose up -d --build --wait http consumer
+docker compose up -d --build --wait http consumer scheduler
 docker compose run --rm migrate npm run seed
 npm run test:smoke
 ```

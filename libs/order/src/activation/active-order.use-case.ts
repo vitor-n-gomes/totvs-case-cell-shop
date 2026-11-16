@@ -13,45 +13,79 @@ import { OnlineActivationStrategy } from './strategies/online-activation.strateg
 @Injectable()
 export class ActiveOrderUseCase {
   constructor(
-    private readonly orders: OrderRepository,
-    private readonly guard: OrderActivationGuard,
-    private readonly strategy: OnlineActivationStrategy,
-    private readonly failureHandler: ActivationFailureHandler,
-    private readonly metrics: Metrics,
-    private readonly spans: Spans,
+    private readonly orderRepository: OrderRepository,
+    private readonly orderActivationGuard: OrderActivationGuard,
+    private readonly onlineActivationStrategy: OnlineActivationStrategy,
+    private readonly activationFailureHandler: ActivationFailureHandler,
+    private readonly metricsService: Metrics,
+    private readonly spansService: Spans,
   ) {}
 
   async execute(event: CheckoutInitiatedEvent): Promise<void> {
     const { order_id: orderId } = event.data;
     const { attempt } = event.meta;
-    return this.orders.withActivationLock(orderId, async (runner) => {
-      const decision = await this.guard.evaluate(
-        orderId,
-        attempt,
-        runner.manager,
-      );
-      if (decision === 'skip') return;
-      const order = await this.orders.findById(orderId, runner.manager);
-      if (!order) return;
-      const context: ActivationContext = {
-        order,
-        event,
-        correlationId: event.meta.correlation_id,
-        manager: runner.manager,
-        currentStep: StepName.ConsumeStockReservationStep,
-      };
-      try {
-        await this.spans.run('order.activation', () =>
-          this.strategy.execute(context, runner),
+
+    return this.orderRepository.withActivationLock(
+      orderId,
+      async (queryRunner) => {
+        const activationDecision = await this.orderActivationGuard.evaluate(
+          orderId,
+          attempt,
+          queryRunner.manager,
         );
-        await this.orders.update(runner.manager, order.id, {
-          processingStatus: ProcessingStatus.Completed,
-          lastAttempt: attempt,
-        });
-        this.metrics.processing.inc({ result: 'completed' });
-      } catch (error) {
-        await this.failureHandler.handle(runner, order, context, error);
-      }
-    });
+
+        if (activationDecision === 'skip') {
+
+          return;
+
+        }
+
+        const order = await this.orderRepository.findById(
+          orderId,
+          queryRunner.manager,
+        );
+
+        if (!order) {
+
+          return;
+
+        }
+
+        const activationContext: ActivationContext = {
+          order,
+          event,
+          correlationId: event.meta.correlation_id,
+          entityManager: queryRunner.manager,
+          currentStep: StepName.ConsumeStockReservationStep,
+        };
+
+        try {
+
+          await this.spansService.run('order.activation', () =>
+            this.onlineActivationStrategy.execute(
+              activationContext,
+              queryRunner,
+            ),
+          );
+
+          await this.orderRepository.update(queryRunner.manager, order.id, {
+            processingStatus: ProcessingStatus.Completed,
+            lastAttempt: attempt,
+          });
+
+          this.metricsService.processingCounter.inc({ result: 'completed' });
+
+        } catch (error) {
+
+          await this.activationFailureHandler.handle(
+            queryRunner,
+            order,
+            activationContext,
+            error,
+          );
+
+        }
+      },
+    );
   }
 }

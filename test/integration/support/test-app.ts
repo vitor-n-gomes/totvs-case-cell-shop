@@ -32,9 +32,9 @@ export const CHECKOUT_TOPIC = 'order.checkout.initiated';
 
 export interface TestApp {
   app: INestApplication;
-  store: InMemoryStore;
-  redis: InMemoryRedisConnection;
-  metrics: Metrics;
+  inMemoryStore: InMemoryStore;
+  redisConnection: InMemoryRedisConnection;
+  metricsService: Metrics;
 }
 
 const silentLogger = {
@@ -57,11 +57,12 @@ const settings: Record<string, unknown> = {
  * Boots the real controllers, use cases, correlation middleware, validation pipe
  * and exception filter of the HTTP app. Only PostgreSQL and Redis are replaced
  * by in-memory fakes; Kafka is never touched by the HTTP side.
- * TODO: swap the fake providers for the real HttpModule once test containers exist.
+ * The real-service suites cover PostgreSQL, Redis and Kafka separately.
  */
 export async function createTestApp(): Promise<TestApp> {
-  const store = new InMemoryStore();
-  const redis = new InMemoryRedisConnection();
+  const inMemoryStore = new InMemoryStore();
+  const redisConnection = new InMemoryRedisConnection();
+
   const moduleRef = await Test.createTestingModule({
     controllers: [ProductsController, OrderController],
     providers: [
@@ -74,26 +75,43 @@ export async function createTestApp(): Promise<TestApp> {
       { provide: AppLogger, useValue: silentLogger },
       {
         provide: ConfigService,
-        useValue: { getOrThrow: (key: string) => settings[key] },
+        useValue: { getOrThrow: (configKey: string) => settings[configKey] },
       },
-      { provide: RedisConnection, useValue: redis },
+      { provide: RedisConnection, useValue: redisConnection },
       { provide: DataSource, useValue: new FakeDataSource() },
       {
         provide: ProductRepository,
-        useValue: new FakeProductRepository(store),
+        useValue: new FakeProductRepository(inMemoryStore),
       },
-      { provide: OrderRepository, useValue: new FakeOrderRepository(store) },
-      { provide: StockRepository, useValue: new FakeStockRepository(store) },
-      { provide: OutboxRepository, useValue: new FakeOutboxRepository(store) },
+      {
+        provide: OrderRepository,
+        useValue: new FakeOrderRepository(inMemoryStore),
+      },
+      {
+        provide: StockRepository,
+        useValue: new FakeStockRepository(inMemoryStore),
+      },
+      {
+        provide: OutboxRepository,
+        useValue: new FakeOutboxRepository(inMemoryStore),
+      },
     ],
   }).compile();
 
   const app = moduleRef.createNestApplication({ logger: false });
-  const correlation = new CorrelationMiddleware(app.get(AppLogger));
-  app.use((req: never, res: never, next: () => void) =>
-    correlation.use(req, res, next),
+  const correlationMiddleware = new CorrelationMiddleware(app.get(AppLogger));
+
+  app.use((request: never, response: never, next: () => void) =>
+    correlationMiddleware.use(request, response, next),
   );
+
   configureApi(app);
   await app.init();
-  return { app, store, redis, metrics: app.get(Metrics) };
+
+  return {
+    app,
+    inMemoryStore,
+    redisConnection,
+    metricsService: app.get(Metrics),
+  };
 }

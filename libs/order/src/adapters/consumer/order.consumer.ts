@@ -3,43 +3,48 @@ import {
   Ctx,
   EventPattern,
   KafkaContext,
-  KafkaRetriableException,
   Payload,
+  RpcException,
 } from '@nestjs/microservices';
 import {
   ORDER_EVENT_PATTERN,
   ORDER_KAFKA_TRANSPORT,
 } from '@app/platform/kafka/kafka.topics';
-import { AppLogger } from '@app/platform/logging/app-logger';
+import { parseOrderEvent } from '@app/order/messaging/order-events';
 import { ProcessOrderEventUseCase } from '../usecases/process-order-event.use-case';
 @Controller()
 export class OrderConsumer {
   constructor(
-    private readonly process: ProcessOrderEventUseCase,
-    private readonly logger: AppLogger,
+    private readonly processOrderEventUseCase: ProcessOrderEventUseCase,
   ) {}
 
   @EventPattern(ORDER_EVENT_PATTERN, ORDER_KAFKA_TRANSPORT)
   async orderEvent(
     @Payload() payload: unknown,
-    @Ctx() context: KafkaContext,
+    @Ctx() kafkaContext: KafkaContext,
   ): Promise<void> {
-    const timer = setInterval(() => {
-      void context
+    const heartbeatInterval = setInterval(() => {
+      void kafkaContext
         .getHeartbeat()()
         .catch(() => undefined);
     }, 1000);
+
     try {
-      await this.process.handle(payload, {
-        topic: context.getTopic(),
-        partition: context.getPartition(),
-        offset: context.getMessage().offset,
-      });
-    } catch {
-      this.logger.error('checkout.consumer.failed');
-      throw new KafkaRetriableException('Checkout processing failed');
+
+      const event = parseOrderEvent(payload);
+
+      if (!event) {
+
+        throw new RpcException('Invalid event payload');
+
+      }
+
+      await this.processOrderEventUseCase.handle(event);
+
     } finally {
-      clearInterval(timer);
+
+      clearInterval(heartbeatInterval);
+
     }
   }
 }

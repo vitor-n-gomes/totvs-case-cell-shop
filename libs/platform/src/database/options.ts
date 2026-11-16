@@ -12,6 +12,7 @@ import { CreateOutboxEvents1794700000007 } from './migrations/1794700000007-crea
 import { CreateRequestLog1794700000008 } from './migrations/1794700000008-create-request-log';
 import { AddUpdatedAtToEntities1794700000009 } from './migrations/1794700000009-add-updated-at-to-entities';
 import { AddCreatedAtToEntities1794700000010 } from './migrations/1794700000010-add-created-at-to-entities';
+import { ConvertPricesToIntegerCents1794700000011 } from './migrations/1794700000011-convert-prices-to-integer-cents';
 import { DataSourceOptions } from 'typeorm';
 
 const migrations = [
@@ -25,12 +26,13 @@ const migrations = [
   CreateRequestLog1794700000008,
   AddUpdatedAtToEntities1794700000009,
   AddCreatedAtToEntities1794700000010,
+  ConvertPricesToIntegerCents1794700000011,
 ];
 
-export function databaseOptions(url: string): DataSourceOptions {
+export function databaseOptions(databaseUrl: string): DataSourceOptions {
   return {
     type: 'postgres',
-    url,
+    url: databaseUrl,
     entities: [
       RequestLogEntity,
       ...productEntities,

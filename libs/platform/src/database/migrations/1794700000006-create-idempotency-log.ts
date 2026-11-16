@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateIdempotencyLog1794700000006 implements MigrationInterface {
-  async up(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       CREATE TABLE idempotency_log (
         id uuid NOT NULL DEFAULT gen_random_uuid(),
         order_id uuid NOT NULL,
@@ -23,8 +23,8 @@ export class CreateIdempotencyLog1794700000006 implements MigrationInterface {
     `);
   }
 
-  async down(runner: QueryRunner): Promise<void> {
-    await runner.query(`
+  async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       ALTER TABLE idempotency_log DROP CONSTRAINT fk_idempotency_log_order_id;
       DROP INDEX idempotency_log_success_idx;
       DROP INDEX idx_idempotency_log_order_id;

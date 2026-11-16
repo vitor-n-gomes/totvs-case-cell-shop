@@ -13,20 +13,28 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     abortOnError: false,
   });
+
   try {
-    const logger = app.get(AppLogger);
-    logger.setApp('http');
+
+    const appLogger = app.get(AppLogger);
+
+    appLogger.setApp('http');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
     configureApi(app);
     SwaggerModule.setup('api-docs', app, createOpenApiDocument(app));
+
     await app.listen(
       app.get(ConfigService).getOrThrow<number>('API_PORT'),
       '0.0.0.0',
     );
+
   } catch (error) {
+
     await app.close();
+
     throw error;
+
   }
 }
 
@@ -36,5 +44,6 @@ void bootstrap().catch((error: unknown) => {
       ? error.message
       : 'http.startup.failed',
   );
+
   process.exitCode = 1;
 });

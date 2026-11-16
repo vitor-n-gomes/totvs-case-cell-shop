@@ -12,7 +12,7 @@ import { EventBus } from './event.bus';
 @Injectable()
 export class HandlersRegistry implements OnModuleInit {
   constructor(
-    private readonly logger: AppLogger,
+    private readonly appLogger: AppLogger,
     private readonly reservationExpiredHandler: ReservationExpiredHandler,
     private readonly orderActivatedHandler: OrderActivatedHandler,
     private readonly eventBus: EventBus,
@@ -32,36 +32,42 @@ export class HandlersRegistry implements OnModuleInit {
    */
   registerAll(eventBus: EventBus): void {
     // CheckoutInitiatedHandler is not an EventHandler; ProcessOrderEventUseCase invokes it directly.
-    const handlers: EventHandler[] = [
+    const eventHandlers: EventHandler[] = [
       this.reservationExpiredHandler,
       this.orderActivatedHandler,
     ];
 
-    let registeredCount = 0;
+    let registeredHandlerCount = 0;
 
-    handlers.forEach((handler) => {
+    eventHandlers.forEach((handler) => {
       try {
+
         eventBus.register(handler);
-        registeredCount++;
+        registeredHandlerCount++;
+
       } catch (error) {
-        this.logger.warn('handlers.registry.registration_failed', {
+
+        this.appLogger.warn('handlers.registry.registration_failed', {
           handler_name: handler.constructor.name,
           error: error instanceof Error ? error.message : String(error),
         });
+
       }
     });
 
-    this.logger.info('handlers.registry.initialized', {
-      registered_handlers: registeredCount,
-      total_handlers: handlers.length,
+    this.appLogger.info('handlers.registry.initialized', {
+      registered_handlers: registeredHandlerCount,
+      total_handlers: eventHandlers.length,
     });
 
-    if (registeredCount !== handlers.length) {
-      this.logger.warn('handlers.registry.incomplete_registration', {
-        registered_handlers: registeredCount,
-        total_handlers: handlers.length,
-        failed_handlers: handlers.length - registeredCount,
+    if (registeredHandlerCount !== eventHandlers.length) {
+
+      this.appLogger.warn('handlers.registry.incomplete_registration', {
+        registered_handlers: registeredHandlerCount,
+        total_handlers: eventHandlers.length,
+        failed_handlers: eventHandlers.length - registeredHandlerCount,
       });
+
     }
   }
 }

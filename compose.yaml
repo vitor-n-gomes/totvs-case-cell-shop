@@ -8,6 +8,8 @@ x-app-environment: &app-environment
   KAFKA_TOPIC: casecellshop.demo.message-created.v1
   KAFKA_GROUP_ID: casecellshop-demo-worker
   CHECKOUT_TOPIC: order.checkout.initiated
+  SCHEDULER_INTERVAL_MS: 10000
+  NODE_OPTIONS: --disable-warning=TimeoutNegativeWarning
   API_PORT: 3000
   WORKER_PORT: 3001
 
@@ -154,6 +156,17 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+    stop_grace_period: 30s
+
+  scheduler:
+    build: { context: ., target: runtime }
+    environment: *app-environment
+    command: ['node', 'dist/apps/scheduler/main.js']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka-init: { condition: service_completed_successfully }
     stop_grace_period: 30s
 
 volumes:

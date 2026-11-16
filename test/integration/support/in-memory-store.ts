@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import {
   OrderStatus,
   ProcessingStatus,
@@ -56,8 +56,7 @@ export interface OutboxRecord {
 
 /**
  * Shared in-memory "database" behind the fake repositories below.
- * TODO: drop these fakes and run the same specs against a real PostgreSQL
- * (testcontainers or the `_test` database) with migrations applied.
+ * Real-service integration tests also exercise the migrated `_test` database.
  */
 export class InMemoryStore {
   readonly products = new Map<string, ProductRecord>();
@@ -68,29 +67,38 @@ export class InMemoryStore {
   catalogQueries = 0;
 
   seedProducts(products: ProductRecord[]): void {
-    for (const product of products) this.products.set(product.id, product);
+    for (const product of products) {
+
+      this.products.set(product.id, product);
+
+    }
   }
 }
 
 export class FakeDataSource {
   // The real transaction is atomic; happy paths never need a rollback.
-  transaction<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
-    return work({} as EntityManager);
+  transaction<T>(
+    transactionOperation: (entityManager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    return transactionOperation({} as EntityManager);
   }
 }
 
 export class FakeProductRepository {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly inMemoryStore: InMemoryStore) {}
 
   findAll() {
-    this.store.catalogQueries += 1;
+    this.inMemoryStore.catalogQueries += 1;
+
     return Promise.resolve(
-      [...this.store.products.values()]
+      [...this.inMemoryStore.products.values()]
         .filter(
           ({ physicalQuantity, reservedQuantity }) =>
             physicalQuantity - reservedQuantity >= 1,
         )
-        .sort((a, b) => a.productKey.localeCompare(b.productKey))
+        .sort((leftProduct, rightProduct) =>
+          leftProduct.productKey.localeCompare(rightProduct.productKey),
+        )
         .map(({ id, name, productKey, netPrice, listPrice }) => ({
           id,
           name,
@@ -103,24 +111,29 @@ export class FakeProductRepository {
 }
 
 export class FakeOrderRepository {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly inMemoryStore: InMemoryStore) {}
 
   insertPending(
-    _manager: EntityManager,
-    id: string,
-    input: CheckoutInput,
+    _entityManager: EntityManager,
+    orderId: string,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<boolean> {
-    if (this.find(idempotencyKey)) return Promise.resolve(false);
-    this.store.orders.set(id, {
-      id,
-      paymentType: input.paymentType,
-      dueDate: input.dueDate,
-      mainContact: input.mainContact,
-      paymentMethod: input.paymentMethod,
-      environment: input.environment,
+    if (this.find(idempotencyKey)) {
+
+      return Promise.resolve(false);
+
+    }
+
+    this.inMemoryStore.orders.set(orderId, {
+      id: orderId,
+      paymentType: checkoutDto.paymentType,
+      dueDate: checkoutDto.dueDate,
+      mainContact: checkoutDto.mainContact,
+      paymentMethod: checkoutDto.paymentMethod,
+      environment: checkoutDto.environment,
       status: OrderStatus.Pending,
       processingStatus: ProcessingStatus.Pending,
       idempotencyKey,
@@ -128,60 +141,74 @@ export class FakeOrderRepository {
       correlationId,
       createdAt: new Date(),
     });
+
     return Promise.resolve(true);
   }
 
-  findByKey(_manager: EntityManager, idempotencyKey: string) {
+  findByKey(_entityManager: EntityManager, idempotencyKey: string) {
     return Promise.resolve(this.find(idempotencyKey) ?? null);
   }
 
-  findById(id: string) {
-    return Promise.resolve(this.store.orders.get(id) ?? null);
+  findById(orderId: string) {
+    return Promise.resolve(this.inMemoryStore.orders.get(orderId) ?? null);
   }
 
   findItems(orderId: string) {
     return Promise.resolve(
-      this.store.items
+      this.inMemoryStore.items
         .filter((item) => item.orderId === orderId)
-        .sort((a, b) => a.productId.localeCompare(b.productId)),
+        .sort((leftOrderItem, rightOrderItem) =>
+          leftOrderItem.productId.localeCompare(rightOrderItem.productId),
+        ),
     );
   }
 
   addItems(
-    _manager: EntityManager,
+    _entityManager: EntityManager,
     orderId: string,
     items: Omit<OrderItemRecord, 'orderId'>[],
   ): Promise<void> {
-    this.store.items.push(...items.map((item) => ({ ...item, orderId })));
+    this.inMemoryStore.items.push(
+      ...items.map((item) => ({ ...item, orderId })),
+    );
+
     return Promise.resolve();
   }
 
   private find(idempotencyKey: string): OrderRecord | undefined {
-    return [...this.store.orders.values()].find(
+    return [...this.inMemoryStore.orders.values()].find(
       (order) => order.idempotencyKey === idempotencyKey,
     );
   }
 }
 
 export class FakeStockRepository {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly inMemoryStore: InMemoryStore) {}
 
   reserve(
-    _manager: EntityManager,
+    _entityManager: EntityManager,
     orderId: string,
     items: { productId: string; quantity: number }[],
   ) {
     return Promise.resolve(
       items.map(({ productId, quantity }) => {
-        const product = this.store.products.get(productId);
-        if (!product) throw new Error(`Seed product ${productId} first`);
+        const product = this.inMemoryStore.products.get(productId);
+
+        if (!product) {
+
+          throw new Error(`Seed product ${productId} first`);
+
+        }
+
         product.reservedQuantity += quantity;
-        this.store.reservations.push({
+
+        this.inMemoryStore.reservations.push({
           orderId,
           productId,
           quantity,
           status: 'ACTIVE',
         });
+
         return {
           productId,
           quantity,
@@ -194,26 +221,31 @@ export class FakeStockRepository {
 }
 
 export class FakeOutboxRepository {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly inMemoryStore: InMemoryStore) {}
 
   append(
-    _manager: EntityManager,
+    _entityManager: EntityManager,
     orderId: string,
     topic: string,
     payload: object,
     deduplicationKey: string,
   ): Promise<void> {
-    const duplicate = this.store.outbox.some(
+    const isDuplicateEvent = this.inMemoryStore.outbox.some(
       (event) => event.deduplicationKey === deduplicationKey,
     );
-    if (!duplicate)
-      this.store.outbox.push({
+
+    if (!isDuplicateEvent) {
+
+      this.inMemoryStore.outbox.push({
         orderId,
         topic,
         payload,
         deduplicationKey,
         status: 'PENDING',
       });
+
+    }
+
     return Promise.resolve();
   }
 }
@@ -221,11 +253,12 @@ export class FakeOutboxRepository {
 export function newProduct(
   overrides: Partial<ProductRecord> = {},
 ): ProductRecord {
-  const id = overrides.id ?? randomUUID();
+  const productId = overrides.id ?? randomUUID();
+
   return {
-    id,
-    name: `Case ${id.slice(0, 8)}`,
-    productKey: `case-${id.slice(0, 8)}`,
+    id: productId,
+    name: `Case ${productId.slice(0, 8)}`,
+    productKey: `case-${productId.slice(0, 8)}`,
     netPrice: 2990,
     listPrice: 3990,
     physicalQuantity: 10,

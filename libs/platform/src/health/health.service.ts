@@ -9,54 +9,87 @@ export class HealthService implements BeforeApplicationShutdown {
   checkoutConsumerReady: boolean | undefined;
   consumerReady: boolean | undefined;
   schedulerReady: boolean | undefined;
-  private shuttingDown = false;
+  private isShuttingDown = false;
 
   constructor(
-    private readonly database: DataSource,
-    private readonly kafka: KafkaService,
-    private readonly redis: RedisConnection,
+    private readonly dataSource: DataSource,
+    private readonly kafkaService: KafkaService,
+    private readonly redisConnection: RedisConnection,
   ) {}
 
   async readiness(): Promise<{
     ready: boolean;
     checks: Record<string, string>;
   }> {
-    const [database, kafka] = await Promise.allSettled([
-      this.database.query('SELECT 1'),
-      this.requireKafka ? this.kafka.checkTopic() : Promise.resolve(),
+    const [databaseCheckResult, kafkaCheckResult] = await Promise.allSettled([
+      this.dataSource.query('SELECT 1'),
+      this.requireKafka ? this.kafkaService.checkTopic() : Promise.resolve(),
     ]);
-    const checks: Record<string, string> = {
-      postgres: database.status === 'fulfilled' ? 'up' : 'down',
-      kafka: kafka.status === 'fulfilled' ? 'up' : 'down',
+
+    const readinessChecks: Record<string, string> = {
+      postgres: databaseCheckResult.status === 'fulfilled' ? 'up' : 'down',
+      kafka: kafkaCheckResult.status === 'fulfilled' ? 'up' : 'down',
     };
-    if (this.consumerReady !== undefined)
-      checks.consumer = this.consumerReady ? 'up' : 'down';
-    if (!this.requireKafka) delete checks.kafka;
-    if (this.checkoutConsumerReady !== undefined)
-      checks.checkoutConsumer = this.checkoutConsumerReady ? 'up' : 'down';
-    if (this.schedulerReady !== undefined)
-      checks.scheduler = this.schedulerReady ? 'up' : 'down';
+
+    if (this.consumerReady !== undefined) {
+
+      readinessChecks.consumer = this.consumerReady ? 'up' : 'down';
+
+    }
+
+    if (!this.requireKafka) {
+
+      delete readinessChecks.kafka;
+
+    }
+
+    if (this.checkoutConsumerReady !== undefined) {
+
+      readinessChecks.checkoutConsumer = this.checkoutConsumerReady
+        ? 'up'
+        : 'down';
+
+    }
+
+    if (this.schedulerReady !== undefined) {
+
+      readinessChecks.scheduler = this.schedulerReady ? 'up' : 'down';
+
+    }
+
     return {
       ready:
-        !this.shuttingDown &&
-        Object.values(checks).every((value) => value === 'up'),
-      checks,
+        !this.isShuttingDown &&
+        Object.values(readinessChecks).every(
+          (checkStatus) => checkStatus === 'up',
+        ),
+      checks: readinessChecks,
     };
   }
 
   async cacheStatus(): Promise<{ redis: 'up' | 'down'; required: false }> {
     try {
-      if (!this.redis.client.isReady) return { redis: 'down', required: false };
-      await this.redis.client
+
+      if (!this.redisConnection.redisClient.isReady) {
+
+        return { redis: 'down', required: false };
+
+      }
+
+      await this.redisConnection.redisClient
         .withCommandOptions({ abortSignal: AbortSignal.timeout(1000) })
         .ping();
+
       return { redis: 'up', required: false };
+
     } catch {
+
       return { redis: 'down', required: false };
+
     }
   }
 
   beforeApplicationShutdown(): void {
-    this.shuttingDown = true;
+    this.isShuttingDown = true;
   }
 }

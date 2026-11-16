@@ -27,8 +27,6 @@ export const checkoutSchema = z.strictObject({
   items: z.array(checkoutItemSchema).min(1).max(100),
 });
 
-export type CheckoutInput = z.infer<typeof checkoutSchema>;
-
 export class CheckoutItemDto implements z.infer<typeof checkoutItemSchema> {
   @ApiProperty({ format: 'uuid' })
   productId: string;

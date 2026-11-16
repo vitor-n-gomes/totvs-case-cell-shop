@@ -18,50 +18,67 @@ export interface ReservedItem {
 @Injectable()
 export class StockRepository {
   async reserve(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
-    items: { productId: string; quantity: number }[],
-    ttl: number,
+    checkoutItems: { productId: string; quantity: number }[],
+    reservationTtlSeconds: number,
   ): Promise<ReservedItem[]> {
-    const reserved: ReservedItem[] = [];
-    for (const item of [...items].sort((a, b) =>
-      a.productId.localeCompare(b.productId),
+    const reservedItems: ReservedItem[] = [];
+
+    for (const checkoutItem of [...checkoutItems].sort((leftItem, rightItem) =>
+      leftItem.productId.localeCompare(rightItem.productId),
     )) {
-      const product = await manager
+
+      const product = await entityManager
         .getRepository(ProductEntity)
-        .findOneBy({ id: item.productId });
-      if (!product) throw new NotFoundException('Product not found');
-      const result = await manager
+        .findOneBy({ id: checkoutItem.productId });
+
+      if (!product) {
+
+        throw new NotFoundException('Product not found');
+
+      }
+
+      const stockUpdateResult = await entityManager
         .getRepository(StockEntity)
         .createQueryBuilder()
         .update()
         .set({ reservedQuantity: () => 'reserved_quantity + :quantity' })
-        .where('product_id = :productId', { productId: item.productId })
+        .where('product_id = :productId', { productId: checkoutItem.productId })
         .andWhere('physical_quantity - reserved_quantity >= :quantity', {
-          quantity: item.quantity,
+          quantity: checkoutItem.quantity,
         })
         .execute();
-      if (!result.affected) throw new ConflictException('Insufficient stock');
-      await manager
+
+      if (!stockUpdateResult.affected) {
+
+        throw new ConflictException('Insufficient stock');
+
+      }
+
+      await entityManager
         .getRepository(ReservationEntity)
         .createQueryBuilder()
         .insert()
         .values({
           id: randomUUID(),
           orderId,
-          productId: item.productId,
-          quantity: item.quantity,
+          productId: checkoutItem.productId,
+          quantity: checkoutItem.quantity,
           status: 'ACTIVE',
           expiresAt: () => "clock_timestamp() + :ttl * interval '1 second'",
         })
-        .setParameter('ttl', ttl)
+        .setParameter('ttl', reservationTtlSeconds)
         .execute();
-      reserved.push({
-        ...item,
+
+      reservedItems.push({
+        ...checkoutItem,
         netPrice: product.netPrice,
         listPrice: product.listPrice,
       });
+
     }
-    return reserved;
+
+    return reservedItems;
   }
 }

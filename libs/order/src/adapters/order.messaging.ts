@@ -3,18 +3,21 @@ import { KafkaEvents, KafkaService } from '@app/platform/kafka/kafka.service';
 
 @Injectable()
 export class OrderMessaging {
-  constructor(private readonly kafka: KafkaService) {}
+  constructor(private readonly kafkaService: KafkaService) {}
 
   ensureConnected(): Promise<void> {
-    return this.kafka.ensureConnected();
+    return this.kafkaService.ensureConnected();
   }
 
   publish(
     topic: string,
-    key: string,
+    messageKey: string,
     payload: object,
     headers: Record<string, string> = {},
   ): Promise<void> {
-    return this.kafka.produce(topic, new KafkaEvents(key, payload, headers));
+    return this.kafkaService.produce(
+      topic,
+      new KafkaEvents(messageKey, payload, headers),
+    );
   }
 }

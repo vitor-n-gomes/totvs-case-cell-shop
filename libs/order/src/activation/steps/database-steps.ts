@@ -10,30 +10,44 @@ import { ActivationContext, ActivationStep } from './activation-step';
 @Injectable()
 @RegisteredStep(StepName.ConsumeStockReservationStep)
 export class ConsumeStockReservationStep implements ActivationStep {
-  constructor(private readonly reservations: ReservationRepository) {}
+  constructor(private readonly reservationRepository: ReservationRepository) {}
 
-  async exec(context: ActivationContext): Promise<void> {
+  async exec(activationContext: ActivationContext): Promise<void> {
     try {
-      context.consumedReservations = await this.reservations.consume(
-        context.manager,
-        context.order.id,
-      );
+
+      activationContext.consumedReservationCount =
+        await this.reservationRepository.consume(
+          activationContext.entityManager,
+          activationContext.order.id,
+        );
+
     } catch (error) {
-      if (error instanceof InventoryError)
+
+      if (error instanceof InventoryError) {
+
         throw new PermanentActivationError(error.message, { cause: error });
+
+      }
+
       throw error;
+
     }
   }
 }
 @Injectable()
 @RegisteredStep(StepName.ActivateOrderStep)
 export class ActivateOrderStep implements ActivationStep {
-  constructor(private readonly orders: OrderRepository) {}
+  constructor(private readonly orderRepository: OrderRepository) {}
 
-  async exec(context: ActivationContext): Promise<void> {
-    await this.orders.update(context.manager, context.order.id, {
-      status: OrderStatus.Active,
-    });
-    context.order.status = OrderStatus.Active;
+  async exec(activationContext: ActivationContext): Promise<void> {
+    await this.orderRepository.update(
+      activationContext.entityManager,
+      activationContext.order.id,
+      {
+        status: OrderStatus.Active,
+      },
+    );
+
+    activationContext.order.status = OrderStatus.Active;
   }
 }

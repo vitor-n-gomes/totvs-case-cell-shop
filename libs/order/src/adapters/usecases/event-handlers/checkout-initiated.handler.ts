@@ -4,9 +4,9 @@ import { ActiveOrderUseCase } from '../../../activation/active-order.use-case';
 
 @Injectable()
 export class CheckoutInitiatedHandler {
-  constructor(private readonly activation: ActiveOrderUseCase) {}
+  constructor(private readonly activeOrderUseCase: ActiveOrderUseCase) {}
 
   execute(event: CheckoutInitiatedEvent): Promise<void> {
-    return this.activation.execute(event);
+    return this.activeOrderUseCase.execute(event);
   }
 }

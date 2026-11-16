@@ -3,8 +3,10 @@ import { InventoryModule } from '@app/products/inventory/inventory.module';
 import { LoggingModule } from '@app/platform/logging/logging.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import { KafkaModule } from '@app/platform/kafka/kafka.module';
+import { CacheModule } from '@app/platform/cache/cache.module';
 import { OrderPersistenceModule } from './order-persistence.module';
 import { OrderConsumer } from './adapters/consumer/order.consumer';
+import { OrderConsumerExceptionFilter } from './adapters/consumer/order-consumer-exception.filter';
 import { OrderMessaging } from './adapters/order.messaging';
 import { ProcessOrderEventUseCase } from './adapters/usecases/process-order-event.use-case';
 import { ActiveOrderUseCase } from './activation/active-order.use-case';
@@ -22,7 +24,6 @@ import { OnlineActivationStrategy } from './activation/strategies/online-activat
 import { OrderActivationGuard } from './activation/guards/order-activation.guard';
 import { ActivationFailureHandler } from './activation/handlers/activation-failure.handler';
 import { OutboxRelay } from './messaging/outbox-relay';
-import { ExpireReservationsUseCase } from './adapters/usecases/expire-reservations.use-case';
 import { EventBus } from './adapters/handlers/event.bus';
 import { HandlersRegistry } from './adapters/handlers/handlers.registry';
 import { CheckoutInitiatedHandler } from './adapters/usecases/event-handlers/checkout-initiated.handler';
@@ -36,12 +37,13 @@ import { OrderActivatedHandler } from './adapters/handlers/order-activated.handl
     LoggingModule,
     ObservabilityModule,
     KafkaModule,
+    CacheModule,
   ],
   controllers: [OrderConsumer],
   providers: [
     OrderMessaging,
+    OrderConsumerExceptionFilter,
     ProcessOrderEventUseCase,
-    ExpireReservationsUseCase,
     ActiveOrderUseCase,
     ConsumeStockReservationStep,
     ActivateOrderStep,
@@ -63,7 +65,6 @@ import { OrderActivatedHandler } from './adapters/handlers/order-activated.handl
     ProcessOrderEventUseCase,
     EventBus,
     HandlersRegistry,
-    ExpireReservationsUseCase,
     OrderMessaging,
   ],
 })

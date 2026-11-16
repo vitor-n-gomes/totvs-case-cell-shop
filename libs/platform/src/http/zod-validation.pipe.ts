@@ -9,17 +9,27 @@ import { z } from 'zod';
 @Injectable()
 export class ZodValidationPipe implements PipeTransform {
   transform(value: unknown, metadata: ArgumentMetadata): unknown {
-    const dto = metadata.metatype as { schema?: z.ZodType } | undefined;
-    if (!dto?.schema) return value;
+    const dtoType = metadata.metatype as { schema?: z.ZodType } | undefined;
 
-    const result = dto.schema.safeParse(value);
-    if (!result.success) {
+    if (!dtoType?.schema) {
+
+      return value;
+
+    }
+
+    const validationResult = dtoType.schema.safeParse(value);
+
+    if (!validationResult.success) {
+
       throw new BadRequestException(
-        result.error.issues.map(
-          (issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`,
+        validationResult.error.issues.map(
+          (validationIssue) =>
+            `${validationIssue.path.join('.') || 'body'}: ${validationIssue.message}`,
         ),
       );
+
     }
-    return result.data;
+
+    return validationResult.data;
   }
 }

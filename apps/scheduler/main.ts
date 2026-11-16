@@ -1,30 +1,34 @@
 import 'reflect-metadata';
 import { Logger as BootstrapLogger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { AppLogger } from '@app/platform/logging/app-logger';
-import { HealthService } from '@app/platform/health/health.service';
+// Must load before any repository: entity barrels are cyclic and DatabaseModule fixes the safe load order.
 import { SchedulerModule } from './scheduler.module';
+import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations.use-case';
 
+// No HTTP server: the scheduler only polls the database and produces to Kafka.
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(SchedulerModule, {
+  const app = await NestFactory.createApplicationContext(SchedulerModule, {
     bufferLogs: true,
     abortOnError: false,
   });
+
   try {
-    const logger = app.get(AppLogger);
-    logger.setApp('scheduler');
+
+    const appLogger = app.get(AppLogger);
+
+    appLogger.setApp('scheduler');
     app.useLogger(app.get(Logger));
     app.enableShutdownHooks();
-    const config = app.get(ConfigService);
-    const health = app.get(HealthService);
-    health.schedulerReady = true;
+    app.get(ExpireReservationsUseCase).start();
 
-    await app.listen(config.getOrThrow<number>('SCHEDULER_PORT'), '0.0.0.0');
   } catch (error) {
+
     await app.close();
+
     throw error;
+
   }
 }
 
@@ -34,5 +38,6 @@ void bootstrap().catch((error: unknown) => {
       ? error.message
       : 'scheduler.startup.failed',
   );
+
   process.exitCode = 1;
 });

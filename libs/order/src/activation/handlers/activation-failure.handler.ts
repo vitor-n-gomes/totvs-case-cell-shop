@@ -3,9 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { QueryRunner } from 'typeorm';
 import {
-  CheckoutFailedEvent,
   CheckoutInitiatedEvent,
-  ORDER_CHECKOUT_FAILED,
   ORDER_CHECKOUT_INITIATED,
 } from '@app/order/messaging/order-events';
 import {
@@ -27,118 +25,146 @@ const MAX_ATTEMPTS = 5;
 @Injectable()
 export class ActivationFailureHandler {
   constructor(
-    private readonly orders: OrderRepository,
-    private readonly journal: IdempotencyLogRepository,
-    private readonly outbox: OutboxRepository,
-    private readonly reservations: ReservationRepository,
-    private readonly config: ConfigService,
-    private readonly metrics: Metrics,
-    private readonly logger: AppLogger,
+    private readonly orderRepository: OrderRepository,
+    private readonly idempotencyLogRepository: IdempotencyLogRepository,
+    private readonly outboxRepository: OutboxRepository,
+    private readonly reservationRepository: ReservationRepository,
+    private readonly configService: ConfigService,
+    private readonly metricsService: Metrics,
+    private readonly appLogger: AppLogger,
   ) {}
 
   async handle(
-    runner: QueryRunner,
+    queryRunner: QueryRunner,
     order: OrderEntity,
-    context: ActivationContext,
+    activationContext: ActivationContext,
     error: unknown,
   ): Promise<void> {
-    const { attempt } = context.event.meta;
-    const terminal =
+    const { attempt } = activationContext.event.meta;
+
+    const isTerminalFailure =
       error instanceof PermanentActivationError || attempt >= MAX_ATTEMPTS;
 
-    await this.inTransaction(runner, () =>
-      this.recordFailure(runner, order, context, error, terminal),
+    await this.inTransaction(queryRunner, () =>
+      this.recordFailure(
+        queryRunner,
+        order,
+        activationContext,
+        error,
+        isTerminalFailure,
+      ),
     );
 
-    this.metrics.processing.inc({ result: terminal ? 'dlq' : 'retry' });
-    this.logger.warn('order.activation.failed', {
+    this.metricsService.processingCounter.inc({
+      result: isTerminalFailure ? 'dlq' : 'retry',
+    });
+
+    this.appLogger.warn('order.activation.failed', {
       order_id: order.id,
-      step: context.currentStep,
+      step: activationContext.currentStep,
       attempt,
-      terminal,
+      terminal: isTerminalFailure,
     });
   }
 
   private async recordFailure(
-    runner: QueryRunner,
+    queryRunner: QueryRunner,
     order: OrderEntity,
-    context: ActivationContext,
+    activationContext: ActivationContext,
     error: unknown,
-    terminal: boolean,
+    isTerminalFailure: boolean,
   ): Promise<void> {
-    const { manager } = runner;
-    const { event } = context;
+    const { manager: entityManager } = queryRunner;
+    const { event } = activationContext;
     const { attempt } = event.meta;
-    const current = await this.orders.lockOrFail(manager, order.id);
-    const reference = {
+
+    const lockedOrder = await this.orderRepository.lockOrFail(
+      entityManager,
+      order.id,
+    );
+
+    const failureReference = {
       error_type: error instanceof Error ? error.name : 'UnknownError',
       attempt,
       event_id: event.meta.event_id,
     };
-    await this.journal.record(
-      manager,
+
+    await this.idempotencyLogRepository.record(
+      entityManager,
       order.id,
-      context.currentStep,
+      activationContext.currentStep,
       false,
-      reference,
-      terminal ? 'Failed; dead letter scheduled' : 'Failed; retry scheduled',
+      failureReference,
+      isTerminalFailure
+        ? 'Failed; dead letter scheduled'
+        : 'Failed; retry scheduled',
     );
-    if (terminal && current.status === OrderStatus.Pending) {
-      await this.reservations.release(manager, order.id);
-      await this.orders.update(manager, order.id, {
+
+    if (isTerminalFailure && lockedOrder.status === OrderStatus.Pending) {
+
+      await this.reservationRepository.release(entityManager, order.id);
+
+      await this.orderRepository.update(entityManager, order.id, {
         status: OrderStatus.Cancelled,
       });
+
     }
-    await this.orders.update(manager, order.id, {
-      processingStatus: terminal
+
+    await this.orderRepository.update(entityManager, order.id, {
+      processingStatus: isTerminalFailure
         ? ProcessingStatus.Failed
         : ProcessingStatus.Retrying,
       lastAttempt: attempt,
     });
 
-    const topic = this.config.getOrThrow<string>('CHECKOUT_TOPIC');
-    const nextMeta = {
+    const checkoutTopic =
+      this.configService.getOrThrow<string>('CHECKOUT_TOPIC');
+
+    const nextEventMeta = {
       ...event.meta,
       event_id: randomUUID(),
       occurred_at: new Date().toISOString(),
-      attempt: terminal ? attempt : attempt + 1,
+      attempt: isTerminalFailure ? attempt : attempt + 1,
     };
-    const nextEvent: CheckoutInitiatedEvent | CheckoutFailedEvent = terminal
-      ? {
-          kind: ORDER_CHECKOUT_FAILED,
-          data: {
-            order_id: order.id,
-            failure: reference,
-            failed_step: context.currentStep,
-          },
-          meta: nextMeta,
-        }
-      : {
-          kind: ORDER_CHECKOUT_INITIATED,
-          data: { order_id: order.id },
-          meta: nextMeta,
-        };
-    await this.outbox.append(
-      manager,
+
+    // Terminal failures dead-letter the same checkout event; failure details live in the journal.
+    const nextEvent: CheckoutInitiatedEvent = {
+      kind: ORDER_CHECKOUT_INITIATED,
+      data: { order_id: order.id },
+      meta: nextEventMeta,
+    };
+
+    await this.outboxRepository.append(
+      entityManager,
       order.id,
-      terminal ? `${topic}.dlq` : topic,
+      isTerminalFailure ? `${checkoutTopic}.dlq` : checkoutTopic,
       nextEvent,
-      `${order.id}:${terminal ? 'dlq' : 'attempt'}:${nextMeta.attempt}`,
-      terminal ? 0 : 2 ** (attempt - 1),
+      `${order.id}:${isTerminalFailure ? 'dlq' : 'attempt'}:${nextEventMeta.attempt}`,
+      isTerminalFailure ? 0 : 2 ** (attempt - 1),
     );
   }
 
   private async inTransaction(
-    runner: QueryRunner,
-    work: () => Promise<void>,
+    queryRunner: QueryRunner,
+    transactionOperation: () => Promise<void>,
   ): Promise<void> {
-    await runner.startTransaction();
+    await queryRunner.startTransaction();
+
     try {
-      await work();
-      await runner.commitTransaction();
-    } catch (failure) {
-      if (runner.isTransactionActive) await runner.rollbackTransaction();
-      throw failure;
+
+      await transactionOperation();
+      await queryRunner.commitTransaction();
+
+    } catch (transactionError) {
+
+      if (queryRunner.isTransactionActive) {
+
+        await queryRunner.rollbackTransaction();
+
+      }
+
+      throw transactionError;
+
     }
   }
 }

@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import { CheckoutInput } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
 import { OrderStatus } from '@app/order/domain/shared/types/order.type';
 import {
   CheckoutInitiatedEvent,
@@ -19,7 +19,7 @@ import { executionContext } from '@app/platform/observability/context';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { StockRepository } from '@app/products/inventory/repositories/stock.repository';
-import { createEventMeta } from '../../messaging/order-event';
+import { createEventMeta } from '../../messaging/event.util';
 import { OutboxRepository } from '../../repositories/outbox.repository';
 import { CheckoutGuard } from './guards/checkout.guard';
 
@@ -31,138 +31,181 @@ export interface CheckoutResult {
 @Injectable()
 export class CheckoutUseCase {
   constructor(
-    private readonly database: DataSource,
-    private readonly stock: StockRepository,
-    private readonly orders: OrderRepository,
-    private readonly outbox: OutboxRepository,
-    private readonly guard: CheckoutGuard,
-    private readonly config: ConfigService,
-    private readonly metrics: Metrics,
-    private readonly spans: Spans,
+    private readonly dataSource: DataSource,
+    private readonly stockRepository: StockRepository,
+    private readonly orderRepository: OrderRepository,
+    private readonly outboxRepository: OutboxRepository,
+    private readonly checkoutGuard: CheckoutGuard,
+    private readonly configService: ConfigService,
+    private readonly metricsService: Metrics,
+    private readonly spansService: Spans,
   ) {}
 
   async execute(
-    input: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string | undefined,
     correlationId = executionContext.getStore()?.correlation_id ?? randomUUID(),
   ): Promise<CheckoutResult> {
     try {
-      this.guard.validate(input, idempotencyKey);
-      const requestHash = this.guard.hashPayload(input);
 
-      const { orderId, replay } = await this.spans.run(
-        'checkout.transaction',
-        () =>
+      this.checkoutGuard.validate(checkoutDto, idempotencyKey);
+      const requestHash = this.checkoutGuard.hashPayload(checkoutDto);
+
+      const { orderId, replay: isIdempotentReplay } =
+        await this.spansService.run('checkout.transaction', () =>
           this.persistCheckout(
-            input,
+            checkoutDto,
             idempotencyKey,
             requestHash,
             correlationId,
           ),
-      );
+        );
 
-      this.recordSuccessMetrics(replay, input.items.length);
+      this.recordSuccessMetrics(isIdempotentReplay, checkoutDto.items.length);
+
       return { orderId, status: OrderStatus.Pending };
+
     } catch (error) {
-      this.metrics.checkout.inc({ result: 'rejected' });
+
+      this.metricsService.checkoutCounter.inc({ result: 'rejected' });
+
       throw this.mapExecutionError(error);
+
     }
   }
 
   private persistCheckout(
-    input: CheckoutInput,
+    checkoutDto: CheckoutDto,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
   ): Promise<{ orderId: string; replay: boolean }> {
-    return this.database.transaction(async (manager) => {
+    return this.dataSource.transaction(async (entityManager) => {
       const orderId = randomUUID();
-      const inserted = await this.orders.insertPending(
-        manager,
+
+      const wasOrderInserted = await this.orderRepository.insertPending(
+        entityManager,
         orderId,
-        input,
+        checkoutDto,
         idempotencyKey,
         requestHash,
         correlationId,
       );
 
-      if (!inserted) {
+      if (!wasOrderInserted) {
+
         return this.resolveIdempotentReplay(
-          manager,
+          entityManager,
           idempotencyKey,
           requestHash,
         );
+
       }
 
-      const ttlSeconds = this.config.getOrThrow<number>(
+      const reservationTtlSeconds = this.configService.getOrThrow<number>(
         'RESERVATION_TTL_SECONDS',
       );
-      const reservedItems = await this.stock.reserve(
-        manager,
+
+      const reservedItems = await this.stockRepository.reserve(
+        entityManager,
         orderId,
-        input.items,
-        ttlSeconds,
+        checkoutDto.items,
+        reservationTtlSeconds,
       );
 
-      await this.orders.addItems(manager, orderId, reservedItems);
-      await this.appendCheckoutEvent(manager, orderId, correlationId);
+      await this.orderRepository.addItems(
+        entityManager,
+        orderId,
+        reservedItems,
+      );
+
+      await this.appendCheckoutEvent(entityManager, orderId, correlationId);
 
       return { orderId, replay: false };
     });
   }
 
   private async resolveIdempotentReplay(
-    manager: EntityManager,
+    entityManager: EntityManager,
     idempotencyKey: string,
     requestHash: string,
   ): Promise<{ orderId: string; replay: true }> {
-    const existing = await this.orders.findByKey(manager, idempotencyKey);
-    if (!existing) {
+    const existingOrder = await this.orderRepository.findByKey(
+      entityManager,
+      idempotencyKey,
+    );
+
+    if (!existingOrder) {
+
       throw new Error('Order insert failed');
+
     }
-    if (existing.requestHash !== requestHash) {
+
+    if (existingOrder.requestHash !== requestHash) {
+
       throw new ConflictException(
         'Idempotency key already used with different content',
       );
+
     }
-    return { orderId: existing.id, replay: true };
+
+    return { orderId: existingOrder.id, replay: true };
   }
 
   private appendCheckoutEvent(
-    manager: EntityManager,
+    entityManager: EntityManager,
     orderId: string,
     correlationId: string,
   ): Promise<void> {
-    const event: CheckoutInitiatedEvent = {
+    const checkoutInitiatedEvent: CheckoutInitiatedEvent = {
       kind: ORDER_CHECKOUT_INITIATED,
       data: { order_id: orderId },
       meta: { ...createEventMeta(correlationId), attempt: 1 },
     };
 
-    return this.outbox.append(
-      manager,
+    return this.outboxRepository.append(
+      entityManager,
       orderId,
-      this.config.getOrThrow<string>('CHECKOUT_TOPIC'),
-      event,
+      this.configService.getOrThrow<string>('CHECKOUT_TOPIC'),
+      checkoutInitiatedEvent,
       `${orderId}:attempt:1`,
     );
   }
 
-  private recordSuccessMetrics(replay: boolean, itemCount: number): void {
-    this.metrics.checkout.inc({ result: replay ? 'replayed' : 'accepted' });
-    if (!replay) {
-      this.metrics.reservations.inc({ result: 'reserved' }, itemCount);
+  private recordSuccessMetrics(
+    isIdempotentReplay: boolean,
+    itemCount: number,
+  ): void {
+    this.metricsService.checkoutCounter.inc({
+      result: isIdempotentReplay ? 'replayed' : 'accepted',
+    });
+
+    if (!isIdempotentReplay) {
+
+      this.metricsService.reservationTransitionsCounter.inc(
+        { result: 'reserved' },
+        itemCount,
+      );
+
     }
   }
 
   private mapExecutionError(error: unknown): unknown {
-    if (error instanceof HttpException) return error;
+    if (error instanceof HttpException) {
+
+      return error;
+
+    }
+
     if (isTransientDatabaseFailure(error)) {
+
       return new ServiceUnavailableException(
         'Checkout temporarily unavailable; retry with the same idempotency key',
         { cause: error },
       );
+
     }
+
     return error;
   }
 }

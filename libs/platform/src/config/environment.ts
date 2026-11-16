@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ORDER_EVENT_PATTERN } from '../kafka/kafka.topics';
 
-const port = z.coerce.number().int().min(1).max(65535);
+const portSchema = z.coerce.number().int().min(1).max(65535);
 
 const environmentSchema = z
   .object({
@@ -15,6 +15,12 @@ const environmentSchema = z
       .min(1)
       .max(86400)
       .default(900),
+    SCHEDULER_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(3_600_000)
+      .default(10000),
     SIMULATOR_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(20),
     SIMULATOR_TIMEOUT_MS: z.coerce
       .number()
@@ -30,8 +36,8 @@ const environmentSchema = z
     NODE_ENV: z
       .enum(['development', 'test', 'production'])
       .default('development'),
-    API_PORT: port.default(3000),
-    WORKER_PORT: port.default(3001),
+    API_PORT: portSchema.default(3000),
+    WORKER_PORT: portSchema.default(3001),
     DATABASE_URL: z
       .url()
       .refine(
@@ -65,45 +71,60 @@ const environmentSchema = z
       .default(ORDER_EVENT_PATTERN),
     KAFKA_GROUP_ID: z.string().min(1).default('casecellshop-demo-worker'),
   })
-  .superRefine((value, context) => {
+  .superRefine((value, validationContext) => {
     if (
       value.KAFKA_SASL_MECHANISM ||
       value.KAFKA_SASL_USERNAME ||
       value.KAFKA_SASL_PASSWORD
     ) {
-      for (const key of [
+
+      for (const environmentVariable of [
         'KAFKA_SASL_MECHANISM',
         'KAFKA_SASL_USERNAME',
         'KAFKA_SASL_PASSWORD',
       ] as const) {
-        if (!value[key])
-          context.addIssue({
+
+        if (!value[environmentVariable]) {
+
+          validationContext.addIssue({
             code: 'custom',
-            path: [key],
+            path: [environmentVariable],
             message: 'Required for Kafka SASL authentication',
           });
+
+        }
+
       }
+
     }
+
     if (value.API_PORT === value.WORKER_PORT) {
-      context.addIssue({
+
+      validationContext.addIssue({
         code: 'custom',
         path: ['WORKER_PORT'],
         message: 'App ports must differ',
       });
+
     }
   });
 
 export type Environment = z.infer<typeof environmentSchema>;
 
 export function validateEnvironment(
-  input: Record<string, unknown>,
+  environmentVariables: Record<string, unknown>,
 ): Environment {
-  const result = environmentSchema.safeParse(input);
-  if (!result.success) {
+  const environmentParseResult =
+    environmentSchema.safeParse(environmentVariables);
+
+  if (!environmentParseResult.success) {
+
     // Validation errors describe keys and constraints, never credential values.
     throw new Error(
-      `Invalid configuration: ${result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`,
+      `Invalid configuration: ${environmentParseResult.error.issues.map((validationIssue) => `${validationIssue.path.join('.')}: ${validationIssue.message}`).join('; ')}`,
     );
+
   }
-  return result.data;
+
+  return environmentParseResult.data;
 }

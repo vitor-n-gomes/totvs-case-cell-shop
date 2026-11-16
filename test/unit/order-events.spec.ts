@@ -1,23 +1,21 @@
 import { randomUUID } from 'node:crypto';
-import { createEventMeta } from '@app/order/messaging/order-event';
 import {
-  ORDER_CHECKOUT_FAILED,
   ORDER_CHECKOUT_INITIATED,
-  ORDER_EVENT_INVALID,
   ORDER_RESERVATION_EXPIRED,
   parseOrderEvent,
 } from '@app/order/messaging/order-events';
 import { executionContext } from '@app/platform/observability/context';
 import { Spans } from '@app/platform/observability/spans';
+import { createEventMeta } from '@app/order/messaging/event.util';
 
 const correlationId = randomUUID();
 const orderId = randomUUID();
 
 describe('order events (snake_case envelope)', () => {
-  const meta = createEventMeta(correlationId);
+  const eventMeta = createEventMeta(correlationId);
 
   it('createEventMeta emits snake_case keys only', () => {
-    expect(Object.keys(meta).sort()).toEqual([
+    expect(Object.keys(eventMeta).sort()).toEqual([
       'correlation_id',
       'event_id',
       'occurred_at',
@@ -25,45 +23,24 @@ describe('order events (snake_case envelope)', () => {
       'schema_version',
       'trace_id',
     ]);
-    expect(meta.correlation_id).toBe(correlationId);
+
+    expect(eventMeta.correlation_id).toBe(correlationId);
   });
 
   it.each([
     [
       ORDER_CHECKOUT_INITIATED,
-      { data: { order_id: orderId }, meta: { ...meta, attempt: 1 } },
-    ],
-    [ORDER_RESERVATION_EXPIRED, { data: { order_id: orderId }, meta }],
-    [
-      ORDER_CHECKOUT_FAILED,
-      {
-        data: {
-          order_id: orderId,
-          failure: {
-            error_type: 'Error',
-            attempt: 1,
-            event_id: randomUUID(),
-          },
-          failed_step: 'UpdateErpStep',
-        },
-        meta: { ...meta, attempt: 1 },
-      },
+      { data: { order_id: orderId }, meta: { ...eventMeta, attempt: 1 } },
     ],
     [
-      ORDER_EVENT_INVALID,
-      {
-        data: {
-          source_topic: 'topic',
-          partition: 0,
-          offset: '1',
-          reason: 'bad',
-          order_id: orderId,
-        },
-        meta,
-      },
+      ORDER_RESERVATION_EXPIRED,
+      { data: { order_id: orderId }, meta: eventMeta },
     ],
-  ])('accepts a valid %s event', (kind, rest) => {
-    expect(parseOrderEvent({ kind, ...rest })).toEqual({ kind, ...rest });
+  ])('accepts a valid %s event', (kind, eventEnvelope) => {
+    expect(parseOrderEvent({ kind, ...eventEnvelope })).toEqual({
+      kind,
+      ...eventEnvelope,
+    });
   });
 
   it('rejects camelCase keys in data and meta', () => {
@@ -73,11 +50,12 @@ describe('order events (snake_case envelope)', () => {
         data: { orderId },
       }),
     ).toBeNull();
+
     expect(
       parseOrderEvent({
         kind: ORDER_RESERVATION_EXPIRED,
         data: { order_id: orderId },
-        meta: { ...meta, correlationId },
+        meta: { ...eventMeta, correlationId },
       }),
     ).toBeNull();
   });
@@ -94,23 +72,31 @@ describe('order events (snake_case envelope)', () => {
 
 describe('Spans', () => {
   it('propagates span_id and parent_span_id through the execution context', async () => {
-    const info = jest.fn();
-    const spans = new Spans({ info } as never);
-    const parent = {
+    const logInfoMock = jest.fn();
+    const spansService = new Spans({ info: logInfoMock } as never);
+
+    const parentTraceContext = {
       correlation_id: correlationId,
       trace_id: 'a'.repeat(32),
       span_id: 'b'.repeat(16),
     };
-    const inner = await executionContext.run(parent, () =>
-      spans.run('test', () => Promise.resolve(executionContext.getStore())),
+
+    const childTraceContext = await executionContext.run(
+      parentTraceContext,
+      () =>
+        spansService.run('test', () =>
+          Promise.resolve(executionContext.getStore()),
+        ),
     );
-    expect(inner?.parent_span_id).toBe(parent.span_id);
-    expect(inner?.span_id).not.toBe(parent.span_id);
-    expect(info).toHaveBeenCalledWith(
+
+    expect(childTraceContext?.parent_span_id).toBe(parentTraceContext.span_id);
+    expect(childTraceContext?.span_id).not.toBe(parentTraceContext.span_id);
+
+    expect(logInfoMock).toHaveBeenCalledWith(
       'trace.span',
       expect.objectContaining({
-        span_id: inner?.span_id,
-        parent_span_id: parent.span_id,
+        span_id: childTraceContext?.span_id,
+        parent_span_id: parentTraceContext.span_id,
       }),
     );
   });

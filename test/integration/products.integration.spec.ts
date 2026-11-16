@@ -4,15 +4,17 @@ import { newProduct } from './support/in-memory-store';
 import { createTestApp, TestApp } from './support/test-app';
 
 async function cacheCount(
-  { metrics }: TestApp,
+  { metricsService }: TestApp,
   result: 'hit' | 'miss',
 ): Promise<number> {
-  const { values } = await metrics.cache.get();
+  const { values } = await metricsService.cacheRequestsCounter.get();
+
   return values.find((value) => value.labels.result === result)?.value ?? 0;
 }
 
 describe('GET /products (integration)', () => {
-  let context: TestApp;
+  let testContext: TestApp;
+
   const products = [
     newProduct({ productKey: 'a-clear-case', netPrice: 2990, listPrice: 3990 }),
     newProduct({
@@ -23,16 +25,16 @@ describe('GET /products (integration)', () => {
   ];
 
   beforeEach(async () => {
-    context = await createTestApp();
-    context.store.seedProducts(products);
+    testContext = await createTestApp();
+    testContext.inMemoryStore.seedProducts(products);
   });
 
   afterEach(async () => {
-    await context.app.close();
+    await testContext.app.close();
   });
 
   it('returns the catalog from the database on a cache miss and caches it', async () => {
-    const response = await request(context.app.getHttpServer())
+    const response = await request(testContext.app.getHttpServer())
       .get('/products')
       .expect(200);
 
@@ -45,26 +47,33 @@ describe('GET /products (integration)', () => {
         listPrice,
       })),
     );
-    expect(context.store.catalogQueries).toBe(1);
-    expect(context.redis.client.has(CATALOG_KEY)).toBe(true);
-    expect(context.redis.client.ttlSeconds(CATALOG_KEY)).toBeGreaterThan(290);
-    expect(context.redis.client.ttlSeconds(CATALOG_KEY)).toBeLessThanOrEqual(
-      300,
-    );
-    expect(await cacheCount(context, 'miss')).toBe(1);
+
+    expect(testContext.inMemoryStore.catalogQueries).toBe(1);
+    expect(testContext.redisConnection.redisClient.has(CATALOG_KEY)).toBe(true);
+
+    expect(
+      testContext.redisConnection.redisClient.ttlSeconds(CATALOG_KEY),
+    ).toBeGreaterThan(290);
+
+    expect(
+      testContext.redisConnection.redisClient.ttlSeconds(CATALOG_KEY),
+    ).toBeLessThanOrEqual(300);
+
+    expect(await cacheCount(testContext, 'miss')).toBe(1);
   });
 
   it('serves the same catalog from the cache on the second consecutive call', async () => {
-    const first = await request(context.app.getHttpServer())
+    const first = await request(testContext.app.getHttpServer())
       .get('/products')
       .expect(200);
-    const second = await request(context.app.getHttpServer())
+
+    const second = await request(testContext.app.getHttpServer())
       .get('/products')
       .expect(200);
 
     expect(second.body).toEqual(first.body);
-    expect(context.store.catalogQueries).toBe(1);
-    expect(await cacheCount(context, 'miss')).toBe(1);
-    expect(await cacheCount(context, 'hit')).toBe(1);
+    expect(testContext.inMemoryStore.catalogQueries).toBe(1);
+    expect(await cacheCount(testContext, 'miss')).toBe(1);
+    expect(await cacheCount(testContext, 'hit')).toBe(1);
   });
 });

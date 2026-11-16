@@ -40,6 +40,12 @@ jobs:
           docker compose up -d --build --wait http consumer
           docker compose run --rm migrate npm run seed
           npm run test:smoke
+      - name: Run overselling, happy-path and duplicate-event scenarios
+        run: |
+          cp .env.example .env
+          npm run test:overselling
+          npm run test:happy-path
+          npm run test:duplicate-checkout-event
       - name: Service logs on failure
         if: failure()
         run: docker compose logs --no-color

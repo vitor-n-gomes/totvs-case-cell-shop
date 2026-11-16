@@ -13,12 +13,22 @@ import { AppLogger } from '../logging/app-logger';
 import { Metrics } from './metrics';
 
 export function sanitizePayload(value: unknown, depth = 0): unknown {
-  if (depth > 6) return '[truncated]';
-  if (Array.isArray(value))
+  if (depth > 6) {
+
+    return '[truncated]';
+
+  }
+
+  if (Array.isArray(value)) {
+
     return value
       .slice(0, 100)
       .map((entry) => sanitizePayload(entry, depth + 1));
+
+  }
+
   if (value !== null && typeof value === 'object') {
+
     return Object.fromEntries(
       Object.entries(value)
         .slice(0, 100)
@@ -31,9 +41,12 @@ export function sanitizePayload(value: unknown, depth = 0): unknown {
             : sanitizePayload(entry, depth + 1),
         ]),
     );
+
   }
+
   return typeof value === 'string' ? value.slice(0, 500) : (value ?? null);
 }
+
 interface AuditEntry {
   url: string;
   method: string;
@@ -42,89 +55,130 @@ interface AuditEntry {
 }
 @Injectable()
 export class RequestAuditRepository implements BeforeApplicationShutdown {
-  private readonly queue: AuditEntry[] = [];
-  private draining?: Promise<void>;
-  private closing = false;
+  private readonly auditQueue: AuditEntry[] = [];
+  private drainPromise?: Promise<void>;
+  private isClosing = false;
   constructor(
-    private readonly database: DataSource,
-    private readonly metrics: Metrics,
-    private readonly logger: AppLogger,
+    private readonly dataSource: DataSource,
+    private readonly metricsService: Metrics,
+    private readonly appLogger: AppLogger,
   ) {}
 
-  enqueue(entry: AuditEntry): void {
-    if (this.closing || this.queue.length >= 1000) {
-      this.metrics.audit.inc({ result: 'dropped' });
+  enqueue(auditEntry: AuditEntry): void {
+    if (this.isClosing || this.auditQueue.length >= 1000) {
+
+      this.metricsService.requestAuditCounter.inc({ result: 'dropped' });
+
       return;
+
     }
-    this.queue.push(entry);
+
+    this.auditQueue.push(auditEntry);
     this.startDrain();
   }
 
   private startDrain(): void {
-    if (!this.draining) {
-      this.draining = new Promise<void>((resolve) => setImmediate(resolve))
+    if (!this.drainPromise) {
+
+      this.drainPromise = new Promise<void>((resolve) => setImmediate(resolve))
         .then(() => this.drain())
         .finally(() => {
-          this.draining = undefined;
-          if (this.queue.length) this.startDrain();
+          this.drainPromise = undefined;
+
+          if (this.auditQueue.length) {
+
+            this.startDrain();
+
+          }
         });
+
     }
   }
 
   private async drain(): Promise<void> {
-    while (this.queue.length) {
-      const entry = this.queue.shift()!;
+    while (this.auditQueue.length) {
+
+      const auditEntry = this.auditQueue.shift()!;
+
       try {
-        await this.database.query(
+
+        await this.dataSource.query(
           'INSERT INTO request_log (id,url,method,payload,correlation_id) VALUES ($1,$2,$3,$4,$5)',
           [
             randomUUID(),
-            entry.url,
-            entry.method,
-            JSON.stringify(entry.payload),
-            entry.correlationId,
+            auditEntry.url,
+            auditEntry.method,
+            JSON.stringify(auditEntry.payload),
+            auditEntry.correlationId,
           ],
         );
-        this.metrics.audit.inc({ result: 'saved' });
+
+        this.metricsService.requestAuditCounter.inc({ result: 'saved' });
+
       } catch {
-        this.metrics.audit.inc({ result: 'failed' });
-        this.logger.warn('request.audit.failed');
+
+        this.metricsService.requestAuditCounter.inc({ result: 'failed' });
+        this.appLogger.warn('request.audit.failed');
+
       }
+
     }
   }
 
   async beforeApplicationShutdown(): Promise<void> {
-    this.closing = true;
-    while (this.draining) await this.draining;
+    this.isClosing = true;
+
+    while (this.drainPromise) {
+
+      await this.drainPromise;
+
+    }
   }
 }
 @Injectable()
 export class RequestAuditInterceptor implements NestInterceptor {
   constructor(
-    private readonly audit: RequestAuditRepository,
-    private readonly metrics: Metrics,
+    private readonly requestAuditRepository: RequestAuditRepository,
+    private readonly metricsService: Metrics,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    if (context.getType() !== 'http') {
+
+      return next.handle();
+
+    }
+
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
-    const started = performance.now();
+    const requestStartedAt = performance.now();
+
     // Route templates keep order IDs out of Prometheus labels and request audit URLs.
-    const route =
+    const routeTemplate =
       (request.route as { path?: string } | undefined)?.path ?? 'unmatched';
+
     response.once('finish', () =>
-      this.metrics.http.observe(
-        { method: request.method, route, status: String(response.statusCode) },
-        (performance.now() - started) / 1000,
+      this.metricsService.httpDurationHistogram.observe(
+        {
+          method: request.method,
+          route: routeTemplate,
+          status: String(response.statusCode),
+        },
+        (performance.now() - requestStartedAt) / 1000,
       ),
     );
-    if (['POST', 'PUT', 'DELETE'].includes(request.method))
-      this.audit.enqueue({
-        url: route,
+
+    if (['POST', 'PUT', 'DELETE'].includes(request.method)) {
+
+      this.requestAuditRepository.enqueue({
+        url: routeTemplate,
         method: request.method,
         payload: sanitizePayload(request.body),
         correlationId: String(response.locals.correlationId),
       });
+
+    }
+
     return next.handle();
   }
 }

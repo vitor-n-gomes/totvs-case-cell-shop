@@ -39,12 +39,12 @@ export class EventBus implements IEventBus {
   /**
    * Registry mapping event kinds to their handlers
    */
-  private handlers: Map<string, EventHandler[]> = new Map();
+  private eventHandlers: Map<string, EventHandler[]> = new Map();
 
   constructor(
-    private readonly logger: AppLogger,
-    private readonly messaging: OrderMessaging,
-    private readonly config: ConfigService,
+    private readonly appLogger: AppLogger,
+    private readonly orderMessaging: OrderMessaging,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -52,24 +52,33 @@ export class EventBus implements IEventBus {
    * @param handler - The event handler to register
    */
   register(handler: EventHandler): void {
-    const kind = handler.kind;
+    const eventKind = handler.kind;
 
-    if (!this.handlers.has(kind)) {
-      this.handlers.set(kind, []);
+    if (!this.eventHandlers.has(eventKind)) {
+
+      this.eventHandlers.set(eventKind, []);
+
     }
 
-    const existingHandlers = this.handlers.get(kind)!;
-    if (existingHandlers.length > 0) {
-      this.logger.warn(`Handler already registered for event kind: ${kind}`, {
-        event_kind: kind,
-        handler_count: existingHandlers.length + 1,
-      });
+    const registeredHandlers = this.eventHandlers.get(eventKind)!;
+
+    if (registeredHandlers.length > 0) {
+
+      this.appLogger.warn(
+        `Handler already registered for event kind: ${eventKind}`,
+        {
+          event_kind: eventKind,
+          handler_count: registeredHandlers.length + 1,
+        },
+      );
+
     }
 
-    existingHandlers.push(handler);
-    this.logger.info(`Handler registered for event kind: ${kind}`, {
-      event_kind: kind,
-      handler_count: existingHandlers.length,
+    registeredHandlers.push(handler);
+
+    this.appLogger.info(`Handler registered for event kind: ${eventKind}`, {
+      event_kind: eventKind,
+      handler_count: registeredHandlers.length,
     });
   }
 
@@ -79,25 +88,34 @@ export class EventBus implements IEventBus {
    * @param event - The event to dispatch
    */
   async dispatch(event: DomainEvent): Promise<void> {
-    const handlers = this.handlers.get(event.kind);
+    const eventHandlers = this.eventHandlers.get(event.kind);
 
-    if (!handlers || handlers.length === 0) {
-      this.logger.warn(`No handlers registered for event kind: ${event.kind}`, {
-        event_kind: event.kind,
-      });
+    if (!eventHandlers || eventHandlers.length === 0) {
+
+      this.appLogger.warn(
+        `No handlers registered for event kind: ${event.kind}`,
+        {
+          event_kind: event.kind,
+        },
+      );
+
       return;
+
     }
 
-    this.logger.info(`Dispatching event to ${handlers.length} handler(s)`, {
-      event_kind: event.kind,
-      handler_count: handlers.length,
-    });
+    this.appLogger.info(
+      `Dispatching event to ${eventHandlers.length} handler(s)`,
+      {
+        event_kind: event.kind,
+        handler_count: eventHandlers.length,
+      },
+    );
 
-    const handlerPromises = handlers.map((handler) => {
+    const handlerPromises = eventHandlers.map((handler) => {
       return Promise.resolve()
         .then(() => handler.handle(event))
         .catch((error) => {
-          this.logger.error(`Handler failed for event kind: ${event.kind}`, {
+          this.appLogger.error(`Handler failed for event kind: ${event.kind}`, {
             event_kind: event.kind,
             error: error instanceof Error ? error.message : String(error),
             handler_name: handler.constructor.name,
@@ -116,14 +134,17 @@ export class EventBus implements IEventBus {
    */
   async publish(event: OrderEvent, topic?: string): Promise<void> {
     const kafkaTopic =
-      topic || this.config.get<string>('KAFKA_ORDER_TOPIC', 'order.events');
-    const key = event.data.order_id ?? event.meta?.correlation_id ?? event.kind;
+      topic ||
+      this.configService.get<string>('KAFKA_ORDER_TOPIC', 'order.events');
 
-    this.logger.info(`Publishing event to Kafka`, {
+    const messageKey =
+      event.data.order_id ?? event.meta?.correlation_id ?? event.kind;
+
+    this.appLogger.info(`Publishing event to Kafka`, {
       topic: kafkaTopic,
       event_kind: event.kind,
     });
 
-    await this.messaging.publish(kafkaTopic, key, event);
+    await this.orderMessaging.publish(kafkaTopic, messageKey, event);
   }
 }

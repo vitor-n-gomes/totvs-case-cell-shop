@@ -40,8 +40,8 @@ import {
 @Controller()
 export class OrderController {
   constructor(
-    private readonly checkout: CheckoutUseCase,
-    private readonly orders: GetOrderStatusUseCase,
+    private readonly checkoutUseCase: CheckoutUseCase,
+    private readonly getOrderStatusUseCase: GetOrderStatusUseCase,
   ) {}
 
   @Post('checkout')
@@ -57,13 +57,13 @@ export class OrderController {
   @ApiConflictResponse({ type: ErrorResponseDto })
   @ApiNotFoundResponse({ type: ErrorResponseDto })
   create(
-    @Body() input: CheckoutDto,
-    @Headers('idempotency-key') key: string | undefined,
+    @Body() checkoutDto: CheckoutDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ): Promise<CheckoutAcceptedDto> {
-    return this.checkout.execute(
-      input,
-      key,
+    return this.checkoutUseCase.execute(
+      checkoutDto,
+      idempotencyKey,
       String(response.locals.correlationId),
     );
   }
@@ -74,8 +74,8 @@ export class OrderController {
   @ApiBadRequestResponse({ type: ErrorResponseDto })
   @ApiNotFoundResponse({ type: ErrorResponseDto })
   status(
-    @Param('orderId', new ParseUUIDPipe()) id: string,
+    @Param('orderId', new ParseUUIDPipe()) orderId: string,
   ): Promise<OrderStatusDto> {
-    return this.orders.execute(id);
+    return this.getOrderStatusUseCase.execute(orderId);
   }
 }

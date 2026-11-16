@@ -12,51 +12,71 @@ import { ActivationContext, ActivationStep } from './activation-step';
 @Injectable()
 export class IntegrationSimulator {
   constructor(
-    private readonly config: ConfigService,
-    private readonly logger: AppLogger,
+    private readonly configService: ConfigService,
+    private readonly appLogger: AppLogger,
   ) {}
 
   async execute(
-    kind: 'erp' | 'email',
-    context: ActivationContext,
+    integrationKind: 'erp' | 'email',
+    activationContext: ActivationContext,
   ): Promise<void> {
-    const timeout = this.config.getOrThrow<number>('SIMULATOR_TIMEOUT_MS');
-    const delay = this.config.getOrThrow<number>('SIMULATOR_DELAY_MS');
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(delay, timeout)),
+    const timeoutMs = this.configService.getOrThrow<number>(
+      'SIMULATOR_TIMEOUT_MS',
     );
-    if (delay > timeout)
+
+    const delayMs = this.configService.getOrThrow<number>('SIMULATOR_DELAY_MS');
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(delayMs, timeoutMs)),
+    );
+
+    if (delayMs > timeoutMs) {
+
       throw new IntegrationTimeoutError('Integration timeout');
-    if (this.config.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') === kind)
-      throw new PermanentActivationError('Integration rejected request');
+
+    }
+
     if (
-      context.event.meta.attempt <=
-      this.config.getOrThrow<number>(
-        kind === 'erp' ? 'ERP_FAILURES' : 'EMAIL_FAILURES',
+      this.configService.getOrThrow<string>('SIMULATOR_PERMANENT_FAILURE') ===
+      integrationKind
+    ) {
+
+      throw new PermanentActivationError('Integration rejected request');
+
+    }
+
+    if (
+      activationContext.event.meta.attempt <=
+      this.configService.getOrThrow<number>(
+        integrationKind === 'erp' ? 'ERP_FAILURES' : 'EMAIL_FAILURES',
       )
-    )
+    ) {
+
       throw new Error('Simulated transient integration failure');
-    this.logger.info(`integration.${kind}.accepted`, {
-      order_id: context.order.id,
-      idempotency_key: `${context.order.id}:${kind}`,
+
+    }
+
+    this.appLogger.info(`integration.${integrationKind}.accepted`, {
+      order_id: activationContext.order.id,
+      idempotency_key: `${activationContext.order.id}:${integrationKind}`,
     });
   }
 }
 @Injectable()
 @RegisteredStep(StepName.UpdateErpStep)
 export class UpdateErpStep implements ActivationStep {
-  constructor(private readonly simulator: IntegrationSimulator) {}
+  constructor(private readonly integrationSimulator: IntegrationSimulator) {}
 
-  exec(context: ActivationContext): Promise<void> {
-    return this.simulator.execute('erp', context);
+  exec(activationContext: ActivationContext): Promise<void> {
+    return this.integrationSimulator.execute('erp', activationContext);
   }
 }
 @Injectable()
 @RegisteredStep(StepName.EmailNotificationStep)
 export class EmailNotificationStep implements ActivationStep {
-  constructor(private readonly simulator: IntegrationSimulator) {}
+  constructor(private readonly integrationSimulator: IntegrationSimulator) {}
 
-  exec(context: ActivationContext): Promise<void> {
-    return this.simulator.execute('email', context);
+  exec(activationContext: ActivationContext): Promise<void> {
+    return this.integrationSimulator.execute('email', activationContext);
   }
 }
