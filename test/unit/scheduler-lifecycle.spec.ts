@@ -1,8 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { Test } from '@nestjs/testing';
-import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations.use-case';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
+import { ExpireReservationsUseCase } from '@app/orders/adapters/usecases/expire-reservations.use-case';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { Spans } from '@app/platform/observability/spans';

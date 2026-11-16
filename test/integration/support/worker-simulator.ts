@@ -1,7 +1,7 @@
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 import { InMemoryStore } from './in-memory-store';
 
 /**

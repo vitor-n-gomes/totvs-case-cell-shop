@@ -1,4 +1,4 @@
-import { orderEntities } from '@app/order/domain/entities';
+import { orderEntities } from '../../../orders/src/domain/entities';
 import { RequestLogEntity } from './request-log.entity';
 import { productEntities } from '@app/products/domain/entities';
 import { inventoryEntities } from '@app/products/inventory/domain/entities';

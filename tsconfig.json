@@ -17,7 +17,7 @@
     "paths": {
       "@app/products/*": ["./libs/products/src/*"],
       "@app/platform/*": ["./libs/platform/src/*"],
-      "@app/order/*": ["./libs/order/src/*"]
+      "@app/orders/*": ["./libs/orders/src/*"]
     },
     "isolatedModules": true,
     "types": ["node"],

@@ -4,16 +4,16 @@ import { DataSource, EntityManager } from 'typeorm';
 import {
   OutboxRepository,
   ClaimedEvent,
-} from '@app/order/repositories/outbox.repository';
-import { IdempotencyLogRepository } from '@app/order/repositories/idempotency-log.repository';
+} from '@app/orders/repositories/outbox.repository';
+import { IdempotencyLogRepository } from '@app/orders/repositories/idempotency-log.repository';
 import {
   OutboxEventEntity,
   IdempotencyLogEntity,
-} from '@app/order/domain/entities';
+} from '@app/orders/domain/entities';
 import {
   ACTIVATION_ACTION,
   StepName,
-} from '@app/order/activation/constants/step-names';
+} from '@app/orders/activation/constants/step-names';
 import { checkoutEvent } from './support/fixtures';
 import { queryBuilderMock } from './support/query-builder';
 

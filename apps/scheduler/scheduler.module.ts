@@ -5,7 +5,7 @@ import { DatabaseModule } from '@app/platform/database/database.module';
 import { LoggingModule } from '@app/platform/logging/logging.module';
 import { ObservabilityModule } from '@app/platform/observability/observability.module';
 import { KafkaModule } from '@app/platform/kafka/kafka.module';
-import { OrderSchedulerModule } from '@app/order/order-scheduler.module';
+import { OrderSchedulerModule } from '../../libs/orders/src/order-scheduler.module';
 
 @Module({
   imports: [

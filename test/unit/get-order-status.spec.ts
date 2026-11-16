@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { GetOrderStatusUseCase } from '@app/order/adapters/usecases/get-order-status.use-case';
-import { OrderRepository } from '@app/order/repositories/order.repository';
+import { GetOrderStatusUseCase } from '@app/orders/adapters/usecases/get-order-status.use-case';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
 import { orderFixture } from './support/fixtures';
 
 describe('GetOrderStatusUseCase', () => {

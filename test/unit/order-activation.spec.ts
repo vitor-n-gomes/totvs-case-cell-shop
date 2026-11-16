@@ -1,23 +1,23 @@
 import { Test } from '@nestjs/testing';
 import { QueryRunner } from 'typeorm';
-import { ActiveOrderUseCase } from '@app/order/activation/active-order.use-case';
-import { OrderActivationGuard } from '@app/order/activation/guards/order-activation.guard';
+import { ActiveOrderUseCase } from '@app/orders/activation/active-order.use-case';
+import { OrderActivationGuard } from '@app/orders/activation/guards/order-activation.guard';
 import {
   PermanentActivationError,
   OrderCancelledError,
-} from '@app/order/activation/guards/activation-errors';
-import { ActivationFailureHandler } from '@app/order/activation/handlers/activation-failure.handler';
-import { OnlineActivationStrategy } from '@app/order/activation/strategies/online-activation.strategy';
-import { ActivationStepRegistry } from '@app/order/activation/registries/activation-step.registry';
-import { StepName } from '@app/order/activation/constants/step-names';
-import { OrderRepository } from '@app/order/repositories/order.repository';
-import { IdempotencyLogRepository } from '@app/order/repositories/idempotency-log.repository';
-import { EventBus } from '@app/order/adapters/handlers/event.bus';
+} from '@app/orders/activation/guards/activation-errors';
+import { ActivationFailureHandler } from '@app/orders/activation/handlers/activation-failure.handler';
+import { OnlineActivationStrategy } from '@app/orders/activation/strategies/online-activation.strategy';
+import { ActivationStepRegistry } from '@app/orders/activation/registries/activation-step.registry';
+import { StepName } from '@app/orders/activation/constants/step-names';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
+import { IdempotencyLogRepository } from '@app/orders/repositories/idempotency-log.repository';
+import { EventBus } from '@app/orders/adapters/handlers/event.bus';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
-import { ORDER_ACTIVATED } from '@app/order/messaging/order-events';
+} from '@app/orders/domain/shared/types/order.type';
+import { ORDER_ACTIVATED } from '@app/orders/messaging/order-events';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { AppLogger } from '@app/platform/logging/app-logger';

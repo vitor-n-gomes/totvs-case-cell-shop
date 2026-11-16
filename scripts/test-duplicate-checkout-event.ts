@@ -12,12 +12,12 @@ import {
   OrderStatus,
   PaymentType,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '../libs/orders/src/domain/shared/types/order.type';
 import {
   CheckoutInitiatedEvent,
   ORDER_CHECKOUT_INITIATED,
   parseOrderEvent,
-} from '@app/order/messaging/order-events';
+} from '../libs/orders/src/messaging/order-events';
 import { validateEnvironment } from '@app/platform/config/environment';
 import { databaseOptions } from '@app/platform/database/options';
 import { kafkaClientOptions } from '@app/platform/kafka/kafka.options';

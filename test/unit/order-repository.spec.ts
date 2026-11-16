@@ -1,12 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { OrderRepository } from '@app/order/repositories/order.repository';
-import { OrderEntity, OrderItemEntity } from '@app/order/domain/entities';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
+import { OrderEntity, OrderItemEntity } from '@app/orders/domain/entities';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 import {
   checkoutPayload,
   orderFixture,

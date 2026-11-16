@@ -1,20 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { EntityManager, QueryRunner } from 'typeorm';
-import { OrderEntity } from '@app/order/domain/entities/order.entity';
-import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
+import { OrderEntity } from '@app/orders/domain/entities/order.entity';
+import { CheckoutDto } from '@app/orders/domain/dto/create-order.dto';
 import {
   Environment,
   OrderStatus,
   PaymentType,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
-import { createEventMeta } from '@app/order/messaging/event.util';
+} from '@app/orders/domain/shared/types/order.type';
+import { createEventMeta } from '@app/orders/messaging/event.util';
 import {
   CheckoutInitiatedEvent,
   ORDER_CHECKOUT_INITIATED,
-} from '@app/order/messaging/order-events';
-import { StepName } from '@app/order/activation/constants/step-names';
-import { ActivationContext } from '@app/order/activation/steps/activation-step';
+} from '@app/orders/messaging/order-events';
+import { StepName } from '@app/orders/activation/constants/step-names';
+import { ActivationContext } from '@app/orders/activation/steps/activation-step';
 
 export function checkoutPayload(): CheckoutDto {
   return {

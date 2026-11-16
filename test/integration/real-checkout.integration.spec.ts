@@ -11,16 +11,16 @@ import {
   OrderEntity,
   OrderItemEntity,
   OutboxEventEntity,
-} from '@app/order/domain/entities';
+} from '@app/orders/domain/entities';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 import {
   ORDER_CHECKOUT_INITIATED,
   orderEventSchema,
-} from '@app/order/messaging/order-events';
-import { OutboxRepository } from '@app/order/repositories/outbox.repository';
+} from '@app/orders/messaging/order-events';
+import { OutboxRepository } from '@app/orders/repositories/outbox.repository';
 import { RequestLogEntity } from '@app/platform/database/request-log.entity';
 import {
   ReservationEntity,

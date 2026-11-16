@@ -12,24 +12,24 @@ import {
   IdempotencyLogEntity,
   OrderEntity,
   OutboxEventEntity,
-} from '@app/order/domain/entities';
+} from '@app/orders/domain/entities';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
-import { ActivationFailureHandler } from '@app/order/activation/handlers/activation-failure.handler';
-import { StepName } from '@app/order/activation/constants/step-names';
-import { ActivateOrderStep } from '@app/order/activation/steps/database-steps';
-import { IntegrationSimulator } from '@app/order/activation/steps/integration-steps';
+} from '@app/orders/domain/shared/types/order.type';
+import { ActivationFailureHandler } from '@app/orders/activation/handlers/activation-failure.handler';
+import { StepName } from '@app/orders/activation/constants/step-names';
+import { ActivateOrderStep } from '@app/orders/activation/steps/database-steps';
+import { IntegrationSimulator } from '@app/orders/activation/steps/integration-steps';
 import {
   ORDER_CHECKOUT_INITIATED,
   ORDER_RESERVATION_EXPIRED,
   orderEventSchema,
-} from '@app/order/messaging/order-events';
-import { createEventMeta } from '@app/order/messaging/event.util';
-import { CheckoutInitiatedHandler } from '@app/order/adapters/usecases/event-handlers/checkout-initiated.handler';
-import { ReservationExpiredHandler } from '@app/order/adapters/usecases/event-handlers/reservation-expired.handler';
-import { OutboxRepository } from '@app/order/repositories/outbox.repository';
+} from '@app/orders/messaging/order-events';
+import { createEventMeta } from '@app/orders/messaging/event.util';
+import { CheckoutInitiatedHandler } from '@app/orders/adapters/usecases/event-handlers/checkout-initiated.handler';
+import { ReservationExpiredHandler } from '@app/orders/adapters/usecases/event-handlers/reservation-expired.handler';
+import { OutboxRepository } from '@app/orders/repositories/outbox.repository';
 import {
   ReservationEntity,
   StockEntity,

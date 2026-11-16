@@ -5,7 +5,7 @@ import { Logger } from 'nestjs-pino';
 import { AppLogger } from '@app/platform/logging/app-logger';
 // Must load before any repository: entity barrels are cyclic and DatabaseModule fixes the safe load order.
 import { SchedulerModule } from './scheduler.module';
-import { ExpireReservationsUseCase } from '@app/order/adapters/usecases/expire-reservations.use-case';
+import { ExpireReservationsUseCase } from '../../libs/orders/src/adapters/usecases/expire-reservations.use-case';
 
 // No HTTP server: the scheduler only polls the database and produces to Kafka.
 async function bootstrap(): Promise<void> {

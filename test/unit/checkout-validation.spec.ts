@@ -1,9 +1,9 @@
-import { checkoutSchema } from '@app/order/domain/dto/create-order.dto';
-import { CheckoutGuard } from '@app/order/adapters/usecases/guards/checkout.guard';
+import { checkoutSchema } from '@app/orders/domain/dto/create-order.dto';
+import { CheckoutGuard } from '@app/orders/adapters/usecases/guards/checkout.guard';
 import {
   Environment,
   PaymentType,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 import { checkoutPayload } from './support/fixtures';
 
 describe('checkoutSchema boundaries', () => {

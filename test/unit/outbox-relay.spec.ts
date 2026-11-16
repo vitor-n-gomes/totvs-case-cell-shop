@@ -1,8 +1,8 @@
 import { Test } from '@nestjs/testing';
-import { OutboxRelay } from '@app/order/messaging/outbox-relay';
-import { OutboxRepository } from '@app/order/repositories/outbox.repository';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
-import { ORDER_RESERVATION_EXPIRED } from '@app/order/messaging/order-events';
+import { OutboxRelay } from '@app/orders/messaging/outbox-relay';
+import { OutboxRepository } from '@app/orders/repositories/outbox.repository';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
+import { ORDER_RESERVATION_EXPIRED } from '@app/orders/messaging/order-events';
 import { Metrics } from '@app/platform/observability/metrics';
 import { Spans } from '@app/platform/observability/spans';
 import { AppLogger } from '@app/platform/logging/app-logger';

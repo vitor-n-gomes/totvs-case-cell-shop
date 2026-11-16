@@ -40,7 +40,7 @@ totvs-case-cell-shop/
 │   │   └─ Consome eventos do Kafka e delega aos handlers via EventBus
 │   └── http (sem mudanças)
 │
-├── libs/order/src/
+├── libs/orders/src/
 │   ├── messaging/
 │   │  ├─ order-events.ts (schemas Zod snake_case e tipos dos eventos)
 │   │  └─ order-event.ts (createEventMeta)
@@ -68,10 +68,10 @@ totvs-case-cell-shop/
 
 ### Envelope
 
-Todos os eventos seguem o envelope `{ kind, data, meta? }`, com **todas as chaves em `snake_case`**. Os schemas Zod (`z.strictObject`) vivem em `libs/order/src/messaging/order-events.ts` e os tipos TypeScript (`OrderEvent`, `DomainEvent`, `CheckoutInitiatedEvent`...) são derivados deles.
+Todos os eventos seguem o envelope `{ kind, data, meta? }`, com **todas as chaves em `snake_case`**. Os schemas Zod (`z.strictObject`) vivem em `libs/orders/src/messaging/order-events.ts` e os tipos TypeScript (`OrderEvent`, `DomainEvent`, `CheckoutInitiatedEvent`...) são derivados deles.
 
 ```typescript
-// meta (criado por createEventMeta em libs/order/src/messaging/order-event.ts)
+// meta (criado por createEventMeta em libs/orders/src/messaging/order-event.ts)
 {
   schema_version: 1,
   event_id: string,        // uuid
@@ -116,7 +116,7 @@ Não existem eventos dedicados a erro. Retries e DLQ reenviam o **mesmo evento**
 
 ### 1. OrderActivatedHandler
 
-**Localização**: `libs/order/src/adapters/handlers/order-activated.handler.ts`
+**Localização**: `libs/orders/src/adapters/handlers/order-activated.handler.ts`
 
 ```typescript
 @Injectable()
@@ -150,7 +150,7 @@ export class OrderActivatedHandler implements EventHandler<OrderActivatedEvent> 
 
 ### 2. CheckoutInitiatedHandler
 
-**Localização**: `libs/order/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`
+**Localização**: `libs/orders/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`
 
 ```typescript
 @Injectable()
@@ -166,7 +166,7 @@ export class CheckoutInitiatedHandler {
 
 ### 3. ReservationExpiredHandler
 
-**Localização**: `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts`
+**Localização**: `libs/orders/src/adapters/usecases/event-handlers/reservation-expired.handler.ts`
 
 Acionado pelo `ProcessOrderEventUseCase` para `ORDER_RESERVATION_EXPIRED`
 (também registrado no `EventBus`). Dentro de `spansService.run('reservation.expire')`
@@ -190,7 +190,7 @@ sem retry no Kafka) e incrementa `reservations{result="expired"}` e
 
 ### EventBus - Orquestrador Central
 
-**Localização**: `libs/order/src/adapters/handlers/event.bus.ts`
+**Localização**: `libs/orders/src/adapters/handlers/event.bus.ts`
 
 ```typescript
 @Injectable()
@@ -242,7 +242,7 @@ export class EventBus implements IEventBus {
 
 ### HandlersRegistry - Registro de Handlers
 
-**Localização**: `libs/order/src/adapters/handlers/handlers.registry.ts`
+**Localização**: `libs/orders/src/adapters/handlers/handlers.registry.ts`
 
 ```typescript
 @Injectable()
@@ -272,7 +272,7 @@ export class HandlersRegistry {
 
 ### EventHandler - Interface de Handlers
 
-**Localização**: `libs/order/src/adapters/handlers/event.handler.ts`
+**Localização**: `libs/orders/src/adapters/handlers/event.handler.ts`
 
 ```typescript
 /**
@@ -326,10 +326,10 @@ Kafka CHECKOUT_TOPIC
 
 ### Fluxo: Checkout Iniciado → Ordem Ativada
 
-O [CheckoutGuard](../libs/order/src/adapters/usecases/guards/checkout.guard.ts)
+O [CheckoutGuard](../libs/orders/src/adapters/usecases/guards/checkout.guard.ts)
 valida a chave de idempotência e os produtos duplicados e calcula o hash
 normalizado da requisição. O
-[CheckoutUseCase](../libs/order/src/adapters/usecases/checkout.use-case.ts)
+[CheckoutUseCase](../libs/orders/src/adapters/usecases/checkout.use-case.ts)
 orquestra a transação, o replay idempotente, a reserva, a outbox e as métricas.
 O helper [isTransientDatabaseFailure](../libs/platform/src/database/transient-db-error.ts)
 identifica falhas transitórias de banco, que o caso de uso converte em HTTP 503,
@@ -378,7 +378,7 @@ OnlineActivationStrategy.execute()
 
 ### Passo 1: Definir o Tipo de Evento
 
-**Arquivo**: `libs/order/src/domain/events/order.event.ts`
+**Arquivo**: `libs/orders/src/domain/events/order.event.ts`
 
 ```typescript
 // Adicionar novo tipo
@@ -390,11 +390,11 @@ export type YourCustomEvent = OrderEvent<{
 
 ### Passo 2: Criar o Handler
 
-**Arquivo**: `libs/order/src/adapters/handlers/your-custom.handler.ts`
+**Arquivo**: `libs/orders/src/adapters/handlers/your-custom.handler.ts`
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { OrderEvent } from '@app/order/domain/events';
+import { OrderEvent } from '@app/orders/domain/events';
 import { EventHandler } from './event.handler';
 
 @Injectable()
@@ -421,7 +421,7 @@ export class YourCustomHandler implements EventHandler<{ yourField: string }> {
 
 ### Passo 3: Registrar o Handler no Registry
 
-**Arquivo**: `libs/order/src/adapters/handlers/handlers.registry.ts`
+**Arquivo**: `libs/orders/src/adapters/handlers/handlers.registry.ts`
 
 ```typescript
 export class HandlersRegistry {
@@ -472,7 +472,7 @@ async execute(): Promise<void> {
 
 ### Passo 5: Adicionar Testes
 
-**Arquivo**: `libs/order/src/adapters/handlers/__tests__/your-custom.handler.spec.ts`
+**Arquivo**: `libs/orders/src/adapters/handlers/__tests__/your-custom.handler.spec.ts`
 
 ```typescript
 describe('YourCustomHandler', () => {
@@ -514,7 +514,7 @@ describe('YourCustomHandler', () => {
 Testa cada handler isoladamente
 
 ```bash
-npm test -- libs/order/src/adapters/handlers/your-custom.handler.spec.ts
+npm test -- libs/orders/src/adapters/handlers/your-custom.handler.spec.ts
 ```
 
 ### Unit Tests: EventBus
@@ -522,7 +522,7 @@ npm test -- libs/order/src/adapters/handlers/your-custom.handler.spec.ts
 Testa registro e disparo de eventos
 
 ```bash
-npm test -- libs/order/src/adapters/handlers/event.bus.spec.ts
+npm test -- libs/orders/src/adapters/handlers/event.bus.spec.ts
 ```
 
 ### Unit Tests: Scheduler → Event → Handler
@@ -538,7 +538,7 @@ npm test -- test/unit/reservation-expiration.spec.ts
 Testa fluxo de ativação de order
 
 ```bash
-npm test -- libs/order/src/activation/online-activation.integration.spec.ts
+npm test -- libs/orders/src/activation/online-activation.integration.spec.ts
 ```
 
 ### E2E Tests: Full Flow
@@ -556,18 +556,18 @@ npm run test:e2e
 
 ### Arquivos Principais
 
-| Arquivo                                                                          | Responsabilidade               |
-| -------------------------------------------------------------------------------- | ------------------------------ |
-| `libs/order/src/domain/events/order.event.ts`                                    | Definições de tipos de eventos |
-| `libs/order/src/adapters/handlers/event.bus.ts`                                  | Orquestrador central pub/sub   |
-| `libs/order/src/adapters/handlers/event.handler.ts`                              | Interface para handlers        |
-| `libs/order/src/adapters/handlers/handlers.registry.ts`                          | Registro e inicialização       |
-| `libs/order/src/adapters/handlers/order-activated.handler.ts`                    | Handler de ativação            |
-| `libs/order/src/adapters/usecases/process-order-event.use-case.ts`               | Consumidor Kafka               |
-| `libs/order/src/adapters/usecases/expire-reservations.use-case.ts`               | Job do scheduler (produtor)    |
-| `libs/order/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`  | Handler de checkout            |
-| `libs/order/src/adapters/usecases/event-handlers/reservation-expired.handler.ts` | Handler de expiração           |
-| `libs/order/src/activation/strategies/online-activation.strategy.ts`             | Estratégia de ativação         |
+| Arquivo                                                                           | Responsabilidade               |
+| --------------------------------------------------------------------------------- | ------------------------------ |
+| `libs/orders/src/domain/events/order.event.ts`                                    | Definições de tipos de eventos |
+| `libs/orders/src/adapters/handlers/event.bus.ts`                                  | Orquestrador central pub/sub   |
+| `libs/orders/src/adapters/handlers/event.handler.ts`                              | Interface para handlers        |
+| `libs/orders/src/adapters/handlers/handlers.registry.ts`                          | Registro e inicialização       |
+| `libs/orders/src/adapters/handlers/order-activated.handler.ts`                    | Handler de ativação            |
+| `libs/orders/src/adapters/usecases/process-order-event.use-case.ts`               | Consumidor Kafka               |
+| `libs/orders/src/adapters/usecases/expire-reservations.use-case.ts`               | Job do scheduler (produtor)    |
+| `libs/orders/src/adapters/usecases/event-handlers/checkout-initiated.handler.ts`  | Handler de checkout            |
+| `libs/orders/src/adapters/usecases/event-handlers/reservation-expired.handler.ts` | Handler de expiração           |
+| `libs/orders/src/activation/strategies/online-activation.strategy.ts`             | Estratégia de ativação         |
 
 ### Configuração Kafka
 

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
-import { CheckoutDto } from '@app/order/domain/dto/create-order.dto';
+import { CheckoutDto } from '@app/orders/domain/dto/create-order.dto';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 
 export interface ProductRecord {
   id: string;

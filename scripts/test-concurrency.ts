@@ -9,7 +9,7 @@ import {
   Environment,
   OrderStatus,
   PaymentType,
-} from '@app/order/domain/shared/types/order.type';
+} from '../libs/orders/src/domain/shared/types/order.type';
 
 const PRODUCT_KEY = 'CASE-LIMITED-001';
 const REQUESTS = 5;

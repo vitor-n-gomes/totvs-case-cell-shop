@@ -1,22 +1,22 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { ActivationStepRegistry } from '@app/order/activation/registries/activation-step.registry';
+import { ActivationStepRegistry } from '@app/orders/activation/registries/activation-step.registry';
 import {
   ConsumeStockReservationStep,
   ActivateOrderStep,
-} from '@app/order/activation/steps/database-steps';
+} from '@app/orders/activation/steps/database-steps';
 import {
   EmailNotificationStep,
   IntegrationSimulator,
   UpdateErpStep,
-} from '@app/order/activation/steps/integration-steps';
+} from '@app/orders/activation/steps/integration-steps';
 import {
   PermanentActivationError,
   IntegrationTimeoutError,
-} from '@app/order/activation/guards/activation-errors';
-import { StepName } from '@app/order/activation/constants/step-names';
-import { OrderRepository } from '@app/order/repositories/order.repository';
-import { OrderStatus } from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/activation/guards/activation-errors';
+import { StepName } from '@app/orders/activation/constants/step-names';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
+import { OrderStatus } from '@app/orders/domain/shared/types/order.type';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { ReservationExpiredError } from '@app/products/inventory/domain/errors/inventory-errors';
 import { AppLogger } from '@app/platform/logging/app-logger';

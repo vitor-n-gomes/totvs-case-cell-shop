@@ -2,7 +2,7 @@ import request from 'supertest';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 import { buildCheckoutPayload, newIdempotencyKey } from './support/fixtures';
 import { newProduct, ProductRecord } from './support/in-memory-store';
 import { createTestApp, TestApp } from './support/test-app';

@@ -5,19 +5,19 @@ import { QueryRunner } from 'typeorm';
 import {
   EXPIRATION_BATCH_SIZE,
   ExpireReservationsUseCase,
-} from '@app/order/adapters/usecases/expire-reservations.use-case';
-import { ReservationExpiredHandler } from '@app/order/adapters/usecases/event-handlers/reservation-expired.handler';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
+} from '@app/orders/adapters/usecases/expire-reservations.use-case';
+import { ReservationExpiredHandler } from '@app/orders/adapters/usecases/event-handlers/reservation-expired.handler';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
-import { createEventMeta } from '@app/order/messaging/event.util';
+} from '@app/orders/domain/shared/types/order.type';
+import { createEventMeta } from '@app/orders/messaging/event.util';
 import {
   ORDER_RESERVATION_EXPIRED,
   parseOrderEvent,
-} from '@app/order/messaging/order-events';
-import { OrderRepository } from '@app/order/repositories/order.repository';
+} from '@app/orders/messaging/order-events';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
 import { RedisConnection } from '@app/platform/cache/redis-connection';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { Metrics } from '@app/platform/observability/metrics';

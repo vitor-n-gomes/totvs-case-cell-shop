@@ -30,11 +30,11 @@
     },
     "order": {
       "type": "library",
-      "root": "libs/order",
+      "root": "libs/orders",
       "entryFile": "index",
-      "sourceRoot": "libs/order/src",
+      "sourceRoot": "libs/orders/src",
       "compilerOptions": {
-        "tsConfigPath": "libs/order/tsconfig.lib.json"
+        "tsConfigPath": "libs/orders/tsconfig.lib.json"
       }
     },
     "http": {

@@ -1,10 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { KafkaContext, RpcException } from '@nestjs/microservices';
-import { OrderConsumer } from '@app/order/adapters/consumer/order.consumer';
-import { ProcessOrderEventUseCase } from '@app/order/adapters/usecases/process-order-event.use-case';
-import { CheckoutInitiatedHandler } from '@app/order/adapters/usecases/event-handlers/checkout-initiated.handler';
-import { ReservationExpiredHandler } from '@app/order/adapters/usecases/event-handlers/reservation-expired.handler';
-import { ORDER_RESERVATION_EXPIRED } from '@app/order/messaging/order-events';
+import { OrderConsumer } from '@app/orders/adapters/consumer/order.consumer';
+import { ProcessOrderEventUseCase } from '@app/orders/adapters/usecases/process-order-event.use-case';
+import { CheckoutInitiatedHandler } from '@app/orders/adapters/usecases/event-handlers/checkout-initiated.handler';
+import { ReservationExpiredHandler } from '@app/orders/adapters/usecases/event-handlers/reservation-expired.handler';
+import { ORDER_RESERVATION_EXPIRED } from '@app/orders/messaging/order-events';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { executionContext } from '@app/platform/observability/context';
 import { checkoutEvent, loggerMock } from './support/fixtures';

@@ -1,6 +1,6 @@
 import request from 'supertest';
-import { OrderStatus } from '@app/order/domain/shared/types/order.type';
-import { ORDER_CHECKOUT_INITIATED } from '@app/order/messaging/order-events';
+import { OrderStatus } from '@app/orders/domain/shared/types/order.type';
+import { ORDER_CHECKOUT_INITIATED } from '@app/orders/messaging/order-events';
 import {
   buildCheckoutPayload,
   newIdempotencyKey,

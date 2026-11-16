@@ -5,12 +5,12 @@ import { KafkaContext, KafkaRetriableException } from '@nestjs/microservices';
 import { Test } from '@nestjs/testing';
 import { KafkaJSError } from 'kafkajs';
 import { lastValueFrom } from 'rxjs';
-import { OrderConsumerExceptionFilter } from '@app/order/adapters/consumer/order-consumer-exception.filter';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
+import { OrderConsumerExceptionFilter } from '@app/orders/adapters/consumer/order-consumer-exception.filter';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
 import {
   IntegrationTimeoutError,
   PermanentActivationError,
-} from '@app/order/activation/guards/activation-errors';
+} from '@app/orders/activation/guards/activation-errors';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { checkoutEvent, loggerMock } from './support/fixtures';

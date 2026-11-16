@@ -1,15 +1,15 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { ActivationFailureHandler } from '@app/order/activation/handlers/activation-failure.handler';
-import { PermanentActivationError } from '@app/order/activation/guards/activation-errors';
-import { OrderRepository } from '@app/order/repositories/order.repository';
-import { IdempotencyLogRepository } from '@app/order/repositories/idempotency-log.repository';
-import { OutboxRepository } from '@app/order/repositories/outbox.repository';
+import { ActivationFailureHandler } from '@app/orders/activation/handlers/activation-failure.handler';
+import { PermanentActivationError } from '@app/orders/activation/guards/activation-errors';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
+import { IdempotencyLogRepository } from '@app/orders/repositories/idempotency-log.repository';
+import { OutboxRepository } from '@app/orders/repositories/outbox.repository';
 import {
   OrderStatus,
   ProcessingStatus,
-} from '@app/order/domain/shared/types/order.type';
-import { parseOrderEvent } from '@app/order/messaging/order-events';
+} from '@app/orders/domain/shared/types/order.type';
+import { parseOrderEvent } from '@app/orders/messaging/order-events';
 import { ReservationRepository } from '@app/products/inventory/repositories/reservation.repository';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { Metrics } from '@app/platform/observability/metrics';

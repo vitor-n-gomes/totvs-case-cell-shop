@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   Environment,
   PaymentType,
-} from '@app/order/domain/shared/types/order.type';
+} from '@app/orders/domain/shared/types/order.type';
 
 export function buildCheckoutPayload(productId: string, quantity = 1) {
   return {

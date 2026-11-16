@@ -1,16 +1,16 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { EventBus } from '@app/order/adapters/handlers/event.bus';
-import { HandlersRegistry } from '@app/order/adapters/handlers/handlers.registry';
-import { OrderActivatedHandler } from '@app/order/adapters/handlers/order-activated.handler';
-import { ReservationExpiredHandler } from '@app/order/adapters/usecases/event-handlers/reservation-expired.handler';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
-import { OrderRepository } from '@app/order/repositories/order.repository';
+import { EventBus } from '@app/orders/adapters/handlers/event.bus';
+import { HandlersRegistry } from '@app/orders/adapters/handlers/handlers.registry';
+import { OrderActivatedHandler } from '@app/orders/adapters/handlers/order-activated.handler';
+import { ReservationExpiredHandler } from '@app/orders/adapters/usecases/event-handlers/reservation-expired.handler';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
+import { OrderRepository } from '@app/orders/repositories/order.repository';
 import {
   ORDER_ACTIVATED,
   ORDER_RESERVATION_EXPIRED,
   OrderActivatedEvent,
-} from '@app/order/messaging/order-events';
+} from '@app/orders/messaging/order-events';
 import { Metrics } from '@app/platform/observability/metrics';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { checkoutEvent, loggerMock, orderFixture } from './support/fixtures';

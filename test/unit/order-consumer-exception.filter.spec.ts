@@ -6,8 +6,8 @@ import { KafkaRetriableException } from '@nestjs/microservices';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { lastValueFrom } from 'rxjs';
-import { OrderConsumerExceptionFilter } from '@app/order/adapters/consumer/order-consumer-exception.filter';
-import { OrderMessaging } from '@app/order/adapters/order.messaging';
+import { OrderConsumerExceptionFilter } from '@app/orders/adapters/consumer/order-consumer-exception.filter';
+import { OrderMessaging } from '@app/orders/adapters/order.messaging';
 import { AppLogger } from '@app/platform/logging/app-logger';
 import { Metrics } from '@app/platform/observability/metrics';
 
