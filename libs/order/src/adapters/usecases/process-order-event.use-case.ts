@@ -64,6 +64,13 @@ export class ProcessOrderEventUseCase {
         await this.reservationExpiredHandler.handle(event);
         break;
 
+      default:
+        this.appLogger.warn('order.event.unknown.kind', {
+          kind: event,
+        });
+
+        break;
+
     }
   }
 }
