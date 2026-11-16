@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { CheckoutGuard } from '@app/orders/adapters/usecases/guards/checkout.guard';
-import { CheckoutDto } from '@app/orders/domain/dto/create-order.dto';
+import { CheckoutCommand } from '@app/orders/domain/dto/create-order.dto';
 import {
   Environment,
   PaymentType,
@@ -277,7 +277,7 @@ describe('GetProductsUseCase', () => {
 describe('CheckoutGuard', () => {
   const checkoutGuard = new CheckoutGuard();
 
-  const checkoutDto: CheckoutDto = {
+  const checkoutDto: CheckoutCommand = {
     paymentType: PaymentType.PrePaid,
     dueDate: '2026-11-10',
     mainContact: 'customer@example.test',

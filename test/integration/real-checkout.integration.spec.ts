@@ -55,6 +55,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
         request(testApp.app.getHttpServer())
           .post('/checkout')
           .set('Idempotency-Key', newIdempotencyKey())
+          .set('X-Environment', 'Local')
           .send(buildCheckoutPayload(product.id)),
       ),
     );
@@ -100,7 +101,8 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
         request(testApp.app.getHttpServer())
           .post('/checkout')
           .set('Idempotency-Key', key)
-          .set('x-correlation-id', correlationId)
+          .set('X-Environment', 'Local')
+          .set('X-Correlation-Id', correlationId)
           .send(payload),
       ),
     );
@@ -120,6 +122,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send(buildCheckoutPayload(product.id, 3))
       .expect(409);
 
@@ -213,6 +216,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       await request(testApp.app.getHttpServer())
         .post('/checkout')
         .set('Idempotency-Key', newIdempotencyKey())
+        .set('X-Environment', 'Local')
         .send(payload)
         .expect(expectedStatus);
 
@@ -262,12 +266,14 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     const first = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send(payload)
       .expect(202);
 
     const replay = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send({ ...payload, items: [...payload.items].reverse() })
       .expect(202);
 
@@ -295,6 +301,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     const failed = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send(payload)
       .expect(500);
 
@@ -322,6 +329,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send(payload)
       .expect(202);
 
@@ -344,7 +352,7 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
 
     const invalid = await request(testApp.app.getHttpServer())
       .post('/checkout')
-      .set('x-correlation-id', correlationId)
+      .set('X-Correlation-Id', correlationId)
       .send(payload)
       .expect(400);
 
@@ -355,11 +363,12 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
       correlationId,
     });
 
-    expect(invalid.headers['x-correlation-id']).toBe(correlationId);
+    expect(invalid.headers['X-Correlation-Id']).toBe(correlationId);
 
     await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
+      .set('X-Environment', 'Local')
       .send({
         ...payload,
         items: [payload.items[0], payload.items[0]],
@@ -379,11 +388,12 @@ describe('Checkout with PostgreSQL, Redis and Kafka (integration)', () => {
     const accepted = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
-      .set('x-correlation-id', acceptedCorrelation)
+      .set('X-Environment', 'Local')
+      .set('X-Correlation-Id', acceptedCorrelation)
       .send(payload)
       .expect(202);
 
-    expect(accepted.headers['x-correlation-id']).toBe(acceptedCorrelation);
+    expect(accepted.headers['X-Correlation-Id']).toBe(acceptedCorrelation);
 
     await waitUntil(
       async () =>

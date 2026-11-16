@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { EntityManager } from 'typeorm';
-import { CheckoutDto } from '@app/orders/domain/dto/create-order.dto';
+import { CheckoutCommand } from '@app/orders/domain/dto/create-order.dto';
 import {
   OrderStatus,
   ProcessingStatus,
@@ -116,7 +116,7 @@ export class FakeOrderRepository {
   insertPending(
     _entityManager: EntityManager,
     orderId: string,
-    checkoutDto: CheckoutDto,
+    checkoutDto: CheckoutCommand,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,

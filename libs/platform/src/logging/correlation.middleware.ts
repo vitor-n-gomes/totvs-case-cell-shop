@@ -12,14 +12,14 @@ export class CorrelationMiddleware implements NestMiddleware {
   use(request: Request, response: Response, next: NextFunction): void {
     const correlationIdParseResult = z
       .uuid()
-      .safeParse(request.header('x-correlation-id'));
+      .safeParse(request.header('X-Correlation-Id'));
 
     const correlationId = correlationIdParseResult.success
       ? correlationIdParseResult.data
       : randomUUID();
 
     response.locals.correlationId = correlationId;
-    response.setHeader('x-correlation-id', correlationId);
+    response.setHeader('X-Correlation-Id', correlationId);
     const requestStartedAt = performance.now();
     const traceContext = newTraceContext(correlationId);
 

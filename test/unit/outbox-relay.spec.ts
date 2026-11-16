@@ -84,7 +84,7 @@ describe('OutboxRelay', () => {
         event.topic,
         event.orderId,
         event.payload,
-        { 'x-correlation-id': event.payload.meta.correlation_id },
+        { 'X-Correlation-Id': event.payload.meta.correlation_id },
       );
 
       expect(repository.acknowledge).toHaveBeenCalledWith(event);

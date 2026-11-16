@@ -22,7 +22,6 @@ export function checkoutPayload(): CheckoutDto {
     dueDate: '2026-11-16',
     mainContact: 'customer@example.test',
     paymentMethod: 'PIX',
-    environment: Environment.Local,
     items: [{ productId: randomUUID(), quantity: 2 }],
   };
 }
@@ -35,6 +34,7 @@ export function orderFixture(
     checkoutPayload(),
     {
       id: randomUUID(),
+      environment: Environment.Local,
       status: OrderStatus.Pending,
       processingStatus: ProcessingStatus.Pending,
       lastAttempt: 0,

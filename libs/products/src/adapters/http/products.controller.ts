@@ -11,7 +11,7 @@ import { GetProductsUseCase } from '../usecases/get-products.use-case';
 import { ProductDto } from '../../domain/dto/product.dto';
 @ApiTags('storefront')
 @ApiHeader({
-  name: 'x-correlation-id',
+  name: 'X-Correlation-Id',
   required: false,
   schema: { type: 'string', format: 'uuid' },
 })

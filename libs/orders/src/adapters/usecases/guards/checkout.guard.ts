@@ -1,8 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { CheckoutDto } from '../../../domain/dto/create-order.dto';
+import {
+  CheckoutCommand,
+  CheckoutDto,
+} from '../../../domain/dto/create-order.dto';
+import { Environment } from '../../../domain/shared/types/order.type';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7e]{1,128}$/;
+const ENVIRONMENTS = new Set<string>(Object.values(Environment));
 
 @Injectable()
 export class CheckoutGuard {
@@ -29,7 +34,19 @@ export class CheckoutGuard {
     }
   }
 
-  hashPayload(checkoutDto: CheckoutDto): string {
+  parseEnvironment(environment: string | undefined): Environment {
+    if (!environment || !ENVIRONMENTS.has(environment)) {
+
+      throw new BadRequestException(
+        `X-Environment must be one of: ${[...ENVIRONMENTS].join(', ')}`,
+      );
+
+    }
+
+    return environment as Environment;
+  }
+
+  hashPayload(checkoutDto: CheckoutCommand): string {
     const normalizedPayload = {
       paymentType: checkoutDto.paymentType,
       dueDate: checkoutDto.dueDate,

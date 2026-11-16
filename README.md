@@ -108,21 +108,22 @@ curl -s http://localhost:3000/products
 curl -i http://localhost:3000/checkout \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: example-purchase-001' \
-  -H 'x-correlation-id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
-  -d '{"paymentType":"PrePaid","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","environment":"Local","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
+  -H 'X-Environment: Local' \
+  -H 'X-Correlation-Id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
+  -d '{"paymentType":"PrePaid","dueDate":"2026-11-10","mainContact":"customer@example.test","paymentMethod":"PIX","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
 curl -s http://localhost:3000/orders/REPLACE_WITH_ORDER_ID/status
 ```
 
 Checkout returns `202` and `{ "orderId": "<uuid>", "status": "Pending" }` after the database commit, without waiting for Kafka or ERP. Retry ambiguous HTTP outcomes with the **same key and content**. An identical replay returns the original acceptance response, even if activation has since completed. Changed content under that key returns `409`. Idempotency keys are global to this unauthenticated demonstration and are retained with the order.
 
-Checkout enum values are case-sensitive: `PrePaid`/`PostPaid`, `Local`/`PreProd`/`Prod`, and PascalCase order/processing statuses. Uppercase legacy values are rejected by API validation. The database stores these fields as ordinary `varchar(16)` columns; enum validation stays in the application. The migration history was rebuilt from scratch (parent tables first, child tables with named foreign keys and indexed FK columns); an installation created from the previous history must be recreated (drop the schema, then `npm run migration:run`). Existing idempotency hashes retain the original request representation; retrying a pre-upgrade key with PascalCase content returns `409`.
+Checkout enum values are case-sensitive: `PrePaid`/`PostPaid`, `Local`/`PreProd`/`Prod` (sent in the required `X-Environment` header, not the body), and PascalCase order/processing statuses. Uppercase legacy values are rejected by API validation. The database stores these fields as ordinary `varchar(16)` columns; enum validation stays in the application. The migration history was rebuilt from scratch (parent tables first, child tables with named foreign keys and indexed FK columns); an installation created from the previous history must be recreated (drop the schema, then `npm run migration:run`). Existing idempotency hashes retain the original request representation; retrying a pre-upgrade key with PascalCase content returns `409`.
 
 All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are integer cents, not floating-point amounts. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
 
 | Endpoint                      | Behavior                                                                                             |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `GET /products`               | Catalog and prices, without an authoritative stock promise                                           |
-| `POST /checkout`              | Validated purchase with required `Idempotency-Key`                                                   |
+| `POST /checkout`              | Validated purchase with required `Idempotency-Key` and `X-Environment` headers                       |
 | `GET /orders/:orderId/status` | Order state, processing state, items and non-sensitive basic data                                    |
 | `GET /metrics`                | Prometheus metrics on both applications                                                              |
 | `GET /health/live`            | Process liveness                                                                                     |

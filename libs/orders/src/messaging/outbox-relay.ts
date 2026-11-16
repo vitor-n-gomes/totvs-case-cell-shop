@@ -96,7 +96,7 @@ export class OutboxRelay implements BeforeApplicationShutdown {
                 claimedEvent.orderId,
                 orderEvent,
                 {
-                  'x-correlation-id': correlationId,
+                  'X-Correlation-Id': correlationId,
                 },
               ),
             );

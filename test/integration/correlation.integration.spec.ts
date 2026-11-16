@@ -4,7 +4,7 @@ import { buildCheckoutPayload, newIdempotencyKey } from './support/fixtures';
 import { newProduct, ProductRecord } from './support/in-memory-store';
 import { createTestApp, TestApp } from './support/test-app';
 
-// The CorrelationMiddleware only honors `x-correlation-id` (a UUID); `x-request-id` is not handled.
+// The CorrelationMiddleware only honors `X-Correlation-Id` (a UUID); `x-request-id` is not handled.
 describe('Correlation id propagation (integration)', () => {
   let testContext: TestApp;
   let product: ProductRecord;
@@ -19,34 +19,35 @@ describe('Correlation id propagation (integration)', () => {
     await testContext.app.close();
   });
 
-  it('echoes x-correlation-id on GET /products', async () => {
+  it('echoes X-Correlation-Id on GET /products', async () => {
     const correlationId = randomUUID();
 
     const response = await request(testContext.app.getHttpServer())
       .get('/products')
-      .set('x-correlation-id', correlationId)
+      .set('X-Correlation-Id', correlationId)
       .expect(200);
 
-    expect(response.headers['x-correlation-id']).toBe(correlationId);
+    expect(response.headers['X-Correlation-Id']).toBe(correlationId);
   });
 
-  it('echoes x-correlation-id on POST /checkout and GET /orders/:orderId/status', async () => {
+  it('echoes X-Correlation-Id on POST /checkout and GET /orders/:orderId/status', async () => {
     const correlationId = randomUUID();
 
     const checkout = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
-      .set('x-correlation-id', correlationId)
+      .set('X-Environment', 'Local')
+      .set('X-Correlation-Id', correlationId)
       .send(buildCheckoutPayload(product.id))
       .expect(202);
 
     const status = await request(testContext.app.getHttpServer())
       .get(`/orders/${checkout.body.orderId as string}/status`)
-      .set('x-correlation-id', correlationId)
+      .set('X-Correlation-Id', correlationId)
       .expect(200);
 
-    expect(checkout.headers['x-correlation-id']).toBe(correlationId);
-    expect(status.headers['x-correlation-id']).toBe(correlationId);
+    expect(checkout.headers['X-Correlation-Id']).toBe(correlationId);
+    expect(status.headers['X-Correlation-Id']).toBe(correlationId);
 
     expect(
       [...testContext.inMemoryStore.orders.values()].map(

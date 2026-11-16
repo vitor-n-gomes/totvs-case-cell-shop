@@ -150,7 +150,7 @@ export class ExpireReservationsUseCase implements BeforeApplicationShutdown {
             orderId,
             reservationExpiredEvent,
             {
-              'x-correlation-id': traceContext.correlation_id,
+              'X-Correlation-Id': traceContext.correlation_id,
             },
           );
         });

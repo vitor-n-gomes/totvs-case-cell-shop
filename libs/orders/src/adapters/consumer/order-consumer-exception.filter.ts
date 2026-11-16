@@ -131,7 +131,7 @@ export class OrderConsumerExceptionFilter implements ExceptionFilter {
         reason: deadLetterReason,
       },
       {
-        'x-correlation-id': correlationId,
+        'X-Correlation-Id': correlationId,
         'x-dlq-reason': deadLetterReason,
         'x-error-type': errorType(error),
         'x-event-kind': orderEventKind,

@@ -10,7 +10,10 @@ import { CheckoutUseCase } from '@app/orders/adapters/usecases/checkout.use-case
 import { CheckoutGuard } from '@app/orders/adapters/usecases/guards/checkout.guard';
 import { OrderRepository } from '@app/orders/repositories/order.repository';
 import { OutboxRepository } from '@app/orders/repositories/outbox.repository';
-import { OrderStatus } from '@app/orders/domain/shared/types/order.type';
+import {
+  Environment,
+  OrderStatus,
+} from '@app/orders/domain/shared/types/order.type';
 import { parseOrderEvent } from '@app/orders/messaging/order-events';
 import { StockRepository } from '@app/products/inventory/repositories/stock.repository';
 import { Metrics } from '@app/platform/observability/metrics';
@@ -98,12 +101,27 @@ describe('CheckoutUseCase', () => {
 
     const payload = checkoutPayload();
     const correlationId = '00000000-0000-4000-8000-000000000001';
-    const result = await service.execute(payload, 'key', correlationId);
+
+    const result = await service.execute(
+      payload,
+      'key',
+      Environment.Local,
+      correlationId,
+    );
 
     expect(result).toEqual({
       orderId: expect.any(String),
       status: OrderStatus.Pending,
     });
+
+    expect(orderRepository.insertPending).toHaveBeenCalledWith(
+      manager,
+      result.orderId,
+      { ...payload, environment: Environment.Local },
+      'key',
+      expect.any(String),
+      correlationId,
+    );
 
     expect(stockRepository.reserve).toHaveBeenCalledWith(
       manager,
@@ -157,10 +175,15 @@ describe('CheckoutUseCase', () => {
 
     orderRepository.findByKey.mockResolvedValue({
       id: 'existing-order',
-      requestHash: guard.hashPayload(payload),
+      requestHash: guard.hashPayload({
+        ...payload,
+        environment: Environment.Local,
+      }),
     });
 
-    await expect(service.execute(payload, 'key')).resolves.toEqual({
+    await expect(
+      service.execute(payload, 'key', Environment.Local),
+    ).resolves.toEqual({
       orderId: 'existing-order',
       status: OrderStatus.Pending,
     });
@@ -184,7 +207,7 @@ describe('CheckoutUseCase', () => {
     });
 
     await expect(
-      service.execute(checkoutPayload(), 'key'),
+      service.execute(checkoutPayload(), 'key', Environment.Local),
     ).rejects.toBeInstanceOf(ConflictException);
 
     expect(stockRepository.reserve).not.toHaveBeenCalled();
@@ -197,21 +220,34 @@ describe('CheckoutUseCase', () => {
     orderRepository.insertPending.mockResolvedValue(false);
     orderRepository.findByKey.mockResolvedValue(null);
 
-    await expect(service.execute(checkoutPayload(), 'key')).rejects.toThrow(
-      'Order insert failed',
-    );
+    await expect(
+      service.execute(checkoutPayload(), 'key', Environment.Local),
+    ).rejects.toThrow('Order insert failed');
   });
 
   it('rejects invalid keys before starting a transaction', async () => {
     const { service, dataSource, checkoutMetric } = await setup();
 
     await expect(
-      service.execute(checkoutPayload(), undefined),
+      service.execute(checkoutPayload(), undefined, Environment.Local),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(checkoutMetric).toHaveBeenCalledWith({ result: 'rejected' });
   });
+
+  it.each([undefined, '', 'local', 'Staging'])(
+    'rejects X-Environment %p before starting a transaction',
+    async (environment) => {
+      const { service, dataSource } = await setup();
+
+      await expect(
+        service.execute(checkoutPayload(), 'key', environment),
+      ).rejects.toThrow('X-Environment');
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['40001', '40P01', '08006', '53300', 'ECONNREFUSED'])(
     'maps transient database error %s to a retryable HTTP response',
@@ -225,7 +261,7 @@ describe('CheckoutUseCase', () => {
       dataSource.transaction.mockRejectedValue(failure);
 
       await expect(
-        service.execute(checkoutPayload(), 'key'),
+        service.execute(checkoutPayload(), 'key', Environment.Local),
       ).rejects.toMatchObject({ status: 503, cause: failure });
 
       expect(checkoutMetric).toHaveBeenCalledWith({ result: 'rejected' });
@@ -238,9 +274,9 @@ describe('CheckoutUseCase', () => {
 
     stockRepository.reserve.mockRejectedValue(failure);
 
-    await expect(service.execute(checkoutPayload(), 'key')).rejects.toBe(
-      failure,
-    );
+    await expect(
+      service.execute(checkoutPayload(), 'key', Environment.Local),
+    ).rejects.toBe(failure);
 
     expect(outboxRepository.append).not.toHaveBeenCalled();
   });
@@ -253,9 +289,9 @@ describe('CheckoutUseCase', () => {
 
     outboxRepository.append.mockRejectedValue(failure);
 
-    await expect(service.execute(checkoutPayload(), 'key')).rejects.toBe(
-      failure,
-    );
+    await expect(
+      service.execute(checkoutPayload(), 'key', Environment.Local),
+    ).rejects.toBe(failure);
 
     expect(checkoutMetric).toHaveBeenCalledTimes(1);
     expect(checkoutMetric).toHaveBeenCalledWith({ result: 'rejected' });

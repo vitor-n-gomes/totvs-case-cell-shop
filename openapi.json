@@ -6,7 +6,7 @@
         "operationId": "ShopController_getProducts",
         "parameters": [
           {
-            "name": "x-correlation-id",
+            "name": "X-Correlation-Id",
             "in": "header",
             "required": false,
             "schema": {
@@ -49,12 +49,21 @@
         "operationId": "ShopController_create",
         "parameters": [
           {
-            "name": "x-correlation-id",
+            "name": "X-Correlation-Id",
             "in": "header",
             "required": false,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Environment",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["Local", "PreProd", "Prod"]
             }
           },
           {
@@ -138,7 +147,7 @@
         "operationId": "ShopController_status",
         "parameters": [
           {
-            "name": "x-correlation-id",
+            "name": "X-Correlation-Id",
             "in": "header",
             "required": false,
             "schema": {
@@ -304,10 +313,6 @@
             "type": "string",
             "maxLength": 100
           },
-          "environment": {
-            "type": "string",
-            "enum": ["Local", "PreProd", "Prod"]
-          },
           "items": {
             "minItems": 1,
             "maxItems": 100,
@@ -322,7 +327,6 @@
           "dueDate",
           "mainContact",
           "paymentMethod",
-          "environment",
           "items"
         ]
       },

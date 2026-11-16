@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { OrderRepository } from '@app/orders/repositories/order.repository';
 import { OrderEntity, OrderItemEntity } from '@app/orders/domain/entities';
 import {
+  Environment,
   OrderStatus,
   ProcessingStatus,
 } from '@app/orders/domain/shared/types/order.type';
@@ -74,7 +75,7 @@ describe('OrderRepository', () => {
     'reports whether an idempotent insert created a new row: %s',
     async (inserted) => {
       const { service, builder, manager } = await setup();
-      const payload = checkoutPayload();
+      const payload = { ...checkoutPayload(), environment: Environment.Prod };
 
       builder.execute.mockResolvedValue({
         raw: inserted ? [{ id: 'order' }] : [],
@@ -99,6 +100,7 @@ describe('OrderRepository', () => {
           requestHash: 'hash',
           correlationId: 'correlation',
           paymentMethod: payload.paymentMethod,
+          environment: Environment.Prod,
         }),
       );
 

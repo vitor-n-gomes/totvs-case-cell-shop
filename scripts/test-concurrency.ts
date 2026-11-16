@@ -78,14 +78,14 @@ async function checkout(
     headers: {
       'content-type': 'application/json',
       'idempotency-key': `overselling-${randomUUID()}`,
-      'x-correlation-id': randomUUID(),
+      'x-environment': Environment.Local,
+      'X-Correlation-Id': randomUUID(),
     },
     body: JSON.stringify({
       paymentType: PaymentType.PrePaid,
       dueDate: new Date().toISOString().slice(0, 10),
       mainContact: `customer-${requestNumber}@example.test`,
       paymentMethod: 'PIX',
-      environment: Environment.Local,
       items: [{ productId, quantity: 1 }],
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

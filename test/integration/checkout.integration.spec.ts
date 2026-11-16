@@ -27,6 +27,7 @@ describe('POST /checkout (integration)', () => {
     const response = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
+      .set('X-Environment', 'Local')
       .send(buildCheckoutPayload(product.id, 2))
       .expect(202);
 
@@ -72,12 +73,14 @@ describe('POST /checkout (integration)', () => {
     const first = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send(payload)
       .expect(202);
 
     const replay = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
+      .set('X-Environment', 'Local')
       .send(payload)
       .expect(202);
 
@@ -89,5 +92,36 @@ describe('POST /checkout (integration)', () => {
     expect(
       testContext.inMemoryStore.products.get(product.id)?.reservedQuantity,
     ).toBe(1);
+  });
+
+  it.each([undefined, 'Staging'])(
+    'rejects X-Environment %p with 400 without creating an order',
+    async (environment) => {
+      const checkoutRequest = request(testContext.app.getHttpServer())
+        .post('/checkout')
+        .set('Idempotency-Key', newIdempotencyKey());
+
+      if (environment) {
+
+        checkoutRequest.set('X-Environment', environment);
+
+      }
+
+      const response = await checkoutRequest
+        .send(buildCheckoutPayload(product.id, 1))
+        .expect(400);
+
+      expect(response.body.message).toContain('X-Environment');
+      expect(testContext.inMemoryStore.orders.size).toBe(0);
+    },
+  );
+
+  it('rejects environment in the request body', async () => {
+    await request(testContext.app.getHttpServer())
+      .post('/checkout')
+      .set('Idempotency-Key', newIdempotencyKey())
+      .set('X-Environment', 'Local')
+      .send({ ...buildCheckoutPayload(product.id, 1), environment: 'Local' })
+      .expect(400);
   });
 });

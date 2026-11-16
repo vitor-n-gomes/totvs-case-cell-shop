@@ -42,7 +42,7 @@ describe('Catalog with PostgreSQL and Redis (integration)', () => {
 
     const firstCatalogResponse = await request(testApp.app.getHttpServer())
       .get('/products')
-      .set('x-correlation-id', correlationId)
+      .set('X-Correlation-Id', correlationId)
       .expect(200);
 
     expect(firstCatalogResponse.body).toMatchObject([

@@ -58,7 +58,8 @@ describe('Checkout messaging with PostgreSQL, Redis and Kafka (integration)', ()
     const response = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', key)
-      .set('x-correlation-id', correlationId)
+      .set('X-Environment', 'Local')
+      .set('X-Correlation-Id', correlationId)
       .send(payload)
       .expect(202);
 
@@ -239,6 +240,7 @@ describe('Checkout messaging with PostgreSQL, Redis and Kafka (integration)', ()
     const replay = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', purchase.key)
+      .set('X-Environment', 'Local')
       .send(purchase.payload)
       .expect(202);
 

@@ -47,13 +47,13 @@ function checkoutRequest(productId) {
     headers: {
       'content-type': 'application/json',
       'idempotency-key': `smoke-${randomUUID()}`,
+      'x-environment': 'Local',
     },
     body: JSON.stringify({
       paymentType: 'PrePaid',
       dueDate: new Date().toISOString().slice(0, 10),
       mainContact: 'smoke@example.test',
       paymentMethod: 'PIX',
-      environment: 'Local',
       items: [{ productId, quantity: 1 }],
     }),
   };

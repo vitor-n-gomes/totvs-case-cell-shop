@@ -97,7 +97,7 @@ describe('OrderConsumerExceptionFilter RPC failures', () => {
       event.data.order_id,
       event,
       expect.objectContaining({
-        'x-correlation-id': event.meta.correlation_id,
+        'X-Correlation-Id': event.meta.correlation_id,
         'x-dlq-reason': 'Unknown order',
         'x-source-topic': 'checkout',
         'x-source-partition': '3',
