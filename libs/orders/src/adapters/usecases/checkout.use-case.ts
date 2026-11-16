@@ -7,7 +7,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import { CheckoutDto } from '../../domain/dto/create-order.dto';
+import {
+  CheckoutCommand,
+  CheckoutDto,
+} from '../../domain/dto/create-order.dto';
 import { OrderStatus } from '../../domain/shared/types/order.type';
 import {
   CheckoutInitiatedEvent,
@@ -44,17 +47,24 @@ export class CheckoutUseCase {
   async execute(
     checkoutDto: CheckoutDto,
     idempotencyKey: string | undefined,
+    environment: string | undefined,
     correlationId = executionContext.getStore()?.correlation_id ?? randomUUID(),
   ): Promise<CheckoutResult> {
     try {
 
       this.checkoutGuard.validate(checkoutDto, idempotencyKey);
-      const requestHash = this.checkoutGuard.hashPayload(checkoutDto);
+
+      const checkoutCommand: CheckoutCommand = {
+        ...checkoutDto,
+        environment: this.checkoutGuard.parseEnvironment(environment),
+      };
+
+      const requestHash = this.checkoutGuard.hashPayload(checkoutCommand);
 
       const { orderId, replay: isIdempotentReplay } =
         await this.spansService.run('checkout.transaction', () =>
           this.persistCheckout(
-            checkoutDto,
+            checkoutCommand,
             idempotencyKey,
             requestHash,
             correlationId,
@@ -75,7 +85,7 @@ export class CheckoutUseCase {
   }
 
   private persistCheckout(
-    checkoutDto: CheckoutDto,
+    checkoutDto: CheckoutCommand,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,

@@ -29,10 +29,11 @@ import {
   CheckoutDto,
   OrderStatusDto,
 } from '../../domain/dto/create-order.dto';
+import { Environment } from '../../domain/shared/types/order.type';
 
 @ApiTags('storefront')
 @ApiHeader({
-  name: 'x-correlation-id',
+  name: 'X-Correlation-Id',
   required: false,
   schema: { type: 'string', format: 'uuid' },
 })
@@ -52,6 +53,11 @@ export class OrderController {
     required: true,
     schema: { type: 'string', maxLength: 128 },
   })
+  @ApiHeader({
+    name: 'X-Environment',
+    required: true,
+    schema: { type: 'string', enum: Object.values(Environment) },
+  })
   @ApiAcceptedResponse({ type: CheckoutAcceptedDto })
   @ApiBadRequestResponse({ type: ErrorResponseDto })
   @ApiConflictResponse({ type: ErrorResponseDto })
@@ -59,11 +65,13 @@ export class OrderController {
   create(
     @Body() checkoutDto: CheckoutDto,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('x-environment') environment: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ): Promise<CheckoutAcceptedDto> {
     return this.checkoutUseCase.execute(
       checkoutDto,
       idempotencyKey,
+      environment,
       String(response.locals.correlationId),
     );
   }

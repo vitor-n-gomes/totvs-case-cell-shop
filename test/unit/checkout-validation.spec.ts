@@ -60,7 +60,7 @@ describe('checkoutSchema boundaries', () => {
     ['paymentMethod', '\t'],
     ['paymentMethod', 'a'.repeat(101)],
     ['paymentType', 'invalid'],
-    ['environment', 'invalid'],
+    ['environment', 'Local'],
     ['extra', 'forbidden'],
   ])('rejects invalid field %s = %p', (field, value) => {
     expect(
@@ -131,7 +131,7 @@ describe('CheckoutGuard boundaries', () => {
     { environment: Environment.Prod },
     { paymentMethod: 'CARD' },
   ])('includes purchase fields in the payload hash: %p', (change) => {
-    const payload = checkoutPayload();
+    const payload = { ...checkoutPayload(), environment: Environment.Local };
 
     expect(guard.hashPayload({ ...payload, ...change })).not.toBe(
       guard.hashPayload(payload),
@@ -139,7 +139,7 @@ describe('CheckoutGuard boundaries', () => {
   });
 
   it('does not mutate item order when computing a hash', () => {
-    const payload = checkoutPayload();
+    const payload = { ...checkoutPayload(), environment: Environment.Local };
 
     payload.items.push({
       productId: '00000000-0000-4000-8000-000000000001',

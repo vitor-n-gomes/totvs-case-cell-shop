@@ -23,7 +23,6 @@ export const checkoutSchema = z.strictObject({
     .transform((value) => value ?? undefined)
     .optional(),
   paymentMethod: z.string().max(100).regex(/\S/),
-  environment: z.enum(Environment),
   items: z.array(checkoutItemSchema).min(1).max(100),
 });
 
@@ -53,12 +52,12 @@ export class CheckoutDto implements z.infer<typeof checkoutSchema> {
   @ApiProperty({ maxLength: 100 })
   paymentMethod: string;
 
-  @ApiProperty({ enum: Environment })
-  environment: Environment;
-
   @ApiProperty({ type: [CheckoutItemDto], minItems: 1, maxItems: 100 })
   items: CheckoutItemDto[];
 }
+
+/** Checkout body combined with the environment received in the `X-Environment` header. */
+export type CheckoutCommand = CheckoutDto & { environment: Environment };
 
 export class CheckoutAcceptedDto {
   @ApiProperty({ format: 'uuid' })

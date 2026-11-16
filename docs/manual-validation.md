@@ -43,8 +43,9 @@ Confirme `GET /health/ready` nas duas portas, `GET /products`, `/api-docs` na AP
 curl -i http://localhost:3000/checkout \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: manual-orders-001' \
-  -H 'x-correlation-id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
-  -d '{"paymentType":"PrePaid","dueDate":"2026-11-11","mainContact":"manual@example.test","paymentMethod":"PIX","environment":"Local","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
+  -H 'X-Environment: Local' \
+  -H 'X-Correlation-Id: 4c79764b-416c-4c29-939c-48eb86649ac3' \
+  -d '{"paymentType":"PrePaid","dueDate":"2026-11-11","mainContact":"manual@example.test","paymentMethod":"PIX","items":[{"productId":"11111111-1111-4111-8111-111111111111","quantity":1}]}'
 
 curl -s http://localhost:3000/orders/ORDER_ID/status
 ```

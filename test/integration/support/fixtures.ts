@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  Environment,
-  PaymentType,
-} from '@app/orders/domain/shared/types/order.type';
+import { PaymentType } from '@app/orders/domain/shared/types/order.type';
 
 export function buildCheckoutPayload(productId: string, quantity = 1) {
   return {
@@ -10,7 +7,6 @@ export function buildCheckoutPayload(productId: string, quantity = 1) {
     dueDate: '2026-11-10',
     mainContact: 'customer@example.test',
     paymentMethod: 'PIX',
-    environment: Environment.Local,
     items: [{ productId, quantity }],
   };
 }

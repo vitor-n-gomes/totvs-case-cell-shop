@@ -52,6 +52,7 @@ describe('Scheduler reservation expiration (integration)', () => {
     const response = await request(testApp.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
+      .set('X-Environment', 'Local')
       .send(buildCheckoutPayload(product.id, 2))
       .expect(202);
 

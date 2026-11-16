@@ -160,14 +160,14 @@ async function main(): Promise<void> {
       headers: {
         'content-type': 'application/json',
         'idempotency-key': `happy-path-${randomUUID()}`,
-        'x-correlation-id': randomUUID(),
+        'x-environment': Environment.Local,
+        'X-Correlation-Id': randomUUID(),
       },
       body: JSON.stringify({
         paymentType: PaymentType.PrePaid,
         dueDate: new Date().toISOString().slice(0, 10),
         mainContact: 'happy-path@example.test',
         paymentMethod: 'PIX',
-        environment: Environment.Local,
         items: [{ productId: initialStock.productId, quantity: 1 }],
       }),
     };

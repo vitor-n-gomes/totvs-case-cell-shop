@@ -16,6 +16,7 @@ describe('GET /orders/:orderId/status (integration)', () => {
     const response = await request(testContext.app.getHttpServer())
       .post('/checkout')
       .set('Idempotency-Key', newIdempotencyKey())
+      .set('X-Environment', 'Local')
       .send(buildCheckoutPayload(product.id, 1))
       .expect(202);
 

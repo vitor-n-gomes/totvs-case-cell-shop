@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { DataSource, EntityManager, QueryRunner, Repository } from 'typeorm';
-import { CheckoutDto } from '../domain/dto/create-order.dto';
+import { CheckoutCommand } from '../domain/dto/create-order.dto';
 import { OrderEntity, OrderItemEntity } from '../domain/entities';
 import { OrderStatus } from '../domain/shared/types/order.type';
 
@@ -31,7 +31,7 @@ export class OrderRepository {
   async insertPending(
     entityManager: EntityManager,
     orderId: string,
-    checkoutDto: CheckoutDto,
+    checkoutDto: CheckoutCommand,
     idempotencyKey: string,
     requestHash: string,
     correlationId: string,
