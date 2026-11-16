@@ -87,7 +87,7 @@ Kafka UI starts automatically with `npm run infra:up` and when Compose starts `h
 
 Redis Insight, the visual interface for Redis, also starts automatically with `npm run infra:up` and when Compose starts `http` or `consumer`. It waits for a healthy Redis, comes pre-configured with a `CaseCellShop` connection and is available at [http://localhost:5540](http://localhost:5540) (change the host port with `REDIS_INSIGHT_HOST_PORT`). Its settings persist in the `redis-insight-data` volume.
 
-Compose creates the demo, checkout and DLQ topics explicitly. It applies migrations through a separate job before starting the applications. Both the API and the worker wait for PostgreSQL migrations, a healthy Redis and Kafka topic initialization. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed (`src/database/seeds/seed.ts`) creates three products with 100 units each and **never resets existing stock** for them. Product names combine phone-case styles, phone models and colors using Faker with a fixed seed (`42`); the pinned Faker version and generation order keep names reproducible across runs. IDs, product keys and prices remain fixed. Re-running it updates catalog names/prices (integer cents) and invalidates the cache. The one exception is the flash-sale product `CASE-LIMITED-001`, whose stock is reset to 1 unit (0 reserved) and its reservations are cleared on every run.
+Compose creates the checkout topic, its DLQ and the `KAFKA_TOPIC` topic (probed by the worker readiness check) explicitly. It applies migrations through a separate job before starting the applications. Both the API and the worker wait for PostgreSQL migrations, a healthy Redis and Kafka topic initialization. Ports bind to loopback; API is on 3000 and worker operations on 3001. PostgreSQL, Redis and Kafka data survive `docker compose down`. The seed (`src/database/seeds/seed.ts`) creates three products with 100 units each and **never resets existing stock** for them. Product names combine phone-case styles, phone models and colors using Faker with a fixed seed (`42`); the pinned Faker version and generation order keep names reproducible across runs. IDs, product keys and prices remain fixed. Re-running it updates catalog names/prices (integer cents) and invalidates the cache. The one exception is the flash-sale product `CASE-LIMITED-001`, whose stock is reset to 1 unit (0 reserved) and its reservations are cleared on every run.
 
 With the API and consumer running, `npm run test:overselling` re-seeds and fires 5 simultaneous checkouts for that single unit. It prints a summary and exits `1` if more than one order is activated, stock goes negative or an order stays `Pending` (override the target with `API_URL`).
 
@@ -119,15 +119,15 @@ Checkout enum values are case-sensitive: `PrePaid`/`PostPaid`, `Local`/`PreProd`
 
 All HTTP fields are camelCase. Database names and checkout event fields are snake_case. Prices are integer cents, not floating-point amounts. The server snapshots current prices; catalog prices are informative, not a binding quote. In a real checkout, add an explicit customer-approved quote/version before charging.
 
-| Endpoint                      | Behavior                                                                       |
-| ----------------------------- | ------------------------------------------------------------------------------ |
-| `GET /products`               | Catalog and prices, without an authoritative stock promise                     |
-| `POST /checkout`              | Validated purchase with required `Idempotency-Key`                             |
-| `GET /orders/:orderId/status` | Order state, processing state, items and non-sensitive basic data              |
-| `GET /metrics`                | Prometheus metrics on both applications                                        |
-| `GET /health/live`            | Process liveness                                                               |
-| `GET /health/ready`           | API requires PostgreSQL; worker additionally requires Kafka and both consumers |
-| `GET /health/cache`           | Optional Redis dependency status                                               |
+| Endpoint                      | Behavior                                                                                             |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `GET /products`               | Catalog and prices, without an authoritative stock promise                                           |
+| `POST /checkout`              | Validated purchase with required `Idempotency-Key`                                                   |
+| `GET /orders/:orderId/status` | Order state, processing state, items and non-sensitive basic data                                    |
+| `GET /metrics`                | Prometheus metrics on both applications                                                              |
+| `GET /health/live`            | Process liveness                                                                                     |
+| `GET /health/ready`           | API requires PostgreSQL; worker additionally requires Kafka topic metadata and the checkout consumer |
+| `GET /health/cache`           | Optional Redis dependency status                                                                     |
 
 Errors use `{ statusCode, error, message, correlationId }`: invalid input `400`, missing resources `404`, stock/idempotency conflicts `409`, temporary checkout/catalog failures `503`. Unknown server faults return a sanitized `500`. Missing/invalid correlation UUIDs are replaced and the effective value is echoed in the response header. Contacts are not exposed by order status.
 
@@ -137,8 +137,6 @@ Swagger is at `/api-docs`; JSON at `/api-docs-json`. The committed [OpenAPI docu
 npm run openapi:export
 npx prettier --write openapi.json
 ```
-
-The original `/demo/messages` POST/GET endpoints remain available. Unlike checkout, the demo publisher waits for a Kafka acknowledgment and does not implement HTTP idempotency.
 
 ## Architecture and consistency
 
@@ -157,7 +155,7 @@ flowchart LR
     Cleanup[Worker expiration job] --> DB
 ```
 
-`libs/orders` owns checkout, order queries, activation, retries, the transactional outbox and expiration orchestration. `libs/products` owns the catalog (products module) and, in its `inventory` sub-module, stock and reservations; the inventory module exports reservation operations without importing Orders. Like `libs/orders`, it is laid out as `domain/` (entities, dto), `adapters/` (http, usecases), `repositories/` and a persistence module. Feature controllers live with their modules. `apps/http` serves the public API, while `apps/consumer` runs two Nest Kafka transports (preserving the demo group and the `-checkout` group), scheduled jobs and an operations HTTP server. HTTP imports no consumer or scheduler module. Event schemas live in `libs/orders/src/messaging` and are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
+`libs/orders` owns checkout, order queries, activation, retries, the transactional outbox and expiration orchestration. `libs/products` owns the catalog (products module) and, in its `inventory` sub-module, stock and reservations; the inventory module exports reservation operations without importing Orders. Like `libs/orders`, it is laid out as `domain/` (entities, dto), `adapters/` (http, usecases), `repositories/` and a persistence module. Feature controllers live with their modules. `apps/http` serves the public API, while `apps/consumer` runs one Nest Kafka transport (the `${KAFKA_GROUP_ID}-checkout` group), scheduled jobs and an operations HTTP server. HTTP imports no consumer or scheduler module. Event schemas live in `libs/orders/src/messaging` and are independent of HTTP and ORM. `libs/platform` supplies connections, validated configuration, logging, metrics and tracing simulation. This is one storefront-owned database and two independently runnable applications, not separately owned microservices.
 
 ### Checkout and inventory
 
